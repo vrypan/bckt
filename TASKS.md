@@ -16,11 +16,11 @@ This file tracks the work plan for **bucket3rs**. Tasks are grouped into milesto
 ## Milestone 0 — Repo Bootstrap (PR: `feat:init`)
 **Goal:** Compile, run `bucket3 init`, and create the skeleton.
 
-- [ ] Cargo setup with deps: `clap`, `anyhow`, `serde`, `serde_yaml`, `minijinja`, `comrak`, `sled`, `walkdir`, `time`.
-- [ ] Binary `bucket3`.
-- [ ] Command: `bucket3 init` creates `html/`, `posts/`, `templates/`, `skel/`, `bucket3.yaml` (idempotent; won’t overwrite).
-- [ ] Seed minimal templates (`base.html`, `post.html`, `index.html`) and sample post.
-- [ ] CI: GitHub Actions workflow (fmt, clippy, test).
+- [x] Cargo setup with deps: `clap`, `anyhow`, `serde`, `serde_yaml`, `minijinja`, `comrak`, `sled`, `walkdir`, `time`.
+- [x] Binary `bucket3`.
+- [x] Command: `bucket3 init` creates `html/`, `posts/`, `templates/`, `skel/`, `bucket3.yaml` (idempotent; won’t overwrite).
+- [x] Seed minimal templates (`base.html`, `post.html`, `index.html`) and sample post.
+- [x] CI: GitHub Actions workflow (fmt, clippy, test).
 **DoD:** Running `bucket3 init` on an empty repo completes without error and prints “Initialized”.
 
 ---
@@ -28,10 +28,10 @@ This file tracks the work plan for **bucket3rs**. Tasks are grouped into milesto
 ## Milestone 1 — Config & Template Context (PR: `feat:config`)
 **Goal:** Load `bucket3.yaml` and expose to templates.
 
-- [ ] `Config` struct + `serde_yaml` loader with defaults (`homepage_posts`, `date_format`, `base_url`).
-- [ ] Validate base URL and numeric ranges; nice error messages.
-- [ ] Inject `config` into template context; add `now` (current time) helper.
-- [ ] Unit tests: valid/invalid config; missing file falls back to defaults.
+- [x] `Config` struct + `serde_yaml` loader with defaults (`homepage_posts`, `date_format`, `base_url`).
+- [x] Validate base URL and numeric ranges; nice error messages.
+- [x] Inject `config` into template context; add `now` (current time) helper.
+- [x] Unit tests: valid/invalid config; missing file falls back to defaults.
 **DoD:** `{{ config.title }}` renders in templates; invalid YAML shows actionable error.
 
 ---
@@ -39,14 +39,14 @@ This file tracks the work plan for **bucket3rs**. Tasks are grouped into milesto
 ## Milestone 2 — Content Model & Front-Matter (PR: `feat:content-model`)
 **Goal:** Parse posts from `posts/` tree.
 
-- [ ] Discover post directories recursively under `posts/`.
-- [ ] Each post must have **one** main file: `.md` or `.html`.
-- [ ] YAML front-matter schema:
+- [x] Discover post directories recursively under `posts/`.
+- [x] Each post must have **one** main file: `.md` or `.html`.
+- [x] YAML front-matter schema:
   - `title` (optional), `date` (RFC 3339), `tags: []`, `abstract`, `slug` (optional), `attached: []`
   - Media hints: `images: []`, `video_url` (optional)
-- [ ] Slug rules: use front-matter `slug` else directory name (kebab).
-- [ ] Compute permalink: `/yyyy/mm/dd/slug/`.
-- [ ] Tests: date parsing, slugify, invalid/missing main file, front-matter only.
+- [x] Slug rules: use front-matter `slug` else directory name (kebab).
+- [x] Compute permalink: `/yyyy/mm/dd/slug/`.
+- [x] Tests: date parsing, slugify, invalid/missing main file, front-matter only.
 **DoD:** A `Post` struct is produced for sample content with correct permalink.
 
 ---
@@ -54,10 +54,10 @@ This file tracks the work plan for **bucket3rs**. Tasks are grouped into milesto
 ## Milestone 3 — Markdown → HTML (PR: `feat:markdown-gfm`)
 **Goal:** Render Markdown with GFM features.
 
-- [ ] `comrak` wrapper with options: tables, task lists, strikethrough, autolinks, footnotes.
-- [ ] Front-matter split (`---` fence) and pass body to renderer.
-- [ ] Generate `excerpt` (first N chars / until first paragraph) for feed.
-- [ ] Tests: GFM features, fenced code, footnotes, excerpt edge cases.
+- [x] `comrak` wrapper with options: tables, task lists, strikethrough, autolinks, footnotes.
+- [x] Front-matter split (`---` fence) and pass body to renderer.
+- [x] Generate `excerpt` (first N chars / until first paragraph) for feed.
+- [x] Tests: GFM features, fenced code, footnotes, excerpt edge cases.
 **DoD:** Given sample Markdown with GFM, `post.html` contains expected HTML.
 
 ---
@@ -65,12 +65,12 @@ This file tracks the work plan for **bucket3rs**. Tasks are grouped into milesto
 ## Milestone 4 — Rendering Pipeline (PR: `feat:render-pipeline`)
 **Goal:** Build all posts into `html/` with templates.
 
-- [ ] Minijinja `Environment` with template inheritance.
-- [ ] Render post pages to `/yyyy/mm/dd/slug/index.html`.
-- [ ] Copy `attached` assets (verify existence; error if missing).
-- [ ] Copy `skel/` to `html/` (static assets) preserving structure.
-- [ ] Command: `bucket3 render --posts --static` (both by default).
-- [ ] Tests: post output pathing; attached files present; missing asset error surfaced.
+- [x] Minijinja `Environment` with template inheritance.
+- [x] Render post pages to `/yyyy/mm/dd/slug/index.html`.
+- [x] Copy `attached` assets (verify existence; error if missing).
+- [x] Copy `skel/` to `html/` (static assets) preserving structure.
+- [x] Command: `bucket3 render --posts --static` (both by default).
+- [x] Tests: post output pathing; attached files present; missing asset error surfaced.
 **DoD:** `bucket3 render` produces working HTML for the sample post + assets.
 
 ---
@@ -78,11 +78,11 @@ This file tracks the work plan for **bucket3rs**. Tasks are grouped into milesto
 ## Milestone 5 — Homepage & Basic Pagination (PR: `feat:homepage`)
 **Goal:** Chronological feed and pager.
 
-- [ ] Sort posts by `date` desc.
-- [ ] Homepage shows last `homepage_posts` bodies (no-title friendly).
-- [ ] Pagination: `/page/2/` etc., with “Newer/Older” links.
-- [ ] Template context includes `pagination.{prev,next,current,total}`.
-- [ ] Tests: page counts at boundaries (0, 1 page, many pages).
+- [x] Sort posts by `date` desc.
+- [x] Homepage shows last `homepage_posts` bodies (no-title friendly).
+- [x] Pagination: `/page/2/` etc., with “Newer/Older” links.
+- [x] Template context includes `pagination.{prev,next,current,total}`.
+- [x] Tests: page counts at boundaries (0, 1 page, many pages).
 **DoD:** Visiting `/` and `/page/2/` shows correct posts and nav.
 
 ---
@@ -90,10 +90,10 @@ This file tracks the work plan for **bucket3rs**. Tasks are grouped into milesto
 ## Milestone 6 — Tags & Archives (PR: `feat:tags-archives`)
 **Goal:** Tag indexes + date archives.
 
-- [ ] Tag pages at `/tags/<tag>/index.html` (alpha by tag, reverse-chron by posts).
-- [ ] Optional pagination for tags (config: `paginate_tags`).
-- [ ] Year/month archive pages: `/2025/` and `/2025/09/` (optional if time-limited).
-- [ ] Tests: tag with 1 post, many posts; special chars in tags (normalize to path).
+- [x] Tag pages at `/tags/<tag>/index.html` (alpha by tag, reverse-chron by posts).
+- [x] Optional pagination for tags (config: `paginate_tags`).
+- [x] Year/month archive pages: `/2025/` and `/2025/09/` (optional if time-limited).
+- [x] Tests: tag with 1 post, many posts; special chars in tags (normalize to path).
 **DoD:** Tag and archive pages render with correct counts and links.
 
 ---
