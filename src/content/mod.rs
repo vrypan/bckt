@@ -41,10 +41,13 @@ struct FrontMatter {
     pub title: Option<String>,
     pub slug: Option<String>,
     pub date: Option<String>,
+    #[serde(deserialize_with = "deserialize_string_or_list")]
     pub tags: Vec<String>,
     #[serde(rename = "abstract")]
     pub abstract_text: Option<String>,
+    #[serde(deserialize_with = "deserialize_path_list")]
     pub attached: Vec<PathBuf>,
+    #[serde(deserialize_with = "deserialize_path_list")]
     pub images: Vec<PathBuf>,
     pub video_url: Option<String>,
 }
@@ -238,6 +241,54 @@ fn slugify(value: &str) -> String {
     slug
 }
 
+fn deserialize_string_or_list<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Value {
+        Many(Vec<String>),
+        One(String),
+    }
+
+    Ok(match Value::deserialize(deserializer)? {
+        Value::Many(items) => items
+            .into_iter()
+            .map(|item| item.trim().to_string())
+            .collect(),
+        Value::One(value) => split_csv(&value)
+            .into_iter()
+            .map(|item| item.to_string())
+            .collect(),
+    })
+}
+
+fn deserialize_path_list<'de, D>(deserializer: D) -> Result<Vec<PathBuf>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Value {
+        Many(Vec<PathBuf>),
+        One(String),
+    }
+
+    Ok(match Value::deserialize(deserializer)? {
+        Value::Many(items) => items,
+        Value::One(value) => split_csv(&value).into_iter().map(PathBuf::from).collect(),
+    })
+}
+
+fn split_csv(input: &str) -> Vec<&str> {
+    input
+        .split(',')
+        .map(|part| part.trim())
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
 fn build_permalink(date: &OffsetDateTime, slug: &str) -> String {
     format!(
         "/{:04}/{:02}/{:02}/{slug}/",
@@ -413,6 +464,29 @@ mod tests {
         let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
         assert_eq!(posts[0].body_html, "");
         assert_eq!(posts[0].excerpt, "");
+    }
+
+    #[test]
+    fn parse_comma_separated_lists() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/list");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("post.md"),
+            "---\ndate: 2024-01-01T00:00:00Z\ntags: one, two , three\nattached: file-a.txt, file-b.txt\nimages: img-a.png\n---\n",
+        )
+        .unwrap();
+
+        let config = Config::default();
+        let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+        let post = &posts[0];
+
+        assert_eq!(post.tags, vec!["one", "two", "three"]);
+        assert_eq!(
+            post.attached,
+            vec![PathBuf::from("file-a.txt"), PathBuf::from("file-b.txt")]
+        );
+        assert_eq!(post.images, vec![PathBuf::from("img-a.png")]);
     }
 
     #[test]
