@@ -3,4 +3,6 @@ html/
 bucket3.yaml
 posts/
 skel/
-templates/
+templates/*
+!templates/base.html
+!templates/rss.xml

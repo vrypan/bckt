@@ -5,10 +5,15 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::config::Config;
+use crate::utils::absolute_url;
 
 pub fn environment(config: &Config) -> Result<Environment<'static>> {
     let mut env = Environment::new();
     env.add_global("config", Value::from_serialize(config));
+    env.add_global(
+        "feed_url",
+        Value::from(absolute_url(&config.base_url, "/rss.xml")),
+    );
 
     let default_format = config.date_format.clone();
     env.add_function(
@@ -81,5 +86,16 @@ mod tests {
         let rendered = env.get_template("when").unwrap().render(()).unwrap();
         assert!(rendered.contains('T'));
         assert!(rendered.ends_with('Z'));
+    }
+
+    #[test]
+    fn feed_url_available() {
+        let mut config = Config::default();
+        config.base_url = "https://example.com/blog".to_string();
+        let mut env = environment(&config).unwrap();
+        env.add_template("feed", "{{ feed_url }}").unwrap();
+
+        let rendered = env.get_template("feed").unwrap().render(()).unwrap();
+        assert_eq!(rendered, "https://example.com/blog/rss.xml");
     }
 }

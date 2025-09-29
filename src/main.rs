@@ -5,6 +5,7 @@ pub mod content;
 pub mod markdown;
 pub mod render;
 pub mod template;
+pub mod utils;
 
 fn main() {
     let app = cli::Cli::build();

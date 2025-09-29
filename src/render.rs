@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -7,12 +8,13 @@ use minijinja::Environment;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description;
-use time::format_description::well_known::Rfc3339;
+use time::format_description::well_known::{Rfc2822, Rfc3339};
 use walkdir::WalkDir;
 
 use crate::config::Config;
 use crate::content::{Post, discover_posts};
 use crate::template;
+use crate::utils::absolute_url;
 
 pub struct RenderPlan {
     pub posts: bool,
@@ -138,6 +140,7 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
         render_homepage(&posts, &html_root, &config, &env, &cache)?;
         render_tag_archives(&posts, &html_root, &config, &env, &tag_cache)?;
         render_archives(&posts, &html_root, &config, &env)?;
+        render_feeds(&posts, &html_root, &config, &env)?;
     }
 
     if plan.static_assets {
@@ -741,6 +744,30 @@ fn build_post_summary(config: &Config, post: &Post) -> Result<PostSummary> {
     })
 }
 
+fn build_feed_item(config: &Config, post: &Post) -> Result<FeedItem> {
+    let item_title = post
+        .title
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(&post.slug);
+    let link = absolute_url(&config.base_url, &post.permalink);
+    let pub_date = format_rfc2822(&post.date)?;
+    let description = if post.excerpt.trim().is_empty() {
+        item_title.to_string()
+    } else {
+        post.excerpt.clone()
+    };
+
+    Ok(FeedItem {
+        title: xml_escape(item_title),
+        link: xml_escape(&link),
+        guid: xml_escape(&link),
+        pub_date: xml_escape(&pub_date),
+        description: xml_escape(&description),
+        content: sanitize_cdata(&post.body_html),
+    })
+}
+
 fn format_date(config: &Config, date: &OffsetDateTime) -> Result<String> {
     if config.date_format.eq_ignore_ascii_case("RFC3339") {
         return date
@@ -908,6 +935,243 @@ fn copy_static_assets(root: &Path, html_root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn render_feeds(
+    posts: &[Post],
+    html_root: &Path,
+    config: &Config,
+    env: &Environment<'static>,
+) -> Result<()> {
+    render_rss(posts, html_root, config, env)?;
+    render_sitemap(posts, html_root, config)?;
+    Ok(())
+}
+
+fn render_rss(
+    posts: &[Post],
+    html_root: &Path,
+    config: &Config,
+    env: &Environment<'static>,
+) -> Result<()> {
+    let template = env
+        .get_template("rss.xml")
+        .context("rss.xml template missing")?;
+
+    let site_url = absolute_url(&config.base_url, "/");
+    let feed_url = absolute_url(&config.base_url, "/rss.xml");
+    let title = config
+        .title
+        .clone()
+        .unwrap_or_else(|| "bucket3".to_string());
+    let build_date = posts
+        .first()
+        .map(|post| post.date)
+        .unwrap_or_else(OffsetDateTime::now_utc);
+    let last_build_date = format_rfc2822(&build_date)?;
+
+    let items = posts
+        .iter()
+        .take(50)
+        .map(|post| build_feed_item(config, post))
+        .collect::<Result<Vec<_>>>()?;
+
+    let context = FeedContext {
+        title: xml_escape(&title),
+        site_url: xml_escape(&site_url),
+        feed_url: xml_escape(&feed_url),
+        description: xml_escape(&title),
+        updated: xml_escape(&last_build_date),
+        items,
+    };
+
+    let rendered = template
+        .render(minijinja::context! { feed => context })
+        .context("failed to render rss.xml")?;
+
+    let output_path = html_root.join("rss.xml");
+    fs::write(&output_path, rendered)
+        .with_context(|| format!("failed to write {}", output_path.display()))?;
+    Ok(())
+}
+
+fn render_sitemap(posts: &[Post], html_root: &Path, config: &Config) -> Result<()> {
+    let per_page = std::cmp::max(1, config.homepage_posts);
+    let mut entries: Vec<SitemapEntry> = Vec::new();
+
+    let homepage_date = posts
+        .first()
+        .map(|post| format_rfc3339(&post.date))
+        .transpose()?;
+    entries.push(SitemapEntry {
+        loc: absolute_url(&config.base_url, "/"),
+        lastmod: homepage_date,
+    });
+
+    for chunk in posts.chunks(per_page).enumerate() {
+        if chunk.0 == 0 {
+            continue;
+        }
+        let last = chunk.1.last().expect("chunks() never yields empty slices");
+        let cursor = page_cursor(last);
+        let path = page_url(&cursor);
+        let chunk_date = format_rfc3339(&chunk.1[0].date)?;
+        entries.push(SitemapEntry {
+            loc: absolute_url(&config.base_url, &path),
+            lastmod: Some(chunk_date),
+        });
+    }
+
+    for post in posts {
+        entries.push(SitemapEntry {
+            loc: absolute_url(&config.base_url, &post.permalink),
+            lastmod: Some(format_rfc3339(&post.date)?),
+        });
+    }
+
+    let tag_entries = collect_tag_sitemap_entries(posts, config, per_page)?;
+    entries.extend(tag_entries);
+
+    let mut buffer = String::new();
+    writeln!(buffer, "<?xml version=\"1.0\" encoding=\"utf-8\"?>")?;
+    writeln!(
+        buffer,
+        "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">"
+    )?;
+    for entry in entries {
+        writeln!(buffer, "  <url>")?;
+        writeln!(buffer, "    <loc>{}</loc>", xml_escape(&entry.loc))?;
+        if let Some(lastmod) = entry.lastmod {
+            writeln!(buffer, "    <lastmod>{}</lastmod>", xml_escape(&lastmod))?;
+        }
+        writeln!(buffer, "  </url>")?;
+    }
+    writeln!(buffer, "</urlset>")?;
+
+    let output_path = html_root.join("sitemap.xml");
+    fs::write(&output_path, buffer)
+        .with_context(|| format!("failed to write {}", output_path.display()))?;
+    Ok(())
+}
+
+fn collect_tag_sitemap_entries(
+    posts: &[Post],
+    config: &Config,
+    per_page: usize,
+) -> Result<Vec<SitemapEntry>> {
+    let mut buckets: BTreeMap<String, TagBucket> = BTreeMap::new();
+
+    for (idx, post) in posts.iter().enumerate() {
+        let mut seen = HashSet::new();
+        for tag in &post.tags {
+            let tag = tag.trim();
+            if tag.is_empty() {
+                continue;
+            }
+            let slug = tag_slug(tag);
+            if !seen.insert(slug.clone()) {
+                continue;
+            }
+            let bucket = buckets.entry(slug.clone()).or_insert_with(|| TagBucket {
+                name: tag.to_string(),
+                slug: slug.clone(),
+                indices: Vec::new(),
+            });
+            bucket.indices.push(idx);
+        }
+    }
+
+    if buckets.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+
+    for bucket in buckets.values() {
+        if !config.paginate_tags {
+            let first = &posts[bucket.indices[0]];
+            entries.push(SitemapEntry {
+                loc: absolute_url(&config.base_url, &tag_index_url(&bucket.slug)),
+                lastmod: Some(format_rfc3339(&first.date)?),
+            });
+            continue;
+        }
+
+        for (chunk_index, chunk) in bucket.indices.chunks(per_page).enumerate() {
+            let first = &posts[chunk[0]];
+            let url = if chunk_index == 0 {
+                tag_index_url(&bucket.slug)
+            } else {
+                let last = &posts[*chunk.last().unwrap()];
+                let cursor = page_cursor(last);
+                tag_page_url(&bucket.slug, &cursor)
+            };
+            entries.push(SitemapEntry {
+                loc: absolute_url(&config.base_url, &url),
+                lastmod: Some(format_rfc3339(&first.date)?),
+            });
+        }
+    }
+
+    Ok(entries)
+}
+
+fn format_rfc3339(date: &OffsetDateTime) -> Result<String> {
+    date.format(&Rfc3339)
+        .context("failed to format RFC3339 date")
+}
+
+fn format_rfc2822(date: &OffsetDateTime) -> Result<String> {
+    date.format(&Rfc2822)
+        .context("failed to format RFC2822 date")
+}
+
+fn sanitize_cdata(value: &str) -> String {
+    if value.contains("]]>") {
+        value.replace("]]>", "]]]><![CDATA[>")
+    } else {
+        value.to_string()
+    }
+}
+
+fn xml_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '\"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&apos;"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
+}
+
+struct SitemapEntry {
+    loc: String,
+    lastmod: Option<String>,
+}
+
+#[derive(Serialize)]
+struct FeedContext {
+    title: String,
+    site_url: String,
+    feed_url: String,
+    description: String,
+    updated: String,
+    items: Vec<FeedItem>,
+}
+
+#[derive(Serialize)]
+struct FeedItem {
+    title: String,
+    link: String,
+    guid: String,
+    pub_date: String,
+    description: String,
+    content: String,
+}
+
 #[derive(Serialize)]
 struct PostTemplate {
     title: Option<String>,
@@ -1003,6 +1267,11 @@ mod tests {
             root,
             "archive_month.html",
             "{% extends \"base.html\" %}{% block content %}<section data-year=\"{{ year }}\" data-month=\"{{ month }}\">{% for post in posts %}<article data-slug=\"{{ post.slug }}\"></article>{% endfor %}</section>{% endblock %}",
+        );
+        write_template(
+            root,
+            "rss.xml",
+            "{% autoescape false %}\n<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<rss version=\"2.0\" xmlns:content=\"http://purl.org/rss/1.0/modules/content/\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n  <channel>\n    <title>{{ feed.title }}</title>\n    <link>{{ feed.site_url }}</link>\n    <description>{{ feed.description }}</description>\n    <lastBuildDate>{{ feed.updated }}</lastBuildDate>\n    <generator>bucket3rs</generator>\n    <atom:link href=\"{{ feed.feed_url }}\" rel=\"self\" type=\"application/rss+xml\"/>\n    {% for item in feed.items %}\n    <item>\n      <title>{{ item.title }}</title>\n      <link>{{ item.link }}</link>\n      <guid isPermaLink=\"true\">{{ item.guid }}</guid>\n      <pubDate>{{ item.pub_date }}</pubDate>\n      <description>{{ item.description }}</description>\n      <content:encoded><![CDATA[{{ item.content | safe }}]]></content:encoded>\n    </item>\n    {% endfor %}\n  </channel>\n</rss>\n{% endautoescape %}\n",
         );
     }
 
@@ -1267,6 +1536,87 @@ mod tests {
         assert!(third.contains("article data-slug=\"alpha\""));
         assert!(third.contains(&format!("data-prev=\"/tags/shared/{ts_beta}-beta/\"")));
         assert!(third.contains("data-next=\"\""));
+    }
+
+    #[test]
+    fn generates_rss_feed_with_absolute_urls() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+        fs::write(
+            root.join("bucket3.yaml"),
+            "base_url: \"https://example.com/blog\"\n",
+        )
+        .unwrap();
+
+        write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "Alpha body");
+        write_dated_post(root, "beta", "2024-02-01T00:00:00Z", "Beta body");
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+            },
+        )
+        .unwrap();
+
+        let feed = fs::read_to_string(root.join("html/rss.xml")).unwrap();
+        assert!(feed.contains("<link>https://example.com/blog/</link>"));
+        assert!(feed.contains("<atom:link href=\"https://example.com/blog/rss.xml\""));
+        assert!(feed.contains("<link>https://example.com/blog/2024/02/01/beta/</link>"));
+        assert!(feed.contains("<description>Beta body"));
+        assert!(feed.contains("<content:encoded><![CDATA["));
+    }
+
+    #[test]
+    fn generates_sitemap_with_posts_tags_and_pages() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+        fs::write(
+            root.join("bucket3.yaml"),
+            "base_url: \"https://example.com/blog\"\nhomepage_posts: 1\npaginate_tags: true\n",
+        )
+        .unwrap();
+
+        write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+        write_tagged_post(root, "beta", "shared", "2024-02-01T00:00:00Z", "B");
+        write_tagged_post(root, "gamma", "shared", "2024-03-01T00:00:00Z", "C");
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+            },
+        )
+        .unwrap();
+
+        let sitemap = fs::read_to_string(root.join("html/sitemap.xml")).unwrap();
+        assert!(sitemap.contains("<loc>https://example.com/blog/</loc>"));
+
+        let ts_beta = OffsetDateTime::parse("2024-02-01T00:00:00Z", &Rfc3339)
+            .unwrap()
+            .unix_timestamp();
+        let ts_alpha = OffsetDateTime::parse("2024-01-01T00:00:00Z", &Rfc3339)
+            .unwrap()
+            .unix_timestamp();
+
+        assert!(sitemap.contains(&format!(
+            "<loc>https://example.com/blog/page/{ts_beta}-beta/</loc>"
+        )));
+        assert!(sitemap.contains(&format!(
+            "<loc>https://example.com/blog/page/{ts_alpha}-alpha/</loc>"
+        )));
+        assert!(sitemap.contains(&format!("<loc>https://example.com/blog/tags/shared/</loc>")));
+        assert!(sitemap.contains(&format!(
+            "<loc>https://example.com/blog/tags/shared/{ts_beta}-beta/</loc>"
+        )));
+        assert!(sitemap.contains("<loc>https://example.com/blog/2024/03/01/gamma/</loc>"));
+        assert!(sitemap.contains("<lastmod>2024-03-01T00:00:00Z</lastmod>"));
     }
 
     #[test]

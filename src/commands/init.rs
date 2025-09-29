@@ -20,6 +20,7 @@ const BASE_TEMPLATE: &str = r#"<!doctype html>
 <head>
   <meta charset="utf-8">
   <title>{{ title | default(config.title | default("bucket3")) }}</title>
+  <link rel="alternate" type="application/rss+xml" title="{{ config.title | default('bucket3') }}" href="{{ feed_url }}">
 </head>
 <body>
   <main>
@@ -102,6 +103,31 @@ const ARCHIVE_MONTH_TEMPLATE: &str = r#"{% extends "base.html" %}
 {% endblock content %}
 "#;
 
+const RSS_TEMPLATE: &str = r#"{% autoescape false %}
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>{{ feed.title }}</title>
+    <link>{{ feed.site_url }}</link>
+    <description>{{ feed.description }}</description>
+    <lastBuildDate>{{ feed.updated }}</lastBuildDate>
+    <generator>bucket3rs</generator>
+    <atom:link href="{{ feed.feed_url }}" rel="self" type="application/rss+xml"/>
+    {% for item in feed.items %}
+    <item>
+      <title>{{ item.title }}</title>
+      <link>{{ item.link }}</link>
+      <guid isPermaLink="true">{{ item.guid }}</guid>
+      <pubDate>{{ item.pub_date }}</pubDate>
+      <description>{{ item.description }}</description>
+      <content:encoded><![CDATA[{{ item.content | safe }}]]></content:encoded>
+    </item>
+    {% endfor %}
+  </channel>
+</rss>
+{% endautoescape %}
+"#;
+
 const SAMPLE_POST: &str = r#"---
 title: "Hello From bucket3rs"
 slug: "hello-from-bucket3rs"
@@ -177,6 +203,8 @@ fn seed_templates(root: &Path) -> Result<()> {
         ARCHIVE_MONTH_TEMPLATE,
     )
     .context("failed to write templates/archive_month.html")?;
+    write_if_missing(&templates.join("rss.xml"), RSS_TEMPLATE)
+        .context("failed to write templates/rss.xml")?;
     Ok(())
 }
 

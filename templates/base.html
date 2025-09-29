@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title | default(config.title | default("bucket3")) }}</title>
+  <link rel="alternate" type="application/rss+xml" title="{{ config.title | default('bucket3') }}" href="{{ feed_url }}">
+</head>
+<body>
+  <main>
+    {% block content %}{% endblock content %}
+  </main>
+</body>
+</html>
