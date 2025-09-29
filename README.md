@@ -34,7 +34,7 @@ homepage_posts: 5
 date_format: "[year]-[month]-[day]"
 ```
 
-`base_url` must be an absolute `http` or `https` URL, `homepage_posts` must be positive, and `date_format` accepts either a custom [`time` format description`](https://docs.rs/time/latest/time/format_description/) or the keyword `RFC3339`. The configuration is injected into templates as `config`, and templates can call `{{ now() }}` (or `{{ now('RFC3339') }}`) to render the current timestamp.
+`base_url` must be an absolute `http` or `https` URL, `homepage_posts` must be positive, `paginate_tags` toggles cursor-based tag archives (defaults to `true`), and `date_format` accepts either a custom [`time` format description`](https://docs.rs/time/latest/time/format_description/) or the keyword `RFC3339`. The configuration is injected into templates as `config`, and templates can call `{{ now() }}` (or `{{ now('RFC3339') }}`) to render the current timestamp.
 
 ### Posts
 
@@ -57,4 +57,4 @@ video_url: "https://example.com/video.mp4"
 Body goes here...
 ```
 
-`slug` falls back to the directory name (kebab-cased) when omitted. Dates must use RFC 3339, and the permalink for a post is `/yyyy/mm/dd/slug/`. The `attached` and `images` lists stay relative to the post directory so later build steps can copy them alongside the rendered HTML. The homepage shows the most recent `homepage_posts` entries and writes immutable archive pages keyed by a cursor (`/page/<timestamp-slug>/`), so new posts only regenerate the head page.
+`slug` falls back to the directory name (kebab-cased) when omitted. Dates must use RFC 3339, and the permalink for a post is `/yyyy/mm/dd/slug/`. The `attached` and `images` lists stay relative to the post directory so later build steps can copy them alongside the rendered HTML. The homepage shows the most recent `homepage_posts` entries and writes immutable archive pages keyed by a cursor (`/page/<timestamp-slug>/`), so new posts only regenerate the head page. Tags render under `/tags/<tag>/` (with optional cursor pagination when `paginate_tags` is enabled) and yearly/monthly archives render under `/yyyy/` and `/yyyy/mm/`.

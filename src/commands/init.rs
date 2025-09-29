@@ -12,6 +12,7 @@ const DEFAULT_CONFIG: &str = r#"title: "My Bucket3 Site"
 base_url: "https://example.com"
 homepage_posts: 5
 date_format: "[year]-[month]-[day]"
+paginate_tags: true
 "#;
 
 const BASE_TEMPLATE: &str = r#"<!doctype html>
@@ -41,6 +42,54 @@ const INDEX_TEMPLATE: &str = r#"{% extends "base.html" %}
 {% block content %}
 <section>
   <h1>Recent Posts</h1>
+  {% for post in posts %}
+  <article>
+    {% if post.title %}<h2>{{ post.title }}</h2>{% endif %}
+    <div>{{ post.body | safe }}</div>
+  </article>
+  {% else %}
+  <p>No posts yet.</p>
+  {% endfor %}
+</section>
+{% endblock content %}
+"#;
+
+const TAG_TEMPLATE: &str = r#"{% extends "base.html" %}
+{% block content %}
+<section>
+  <h1>Tag: {{ tag }}</h1>
+  {% for post in posts %}
+  <article>
+    {% if post.title %}<h2>{{ post.title }}</h2>{% endif %}
+    <div>{{ post.body | safe }}</div>
+  </article>
+  {% else %}
+  <p>No posts for this tag.</p>
+  {% endfor %}
+</section>
+{% endblock content %}
+"#;
+
+const ARCHIVE_YEAR_TEMPLATE: &str = r#"{% extends "base.html" %}
+{% block content %}
+<section>
+  <h1>{{ year }}</h1>
+  {% for post in posts %}
+  <article>
+    {% if post.title %}<h2>{{ post.title }}</h2>{% endif %}
+    <div>{{ post.body | safe }}</div>
+  </article>
+  {% else %}
+  <p>No posts yet.</p>
+  {% endfor %}
+</section>
+{% endblock content %}
+"#;
+
+const ARCHIVE_MONTH_TEMPLATE: &str = r#"{% extends "base.html" %}
+{% block content %}
+<section>
+  <h1>{{ year }}-{{ month }}</h1>
   {% for post in posts %}
   <article>
     {% if post.title %}<h2>{{ post.title }}</h2>{% endif %}
@@ -119,6 +168,15 @@ fn seed_templates(root: &Path) -> Result<()> {
         .context("failed to write templates/post.html")?;
     write_if_missing(&templates.join("index.html"), INDEX_TEMPLATE)
         .context("failed to write templates/index.html")?;
+    write_if_missing(&templates.join("tag.html"), TAG_TEMPLATE)
+        .context("failed to write templates/tag.html")?;
+    write_if_missing(&templates.join("archive_year.html"), ARCHIVE_YEAR_TEMPLATE)
+        .context("failed to write templates/archive_year.html")?;
+    write_if_missing(
+        &templates.join("archive_month.html"),
+        ARCHIVE_MONTH_TEMPLATE,
+    )
+    .context("failed to write templates/archive_month.html")?;
     Ok(())
 }
 
