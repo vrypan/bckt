@@ -57,4 +57,4 @@ video_url: "https://example.com/video.mp4"
 Body goes here...
 ```
 
-`slug` falls back to the directory name (kebab-cased) when omitted. Dates must use RFC 3339, and the permalink for a post is `/yyyy/mm/dd/slug/`. The `attached` and `images` lists stay relative to the post directory so later build steps can copy them alongside the rendered HTML.
+`slug` falls back to the directory name (kebab-cased) when omitted. Dates must use RFC 3339, and the permalink for a post is `/yyyy/mm/dd/slug/`. The `attached` and `images` lists stay relative to the post directory so later build steps can copy them alongside the rendered HTML. The homepage shows the most recent `homepage_posts` entries and writes immutable archive pages keyed by a cursor (`/page/<timestamp-slug>/`), so new posts only regenerate the head page.
