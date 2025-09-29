@@ -1,0 +1,326 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result, bail};
+use serde::Deserialize;
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
+use walkdir::WalkDir;
+
+const MAIN_EXTENSIONS: &[&str] = &["md", "html"];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Post {
+    pub title: Option<String>,
+    pub slug: String,
+    pub date: OffsetDateTime,
+    pub tags: Vec<String>,
+    pub abstract_text: Option<String>,
+    pub attached: Vec<PathBuf>,
+    pub images: Vec<PathBuf>,
+    pub video_url: Option<String>,
+    pub body: String,
+    pub source_dir: PathBuf,
+    pub content_path: PathBuf,
+    pub permalink: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct FrontMatter {
+    pub title: Option<String>,
+    pub slug: Option<String>,
+    pub date: Option<String>,
+    pub tags: Vec<String>,
+    #[serde(rename = "abstract")]
+    pub abstract_text: Option<String>,
+    pub attached: Vec<PathBuf>,
+    pub images: Vec<PathBuf>,
+    pub video_url: Option<String>,
+}
+
+pub fn discover_posts(root: impl AsRef<Path>) -> Result<Vec<Post>> {
+    let root = root.as_ref();
+    if !root.exists() {
+        bail!("posts directory {} does not exist", root.display());
+    }
+
+    let mut posts = Vec::new();
+
+    for entry in WalkDir::new(root).min_depth(1) {
+        let entry = entry?;
+        if !entry.file_type().is_dir() {
+            continue;
+        }
+        match load_post(entry.path())? {
+            Some(post) => posts.push(post),
+            None => continue,
+        }
+    }
+
+    posts.sort_by(|left, right| match left.date.cmp(&right.date) {
+        std::cmp::Ordering::Equal => left.slug.cmp(&right.slug),
+        other => other,
+    });
+    Ok(posts)
+}
+
+fn load_post(dir: &Path) -> Result<Option<Post>> {
+    let mut main_files = Vec::new();
+    for entry in
+        fs::read_dir(dir).with_context(|| format!("failed to enumerate {}", dir.display()))?
+    {
+        let entry = entry?;
+        if entry.file_type()?.is_file() && is_main_file(&entry.path()) {
+            main_files.push(entry.path());
+        }
+    }
+
+    if main_files.is_empty() {
+        return Ok(None);
+    }
+
+    if main_files.len() > 1 {
+        bail!(
+            "{}: expected exactly one main content file, found {}",
+            dir.display(),
+            main_files.len()
+        );
+    }
+
+    let content_path = main_files.remove(0);
+    let raw = fs::read_to_string(&content_path)
+        .with_context(|| format!("failed to read {}", content_path.display()))?;
+    let (front, body) = parse_front_matter(&raw).with_context(|| {
+        format!(
+            "{}: missing or invalid front matter",
+            content_path.display()
+        )
+    })?;
+
+    let date_str = front
+        .date
+        .as_ref()
+        .with_context(|| format!("{}: date is required", content_path.display()))?;
+    let date = OffsetDateTime::parse(date_str, &Rfc3339)
+        .with_context(|| format!("{}: date must be RFC3339", content_path.display()))?;
+
+    let slug = determine_slug(dir, front.slug.as_deref())?;
+    let permalink = build_permalink(&date, &slug);
+
+    let post = Post {
+        title: front.title,
+        slug,
+        date,
+        tags: front.tags,
+        abstract_text: front.abstract_text,
+        attached: front.attached,
+        images: front.images,
+        video_url: front.video_url,
+        body,
+        source_dir: dir.to_path_buf(),
+        content_path,
+        permalink,
+    };
+
+    Ok(Some(post))
+}
+
+fn determine_slug(dir: &Path, provided: Option<&str>) -> Result<String> {
+    let raw = if let Some(value) = provided {
+        value
+    } else {
+        dir.file_name()
+            .and_then(|value| value.to_str())
+            .with_context(|| format!("{}: directory name not valid utf-8", dir.display()))?
+    };
+
+    let candidate = slugify(raw);
+    if candidate.is_empty() {
+        bail!("{}: slug cannot be empty", dir.display());
+    }
+    Ok(candidate)
+}
+
+fn is_main_file(path: &Path) -> bool {
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some(ext) => {
+            let ext = ext.to_ascii_lowercase();
+            MAIN_EXTENSIONS.iter().any(|candidate| candidate == &ext)
+        }
+        None => false,
+    }
+}
+
+fn parse_front_matter(raw: &str) -> Result<(FrontMatter, String)> {
+    let mut lines = raw.lines();
+    match lines.next() {
+        Some(line) if line.trim() == "---" => {}
+        _ => bail!("front matter must start with ---"),
+    }
+
+    let mut yaml_lines = Vec::new();
+    for line in &mut lines {
+        if line.trim() == "---" {
+            let yaml = yaml_lines.join("\n");
+            let front: FrontMatter = if yaml.trim().is_empty() {
+                FrontMatter::default()
+            } else {
+                serde_yaml::from_str(&yaml)?
+            };
+            let mut body = lines.collect::<Vec<_>>().join("\n");
+            if body.starts_with('\n') {
+                body.remove(0);
+            }
+            return Ok((front, body));
+        }
+        yaml_lines.push(line);
+    }
+
+    bail!("front matter not terminated with ---")
+}
+
+fn slugify(value: &str) -> String {
+    let mut slug = String::new();
+    let mut previous_dash = false;
+
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+            previous_dash = false;
+        } else if !previous_dash && !slug.is_empty() {
+            slug.push('-');
+            previous_dash = true;
+        }
+    }
+
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+
+    slug
+}
+
+fn build_permalink(date: &OffsetDateTime, slug: &str) -> String {
+    format!(
+        "/{:04}/{:02}/{:02}/{slug}/",
+        date.year(),
+        u8::from(date.month()),
+        date.day()
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    #[test]
+    fn discover_single_markdown_post() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts");
+        fs::create_dir_all(root.join("notes/hello-world")).unwrap();
+        fs::write(
+            root.join("notes/hello-world/post.md"),
+            "---\ntitle: Hello\ndate: 2024-02-01T12:00:00Z\ntags: [rust]\n---\nBody",
+        )
+        .unwrap();
+
+        let posts = discover_posts(&root).unwrap();
+        assert_eq!(posts.len(), 1);
+        let post = &posts[0];
+        assert_eq!(post.slug, "hello-world");
+        assert_eq!(post.tags, vec!["rust".to_string()]);
+        assert_eq!(post.permalink, "/2024/02/01/hello-world/");
+        assert_eq!(post.body, "Body");
+    }
+
+    #[test]
+    fn prefer_slug_from_front_matter() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts");
+        fs::create_dir_all(root.join("mixed/Example")).unwrap();
+        fs::write(
+            root.join("mixed/Example/post.md"),
+            "---\ndate: 2024-03-04T00:00:00Z\nslug: Custom Slug\n---\n",
+        )
+        .unwrap();
+
+        let posts = discover_posts(&root).unwrap();
+        assert_eq!(posts[0].slug, "custom-slug");
+    }
+
+    #[test]
+    fn parse_full_front_matter_payload() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/full");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("post.md"),
+            "---\ntitle: Sample\ndate: 2024-05-06T08:09:10Z\ntags:\n  - summary\n  - rust\nabstract: Short\nattached:\n  - files/data.csv\nimages:\n  - img.png\nvideo_url: https://example.com/video.mp4\n---\nBody\n",
+        )
+        .unwrap();
+
+        let posts = discover_posts(root.parent().unwrap()).unwrap();
+        let post = &posts[0];
+        assert_eq!(post.title.as_deref(), Some("Sample"));
+        assert_eq!(post.tags, vec!["summary".to_string(), "rust".to_string()]);
+        assert_eq!(post.abstract_text.as_deref(), Some("Short"));
+        assert_eq!(post.attached, vec![PathBuf::from("files/data.csv")]);
+        assert_eq!(post.images, vec![PathBuf::from("img.png")]);
+        assert_eq!(
+            post.video_url.as_deref(),
+            Some("https://example.com/video.mp4")
+        );
+        assert_eq!(post.body, "Body");
+    }
+
+    #[test]
+    fn reject_duplicate_main_files() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/dupe");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("a.md"), "---\ndate: 2024-01-01T00:00:00Z\n---\n").unwrap();
+        fs::write(
+            root.join("b.html"),
+            "---\ndate: 2024-01-01T00:00:00Z\n---\n",
+        )
+        .unwrap();
+
+        let error = discover_posts(root.parent().unwrap()).unwrap_err();
+        assert!(format!("{error}").contains("expected exactly one"));
+    }
+
+    #[test]
+    fn reject_missing_front_matter() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/missing");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("post.md"), "no front matter").unwrap();
+
+        let error = discover_posts(root.parent().unwrap()).unwrap_err();
+        assert!(format!("{error}").contains("front matter"));
+    }
+
+    #[test]
+    fn allow_front_matter_only() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/solo");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("post.md"),
+            "---\ndate: 2024-01-01T00:00:00Z\n---\n",
+        )
+        .unwrap();
+
+        let posts = discover_posts(root.parent().unwrap()).unwrap();
+        assert_eq!(posts[0].body, "");
+    }
+
+    #[test]
+    fn slugify_directory_name() {
+        assert_eq!(slugify("Hello World"), "hello-world");
+        assert_eq!(slugify("  Multi   Spaces  "), "multi-spaces");
+    }
+}

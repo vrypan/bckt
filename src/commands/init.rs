@@ -61,6 +61,7 @@ tags:
   - welcome
 abstract: "Kick the tires on the generator."
 attached: []
+images: []
 ---
 
 This is the starter post. Edit it or drop in your own content to get going.
