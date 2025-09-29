@@ -32,7 +32,7 @@ date_format: "[year]-[month]-[day]"
 
 ### Posts
 
-Store posts under `posts/` in any directory layout. Each directory that contains exactly one Markdown or HTML file (with a `.md` or `.html` extension) is considered a post; all other files in that directory are treated as assets. Every post file must start with YAML front matter:
+Store posts under `posts/` in any directory layout. Each directory that contains exactly one Markdown or HTML file (with a `.md` or `.html` extension) is considered a post; all other files in that directory are treated as assets. Markdown sources are rendered with GitHub-flavored options (tables, task lists, strikethrough, autolinks, and footnotes), and the first paragraph becomes the post excerpt (truncated to ~280 characters). Every post file must start with YAML front matter:
 
 ```
 ---
@@ -48,7 +48,7 @@ images:
   - cover.jpg
 video_url: "https://example.com/video.mp4"
 ---
-Body goes here…
+Body goes here...
 ```
 
 `slug` falls back to the directory name (kebab-cased) when omitted. Dates must use RFC 3339, and the permalink for a post is `/yyyy/mm/dd/slug/`. The `attached` and `images` lists stay relative to the post directory so later build steps can copy them alongside the rendered HTML.

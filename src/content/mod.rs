@@ -7,6 +7,8 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use walkdir::WalkDir;
 
+use crate::markdown::{MarkdownRender, render_markdown};
+
 const MAIN_EXTENSIONS: &[&str] = &["md", "html"];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,7 +21,8 @@ pub struct Post {
     pub attached: Vec<PathBuf>,
     pub images: Vec<PathBuf>,
     pub video_url: Option<String>,
-    pub body: String,
+    pub body_html: String,
+    pub excerpt: String,
     pub source_dir: PathBuf,
     pub content_path: PathBuf,
     pub permalink: String,
@@ -108,6 +111,8 @@ fn load_post(dir: &Path) -> Result<Option<Post>> {
     let slug = determine_slug(dir, front.slug.as_deref())?;
     let permalink = build_permalink(&date, &slug);
 
+    let (body_html, excerpt) = render_body(&content_path, &body)?;
+
     let post = Post {
         title: front.title,
         slug,
@@ -117,7 +122,8 @@ fn load_post(dir: &Path) -> Result<Option<Post>> {
         attached: front.attached,
         images: front.images,
         video_url: front.video_url,
-        body,
+        body_html,
+        excerpt,
         source_dir: dir.to_path_buf(),
         content_path,
         permalink,
@@ -210,6 +216,56 @@ fn build_permalink(date: &OffsetDateTime, slug: &str) -> String {
     )
 }
 
+fn render_body(path: &Path, body: &str) -> Result<(String, String)> {
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some(ext) if ext.eq_ignore_ascii_case("md") => {
+            let MarkdownRender { html, excerpt } = render_markdown(body);
+            Ok((html, excerpt))
+        }
+        Some(ext) if ext.eq_ignore_ascii_case("html") => {
+            let clean = body.trim().to_string();
+            let excerpt = excerpt_from_html(&clean);
+            Ok((clean, excerpt))
+        }
+        _ => bail!("{}: unsupported content extension", path.display()),
+    }
+}
+
+fn excerpt_from_html(html: &str) -> String {
+    const LIMIT: usize = 280;
+    let mut plain = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => {
+                in_tag = false;
+                plain.push(' ');
+            }
+            _ if !in_tag => plain.push(ch),
+            _ => {}
+        }
+    }
+    let text = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.is_empty() {
+        return String::new();
+    }
+    let mut excerpt = String::new();
+    let mut count = 0;
+    let total = text.chars().count();
+    for ch in text.chars() {
+        if count >= LIMIT {
+            break;
+        }
+        excerpt.push(ch);
+        count += 1;
+    }
+    if total > count {
+        excerpt.push_str("...");
+    }
+    excerpt.trim().to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,7 +289,8 @@ mod tests {
         assert_eq!(post.slug, "hello-world");
         assert_eq!(post.tags, vec!["rust".to_string()]);
         assert_eq!(post.permalink, "/2024/02/01/hello-world/");
-        assert_eq!(post.body, "Body");
+        assert_eq!(post.body_html, "<p>Body</p>\n");
+        assert_eq!(post.excerpt, "Body");
     }
 
     #[test]
@@ -273,7 +330,8 @@ mod tests {
             post.video_url.as_deref(),
             Some("https://example.com/video.mp4")
         );
-        assert_eq!(post.body, "Body");
+        assert_eq!(post.body_html, "<p>Body</p>\n");
+        assert_eq!(post.excerpt, "Body");
     }
 
     #[test]
@@ -315,12 +373,29 @@ mod tests {
         .unwrap();
 
         let posts = discover_posts(root.parent().unwrap()).unwrap();
-        assert_eq!(posts[0].body, "");
+        assert_eq!(posts[0].body_html, "");
+        assert_eq!(posts[0].excerpt, "");
     }
 
     #[test]
     fn slugify_directory_name() {
         assert_eq!(slugify("Hello World"), "hello-world");
         assert_eq!(slugify("  Multi   Spaces  "), "multi-spaces");
+    }
+
+    #[test]
+    fn html_posts_are_passthrough() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/page");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("post.html"),
+            "---\ndate: 2024-01-02T00:00:00Z\n---\n<p>Sunny</p>",
+        )
+        .unwrap();
+
+        let posts = discover_posts(root.parent().unwrap()).unwrap();
+        assert_eq!(posts[0].body_html, "<p>Sunny</p>");
+        assert_eq!(posts[0].excerpt, "Sunny");
     }
 }

@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 pub mod config;
 pub mod content;
+pub mod markdown;
 pub mod template;
 
 fn main() {
