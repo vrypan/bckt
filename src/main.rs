@@ -1,6 +1,7 @@
 mod cli;
 mod commands;
 pub mod config;
+pub mod content;
 pub mod template;
 
 fn main() {
