@@ -11,6 +11,7 @@ const CONFIG_FILE: &str = "bucket3.yaml";
 const DEFAULT_CONFIG: &str = r#"title: "My Bucket3 Site"
 base_url: "https://example.com"
 homepage_posts: 5
+date_format: "[year]-[month]-[day]"
 "#;
 
 const BASE_TEMPLATE: &str = r#"<!doctype html>
@@ -143,11 +144,11 @@ fn write_if_missing(path: &Path, contents: &str) -> Result<()> {
     if path.exists() {
         return Ok(());
     }
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
     }
     let mut file =
         fs::File::create(path).with_context(|| format!("failed to create {}", path.display()))?;
