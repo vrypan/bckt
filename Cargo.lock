@@ -130,6 +130,7 @@ dependencies = [
  "comrak",
  "minijinja",
  "serde",
+ "serde_json",
  "serde_yaml",
  "sled",
  "tempfile",
