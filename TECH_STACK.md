@@ -1,0 +1,4 @@
+- Templating: https://github.com/mitsuhiko/minijinja
+- Markdown: https://docs.rs/comrak/latest/comrak/
+- Kv-store: https://github.com/spacejam/sled
+- YAML: https://docs.rs/serde_yaml/latest/serde_yaml/
