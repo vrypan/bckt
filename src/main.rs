@@ -1,7 +1,7 @@
 mod cli;
 mod commands;
-
-use crate::cli::Command;
+pub mod config;
+pub mod template;
 
 fn main() {
     let app = cli::Cli::build();
