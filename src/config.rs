@@ -13,6 +13,7 @@ pub struct Config {
     pub base_url: String,
     pub homepage_posts: usize,
     pub date_format: String,
+    pub paginate_tags: bool,
 }
 
 impl Config {
@@ -50,6 +51,7 @@ impl Default for Config {
             base_url: "https://example.com".to_string(),
             homepage_posts: 5,
             date_format: "[year]-[month]-[day]".to_string(),
+            paginate_tags: true,
         }
     }
 }
@@ -117,6 +119,7 @@ mod tests {
             r#"title: "Bucket"
 base_url: "https://example.com/blog"
 homepage_posts: 8
+paginate_tags: false
 "#,
         )
         .unwrap();
@@ -126,6 +129,7 @@ homepage_posts: 8
         assert_eq!(config.base_url, "https://example.com/blog");
         assert_eq!(config.homepage_posts, 8);
         assert_eq!(config.date_format, "[year]-[month]-[day]");
+        assert!(!config.paginate_tags);
     }
 
     #[test]

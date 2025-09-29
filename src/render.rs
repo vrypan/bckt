@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -21,6 +21,7 @@ pub struct RenderPlan {
 
 const CACHE_DIR: &str = ".bucket3/cache";
 const HOME_PAGES_KEY: &str = "home_pages";
+const TAG_PAGES_KEY: &str = "tag_pages";
 
 #[derive(Clone, Serialize, Deserialize)]
 struct StoredPage {
@@ -28,17 +29,27 @@ struct StoredPage {
     posts: Vec<String>,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+struct StoredTagPage {
+    tag: String,
+    slug: String,
+    cursor: String,
+    posts: Vec<String>,
+}
+
+struct TagBucket {
+    name: String,
+    slug: String,
+    indices: Vec<usize>,
+}
+
 struct HomePageCache {
     db: sled::Db,
 }
 
 impl HomePageCache {
-    fn open(root: &Path) -> Result<Self> {
-        let cache_dir = root.join(CACHE_DIR);
-        fs::create_dir_all(&cache_dir)
-            .with_context(|| format!("failed to create cache directory {}", cache_dir.display()))?;
-        let db = sled::open(cache_dir.join("sled")).context("failed to open cache database")?;
-        Ok(Self { db })
+    fn new(db: sled::Db) -> Self {
+        Self { db }
     }
 
     fn load_pages(&self) -> Result<Vec<StoredPage>> {
@@ -65,13 +76,55 @@ impl HomePageCache {
     }
 }
 
+struct TagPageCache {
+    db: sled::Db,
+}
+
+impl TagPageCache {
+    fn new(db: sled::Db) -> Self {
+        Self { db }
+    }
+
+    fn load_pages(&self) -> Result<Vec<StoredTagPage>> {
+        let maybe = self
+            .db
+            .get(TAG_PAGES_KEY)
+            .context("failed to read tag cache")?;
+        if let Some(bytes) = maybe {
+            let pages: Vec<StoredTagPage> =
+                serde_json::from_slice(&bytes).context("failed to deserialize tag cache")?;
+            Ok(pages)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    fn store_pages(&self, pages: &[StoredTagPage]) -> Result<()> {
+        let data = serde_json::to_vec(pages).context("failed to serialize tag cache")?;
+        self.db
+            .insert(TAG_PAGES_KEY, data)
+            .context("failed to update tag cache")?;
+        self.db.flush().context("failed to flush tag cache")?;
+        Ok(())
+    }
+}
+
+fn open_cache_db(root: &Path) -> Result<sled::Db> {
+    let cache_dir = root.join(CACHE_DIR);
+    fs::create_dir_all(&cache_dir)
+        .with_context(|| format!("failed to create cache directory {}", cache_dir.display()))?;
+    sled::open(cache_dir.join("sled")).context("failed to open cache database")
+}
+
 pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
     let config_path = root.join("bucket3.yaml");
     let config = Config::load(&config_path)?;
     let html_root = root.join("html");
     fs::create_dir_all(&html_root).context("failed to ensure html directory exists")?;
 
-    let cache = HomePageCache::open(root)?;
+    let cache_db = open_cache_db(root)?;
+    let cache = HomePageCache::new(cache_db.clone());
+    let tag_cache = TagPageCache::new(cache_db);
     let mut env = template::environment(&config)?;
     load_templates(root, &mut env)?;
 
@@ -83,6 +136,8 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
 
     if plan.posts {
         render_homepage(&posts, &html_root, &config, &env, &cache)?;
+        render_tag_archives(&posts, &html_root, &config, &env, &tag_cache)?;
+        render_archives(&posts, &html_root, &config, &env)?;
     }
 
     if plan.static_assets {
@@ -315,6 +370,316 @@ fn render_homepage(
     Ok(())
 }
 
+fn render_archives(
+    posts: &[Post],
+    html_root: &Path,
+    config: &Config,
+    env: &Environment<'static>,
+) -> Result<()> {
+    if posts.is_empty() {
+        return Ok(());
+    }
+
+    let year_template = env
+        .get_template("archive_year.html")
+        .context("archive_year.html template missing")?;
+    let month_template = env
+        .get_template("archive_month.html")
+        .context("archive_month.html template missing")?;
+
+    let mut year_map: HashMap<i32, Vec<&Post>> = HashMap::new();
+    let mut month_map: HashMap<(i32, u8), Vec<&Post>> = HashMap::new();
+
+    for post in posts {
+        let year = post.date.year();
+        year_map.entry(year).or_default().push(post);
+
+        let month = u8::from(post.date.month());
+        month_map.entry((year, month)).or_default().push(post);
+    }
+
+    let mut years: Vec<i32> = year_map.keys().copied().collect();
+    years.sort_by(|a, b| b.cmp(a));
+
+    for year in years {
+        if let Some(posts) = year_map.get(&year) {
+            let summaries = posts
+                .iter()
+                .map(|post| build_post_summary(config, post))
+                .collect::<Result<Vec<_>>>()?;
+
+            let rendered = year_template
+                .render(minijinja::context! { year => year, posts => summaries })
+                .context("failed to render year archive")?;
+
+            let output = archive_year_path(html_root, year);
+            if let Some(parent) = output.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+            fs::write(&output, rendered)
+                .with_context(|| format!("failed to write {}", output.display()))?;
+        }
+    }
+
+    let mut months: Vec<(i32, u8)> = month_map.keys().copied().collect();
+    months.sort_by(|a, b| b.cmp(a));
+
+    for (year, month) in months {
+        if let Some(posts) = month_map.get(&(year, month)) {
+            let summaries = posts
+                .iter()
+                .map(|post| build_post_summary(config, post))
+                .collect::<Result<Vec<_>>>()?;
+
+            let rendered = month_template
+                .render(minijinja::context! { year => year, month => month, posts => summaries })
+                .context("failed to render month archive")?;
+
+            let output = archive_month_path(html_root, year, month);
+            if let Some(parent) = output.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+            fs::write(&output, rendered)
+                .with_context(|| format!("failed to write {}", output.display()))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn render_tag_archives(
+    posts: &[Post],
+    html_root: &Path,
+    config: &Config,
+    env: &Environment<'static>,
+    cache: &TagPageCache,
+) -> Result<()> {
+    let mut lookup: HashMap<String, &Post> = HashMap::new();
+    for post in posts {
+        lookup.insert(post_key(post), post);
+    }
+
+    let per_page = std::cmp::max(1, config.homepage_posts);
+    let tag_template = env
+        .get_template("tag.html")
+        .context("tag.html template missing")?;
+
+    let mut buckets: BTreeMap<String, TagBucket> = BTreeMap::new();
+    for (idx, post) in posts.iter().enumerate() {
+        let mut seen = HashSet::new();
+        for tag in &post.tags {
+            let tag = tag.trim();
+            if tag.is_empty() {
+                continue;
+            }
+            let slug = tag_slug(tag);
+            if !seen.insert(slug.clone()) {
+                continue;
+            }
+            let bucket = buckets.entry(slug.clone()).or_insert_with(|| TagBucket {
+                name: tag.to_string(),
+                slug: slug.clone(),
+                indices: Vec::new(),
+            });
+            bucket.indices.push(idx);
+        }
+    }
+
+    if buckets.is_empty() {
+        cache.store_pages(&[])?;
+        return Ok(());
+    }
+
+    if !config.paginate_tags {
+        for bucket in buckets.values() {
+            let summaries = bucket
+                .indices
+                .iter()
+                .map(|&idx| build_post_summary(config, &posts[idx]))
+                .collect::<Result<Vec<_>>>()?;
+            let plan = TagPagePlan {
+                tag: bucket.name.clone(),
+                summaries,
+                pagination: PaginationContext {
+                    current: 1,
+                    total: 1,
+                    prev: String::new(),
+                    next: String::new(),
+                },
+                outputs: vec![tag_index_path(html_root, &bucket.slug)],
+            };
+            render_tag_page(&tag_template, plan)?;
+        }
+        cache.store_pages(&[])?;
+        return Ok(());
+    }
+
+    let mut stored = cache.load_pages()?;
+    stored.sort_by(|a, b| a.slug.cmp(&b.slug).then_with(|| a.cursor.cmp(&b.cursor)));
+    let mut stored_map: HashMap<String, Vec<StoredTagPage>> = HashMap::new();
+    for page in stored {
+        stored_map.entry(page.slug.clone()).or_default().push(page);
+    }
+
+    let mut all_records: Vec<StoredTagPage> = Vec::new();
+    let mut plans: Vec<TagPagePlan> = Vec::new();
+
+    for bucket in buckets.values() {
+        let mut existing = stored_map.remove(&bucket.slug).unwrap_or_default();
+        if bucket.indices.is_empty() {
+            continue;
+        }
+
+        let head_indices: Vec<usize> = bucket.indices.iter().take(per_page).cloned().collect();
+        if head_indices.is_empty() {
+            continue;
+        }
+
+        let head_posts: Vec<&Post> = head_indices.iter().map(|&idx| &posts[idx]).collect();
+        let head_cursor = page_cursor(head_posts.last().unwrap());
+        let head_ids: Vec<String> = head_posts.iter().map(|post| post_key(post)).collect();
+
+        let existing_head_cursor = existing.first().map(|page| page.cursor.clone());
+        let head_changed = existing_head_cursor
+            .map(|cursor| cursor != head_cursor)
+            .unwrap_or(true);
+        let existing_cur_set: HashSet<String> =
+            existing.iter().map(|page| page.cursor.clone()).collect();
+
+        let mut records: Vec<StoredTagPage> = Vec::new();
+        records.push(StoredTagPage {
+            tag: bucket.name.clone(),
+            slug: bucket.slug.clone(),
+            cursor: head_cursor.clone(),
+            posts: head_ids.clone(),
+        });
+
+        let mut known_ids: HashSet<String> = head_ids.iter().cloned().collect();
+
+        existing.retain(|page| page.cursor != head_cursor);
+        existing.retain(|page| page.posts.iter().all(|id| lookup.contains_key(id)));
+
+        for page in &existing {
+            for id in &page.posts {
+                known_ids.insert(id.clone());
+            }
+        }
+
+        let mut buffer: Vec<&Post> = Vec::new();
+        for &idx in &bucket.indices {
+            let post = &posts[idx];
+            let id = post_key(post);
+            if known_ids.contains(&id) {
+                continue;
+            }
+            buffer.push(post);
+            known_ids.insert(id);
+            if buffer.len() == per_page {
+                let cursor = page_cursor(buffer.last().unwrap());
+                let ids = buffer.iter().map(|p| post_key(p)).collect();
+                records.push(StoredTagPage {
+                    tag: bucket.name.clone(),
+                    slug: bucket.slug.clone(),
+                    cursor,
+                    posts: ids,
+                });
+                buffer.clear();
+            }
+        }
+        if !buffer.is_empty() {
+            let cursor = page_cursor(buffer.last().unwrap());
+            let ids = buffer.iter().map(|p| post_key(p)).collect();
+            records.push(StoredTagPage {
+                tag: bucket.name.clone(),
+                slug: bucket.slug.clone(),
+                cursor,
+                posts: ids,
+            });
+        }
+
+        records.extend(existing.into_iter());
+
+        for (index, record) in records.iter().enumerate() {
+            let summaries = record
+                .posts
+                .iter()
+                .filter_map(|id| lookup.get(id))
+                .map(|post| build_post_summary(config, post))
+                .collect::<Result<Vec<_>>>()?;
+
+            let prev = if index == 0 {
+                String::new()
+            } else if index == 1 {
+                tag_index_url(&record.slug)
+            } else {
+                tag_page_url(&record.slug, &records[index - 1].cursor)
+            };
+
+            let next = if index + 1 < records.len() {
+                tag_page_url(&record.slug, &records[index + 1].cursor)
+            } else {
+                String::new()
+            };
+
+            let outputs = if index == 0 {
+                vec![tag_index_path(html_root, &record.slug)]
+            } else {
+                vec![tag_page_path(html_root, &record.slug, &record.cursor)]
+            };
+
+            let mut needs_render = index == 0 || !existing_cur_set.contains(&record.cursor);
+            if !needs_render && head_changed && index == 1 {
+                needs_render = true;
+            }
+            if !needs_render {
+                needs_render = !outputs[0].as_path().exists();
+            }
+
+            if needs_render {
+                plans.push(TagPagePlan {
+                    tag: record.tag.clone(),
+                    summaries,
+                    pagination: PaginationContext {
+                        current: index + 1,
+                        total: records.len(),
+                        prev: prev.clone(),
+                        next: next.clone(),
+                    },
+                    outputs,
+                });
+            }
+        }
+
+        all_records.extend(records);
+    }
+
+    for plan in plans {
+        render_tag_page(&tag_template, plan)?;
+    }
+
+    cache.store_pages(&all_records)?;
+    Ok(())
+}
+
+fn render_tag_page(template: &minijinja::Template<'_, '_>, plan: TagPagePlan) -> Result<()> {
+    let rendered = template
+        .render(minijinja::context! { tag => plan.tag, posts => plan.summaries, pagination => plan.pagination })
+        .context("failed to render tag page")?;
+
+    for output in plan.outputs {
+        if let Some(parent) = output.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+        fs::write(&output, &rendered)
+            .with_context(|| format!("failed to write {}", output.display()))?;
+    }
+
+    Ok(())
+}
+
 fn render_page(template: &minijinja::Template<'_, '_>, plan: PagePlan) -> Result<()> {
     let rendered = template
         .render(minijinja::context! { posts => plan.summaries, pagination => plan.pagination })
@@ -427,6 +792,62 @@ fn page_output_path(html_root: &Path, cursor: &str) -> PathBuf {
     html_root.join("page").join(cursor).join("index.html")
 }
 
+fn tag_slug(tag: &str) -> String {
+    let mut slug = String::new();
+    let mut previous_dash = false;
+
+    for ch in tag.chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+            previous_dash = false;
+        } else if !previous_dash && !slug.is_empty() {
+            slug.push('-');
+            previous_dash = true;
+        }
+    }
+
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+
+    if slug.is_empty() {
+        "untagged".to_string()
+    } else {
+        slug
+    }
+}
+
+fn tag_index_path(html_root: &Path, slug: &str) -> PathBuf {
+    html_root.join("tags").join(slug).join("index.html")
+}
+
+fn tag_page_path(html_root: &Path, slug: &str, cursor: &str) -> PathBuf {
+    html_root
+        .join("tags")
+        .join(slug)
+        .join(cursor)
+        .join("index.html")
+}
+
+fn tag_index_url(slug: &str) -> String {
+    format!("/tags/{}/", slug)
+}
+
+fn tag_page_url(slug: &str, cursor: &str) -> String {
+    format!("/tags/{}/{}/", slug, cursor)
+}
+
+fn archive_year_path(html_root: &Path, year: i32) -> PathBuf {
+    html_root.join(format!("{:04}", year)).join("index.html")
+}
+
+fn archive_month_path(html_root: &Path, year: i32, month: u8) -> PathBuf {
+    html_root
+        .join(format!("{:04}", year))
+        .join(format!("{:02}", month))
+        .join("index.html")
+}
+
 fn copy_post_assets(post: &Post, target_dir: &Path) -> Result<()> {
     let mut assets = BTreeSet::new();
     for entry in post.attached.iter().chain(post.images.iter()) {
@@ -523,6 +944,13 @@ struct PaginationContext {
     next: String,
 }
 
+struct TagPagePlan {
+    tag: String,
+    summaries: Vec<PostSummary>,
+    pagination: PaginationContext,
+    outputs: Vec<PathBuf>,
+}
+
 struct PagePlan {
     summaries: Vec<PostSummary>,
     pagination: PaginationContext,
@@ -561,6 +989,21 @@ mod tests {
             "index.html",
             "{% extends \"base.html\" %}{% block content %}<section data-current=\"{{ pagination.current }}\" data-total=\"{{ pagination.total }}\" data-prev=\"{{ pagination.prev | safe }}\" data-next=\"{{ pagination.next | safe }}\">{% for post in posts %}<article data-slug=\"{{ post.slug }}\"></article>{% endfor %}</section>{% endblock %}",
         );
+        write_template(
+            root,
+            "tag.html",
+            "{% extends \"base.html\" %}{% block content %}<section data-tag=\"{{ tag }}\" data-current=\"{{ pagination.current }}\" data-total=\"{{ pagination.total }}\" data-prev=\"{{ pagination.prev | safe }}\" data-next=\"{{ pagination.next | safe }}\">{% for post in posts %}<article data-slug=\"{{ post.slug }}\"></article>{% endfor %}</section>{% endblock %}",
+        );
+        write_template(
+            root,
+            "archive_year.html",
+            "{% extends \"base.html\" %}{% block content %}<section data-year=\"{{ year }}\">{% for post in posts %}<article data-slug=\"{{ post.slug }}\"></article>{% endfor %}</section>{% endblock %}",
+        );
+        write_template(
+            root,
+            "archive_month.html",
+            "{% extends \"base.html\" %}{% block content %}<section data-year=\"{{ year }}\" data-month=\"{{ month }}\">{% for post in posts %}<article data-slug=\"{{ post.slug }}\"></article>{% endfor %}</section>{% endblock %}",
+        );
     }
 
     fn write_markdown_post(root: &Path, body: &str) {
@@ -576,13 +1019,26 @@ mod tests {
         .unwrap();
     }
 
+    fn write_tagged_post(root: &Path, slug: &str, tag: &str, date: &str, body: &str) {
+        let dir = root.join("posts").join(slug);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("post.md"),
+            format!(
+                "---\ntitle: {0}\ndate: {2}\nslug: {0}\ntags:\n  - {1}\n---\n{3}",
+                slug, tag, date, body
+            ),
+        )
+        .unwrap();
+    }
+
     fn write_dated_post(root: &Path, slug: &str, date: &str, body: &str) {
         let dir = root.join("posts").join(slug);
         fs::create_dir_all(&dir).unwrap();
         fs::write(
             dir.join("post.md"),
             format!(
-                "---\ntitle: {0}\ndate: {1}\nslug: {0}\n---\n{2}",
+                "---\ntitle: {0}\ndate: {1}\nslug: {0}\ntags:\n  - {0}\n---\n{2}",
                 slug, date, body
             ),
         )
@@ -711,7 +1167,7 @@ mod tests {
         let third = fs::read_to_string(root.join(format!("html/page/{ts_alpha}-alpha/index.html")))
             .unwrap();
         assert!(third.contains("article data-slug=\"alpha\""));
-        assert!(third.contains("data-prev=\"/page/"));
+        assert!(third.contains(&format!("data-prev=\"/page/{ts_beta}-beta/\"")));
         assert!(third.contains("data-next=\"\""));
 
         // Add a new post and ensure only new pages are added with stable cursors
@@ -732,5 +1188,109 @@ mod tests {
 
         let archived = root.join(format!("html/page/{ts_beta}-beta/index.html"));
         assert!(archived.exists());
+    }
+
+    #[test]
+    fn renders_tag_pages_without_pagination() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+        fs::write(
+            root.join("bucket3.yaml"),
+            "homepage_posts: 5\npaginate_tags: false\n",
+        )
+        .unwrap();
+
+        write_tagged_post(root, "first", "shared", "2024-01-01T00:00:00Z", "Body A");
+        write_tagged_post(root, "second", "shared", "2024-02-01T00:00:00Z", "Body B");
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+            },
+        )
+        .unwrap();
+
+        let tag_root = root.join("html/tags/shared");
+        assert!(tag_root.join("index.html").exists());
+        assert!(!tag_root.join("first").exists());
+    }
+
+    #[test]
+    fn renders_tag_pages_with_pagination() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+        fs::write(
+            root.join("bucket3.yaml"),
+            "homepage_posts: 1\npaginate_tags: true\n",
+        )
+        .unwrap();
+
+        write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+        write_tagged_post(root, "beta", "shared", "2024-02-01T00:00:00Z", "B");
+        write_tagged_post(root, "gamma", "shared", "2024-03-01T00:00:00Z", "C");
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+            },
+        )
+        .unwrap();
+
+        let ts_beta = OffsetDateTime::parse("2024-02-01T00:00:00Z", &Rfc3339)
+            .unwrap()
+            .unix_timestamp();
+        let ts_alpha = OffsetDateTime::parse("2024-01-01T00:00:00Z", &Rfc3339)
+            .unwrap()
+            .unix_timestamp();
+
+        let tag_index = fs::read_to_string(root.join("html/tags/shared/index.html")).unwrap();
+        assert!(tag_index.contains("article data-slug=\"gamma\""));
+        assert!(tag_index.contains(&format!("data-next=\"/tags/shared/{ts_beta}-beta/\"")));
+
+        let second =
+            fs::read_to_string(root.join(format!("html/tags/shared/{ts_beta}-beta/index.html")))
+                .unwrap();
+        assert!(second.contains("article data-slug=\"beta\""));
+        assert!(second.contains("data-prev=\"/tags/shared/\""));
+
+        let third =
+            fs::read_to_string(root.join(format!("html/tags/shared/{ts_alpha}-alpha/index.html")))
+                .unwrap();
+        assert!(third.contains("article data-slug=\"alpha\""));
+        assert!(third.contains(&format!("data-prev=\"/tags/shared/{ts_beta}-beta/\"")));
+        assert!(third.contains("data-next=\"\""));
+    }
+
+    #[test]
+    fn renders_year_and_month_archives() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+
+        write_dated_post(root, "jan", "2023-01-01T00:00:00Z", "Old");
+        write_dated_post(root, "feb", "2024-02-01T00:00:00Z", "Mid");
+        write_dated_post(root, "mar", "2024-03-01T00:00:00Z", "New");
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+            },
+        )
+        .unwrap();
+
+        assert!(root.join("html/2024/index.html").exists());
+        assert!(root.join("html/2024/03/index.html").exists());
+        assert!(root.join("html/2023/index.html").exists());
     }
 }

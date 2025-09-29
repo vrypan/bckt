@@ -28,6 +28,12 @@ pub struct Post {
     pub permalink: String,
 }
 
+impl Post {
+    pub fn cursor(&self) -> String {
+        format!("{}-{}", self.date.unix_timestamp(), self.slug)
+    }
+}
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 struct FrontMatter {
