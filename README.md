@@ -18,6 +18,12 @@ bucket3 init
 
 The `init` command creates the starter structure: `html/`, `posts/`, `templates/`, `skel/`, and a `bucket3.yaml` configuration file. The command is idempotent and prints `Initialized` when the workspace is ready.
 
+```
+bucket3 render [--posts] [--static]
+```
+
+`render` processes the Markdown/HTML sources under `posts/` and writes files into `html/yyyy/mm/dd/slug/index.html`, copying any attachments listed in front matter into the same directory. Static assets under `skel/` are mirrored into `html/`. If no flags are provided, both posts and static assets are refreshed; `--posts` or `--static` can be used to run individual portions of the pipeline.
+
 ### Configuration
 
 `bucket3.yaml` drives site-wide settings. All fields are optional; missing values fall back to:

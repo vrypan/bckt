@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "bucket3")]
@@ -14,7 +14,16 @@ impl Cli {
     }
 }
 
-#[derive(Subcommand, Clone, Copy, Debug)]
+#[derive(Subcommand, Clone, Debug)]
 pub enum Command {
     Init,
+    Render(RenderArgs),
+}
+
+#[derive(Args, Clone, Debug)]
+pub struct RenderArgs {
+    #[arg(long)]
+    pub posts: bool,
+    #[arg(long = "static")]
+    pub static_assets: bool,
 }
