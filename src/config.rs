@@ -3,6 +3,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use time::UtcOffset;
 use time::format_description::{self, FormatItem};
 use url::Url;
 
@@ -14,6 +15,7 @@ pub struct Config {
     pub homepage_posts: usize,
     pub date_format: String,
     pub paginate_tags: bool,
+    pub default_timezone: String,
 }
 
 impl Config {
@@ -40,7 +42,12 @@ impl Config {
             );
         }
         validate_format(&self.date_format, origin)?;
+        validate_timezone(&self.default_timezone, origin)?;
         Ok(())
+    }
+
+    pub fn default_offset(&self) -> Result<UtcOffset> {
+        parse_timezone(&self.default_timezone)
     }
 }
 
@@ -52,6 +59,7 @@ impl Default for Config {
             homepage_posts: 5,
             date_format: "[year]-[month]-[day]".to_string(),
             paginate_tags: true,
+            default_timezone: "+00:00".to_string(),
         }
     }
 }
@@ -80,6 +88,59 @@ fn validate_format(value: &str, origin: &Path) -> Result<()> {
         )
     })?;
     Ok(())
+}
+
+fn validate_timezone(value: &str, origin: &Path) -> Result<()> {
+    parse_timezone(value).with_context(|| {
+        format!(
+            "{}: default_timezone '{}' is invalid (expected offset like +00:00)",
+            origin.display(),
+            value
+        )
+    })?;
+    Ok(())
+}
+
+fn parse_timezone(value: &str) -> Result<UtcOffset> {
+    if value.eq_ignore_ascii_case("UTC") || value.eq_ignore_ascii_case("Z") {
+        return Ok(UtcOffset::UTC);
+    }
+
+    let trimmed = value.trim();
+    let mut chars = trimmed.chars();
+    let sign_char = chars
+        .next()
+        .with_context(|| format!("default_timezone '{}' is empty", value))?;
+    let sign = match sign_char {
+        '+' => 1,
+        '-' => -1,
+        _ => bail!("default_timezone must start with '+' or '-'"),
+    };
+
+    let remainder = chars.as_str();
+    let mut parts = remainder.split(':');
+    let hours_str = parts
+        .next()
+        .with_context(|| format!("default_timezone '{}' missing hour component", value))?;
+    let minutes_str = parts.next().unwrap_or("0");
+    let seconds_str = parts.next().unwrap_or("0");
+
+    if parts.next().is_some() {
+        bail!("default_timezone '{}' has too many components", value);
+    }
+
+    let hours: i8 = hours_str
+        .parse()
+        .with_context(|| format!("default_timezone '{}' hour component invalid", value))?;
+    let minutes: i8 = minutes_str
+        .parse()
+        .with_context(|| format!("default_timezone '{}' minute component invalid", value))?;
+    let seconds: i8 = seconds_str
+        .parse()
+        .with_context(|| format!("default_timezone '{}' second component invalid", value))?;
+
+    UtcOffset::from_hms(sign * hours, sign * minutes, sign * seconds)
+        .with_context(|| format!("default_timezone '{}' out of range", value))
 }
 
 fn parse_format(value: &str) -> Result<()> {
@@ -120,6 +181,7 @@ mod tests {
 base_url: "https://example.com/blog"
 homepage_posts: 8
 paginate_tags: false
+default_timezone: "+05:30"
 "#,
         )
         .unwrap();
@@ -130,6 +192,7 @@ paginate_tags: false
         assert_eq!(config.homepage_posts, 8);
         assert_eq!(config.date_format, "[year]-[month]-[day]");
         assert!(!config.paginate_tags);
+        assert_eq!(config.default_timezone, "+05:30");
     }
 
     #[test]
@@ -196,5 +259,21 @@ date_format: "RFC3339"
 
         let config = Config::load(&path).unwrap();
         assert_eq!(config.date_format, "RFC3339");
+    }
+
+    #[test]
+    fn reject_invalid_timezone() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("bucket3.yaml");
+        fs::write(
+            &path,
+            r#"base_url: "https://example.com"
+default_timezone: "Mars/Station"
+"#,
+        )
+        .unwrap();
+
+        let error = Config::load(&path).unwrap_err();
+        assert!(format!("{error}").contains("default_timezone"));
     }
 }

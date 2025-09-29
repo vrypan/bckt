@@ -185,7 +185,7 @@ fn render_posts(
     env: &Environment<'static>,
 ) -> Result<Vec<Post>> {
     let posts_dir = root.join("posts");
-    let mut posts = discover_posts(&posts_dir)?;
+    let mut posts = discover_posts(&posts_dir, config)?;
     if posts.is_empty() {
         return Ok(posts);
     }

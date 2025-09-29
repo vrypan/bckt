@@ -13,6 +13,7 @@ base_url: "https://example.com"
 homepage_posts: 5
 date_format: "[year]-[month]-[day]"
 paginate_tags: true
+default_timezone: "+00:00"
 "#;
 
 const BASE_TEMPLATE: &str = r#"<!doctype html>

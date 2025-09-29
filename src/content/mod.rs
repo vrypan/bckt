@@ -3,10 +3,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
+use time::format_description::{self, well_known::Rfc3339};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use walkdir::WalkDir;
 
+use crate::config::Config;
 use crate::markdown::{MarkdownRender, render_markdown};
 
 const MAIN_EXTENSIONS: &[&str] = &["md", "html"];
@@ -48,7 +49,7 @@ struct FrontMatter {
     pub video_url: Option<String>,
 }
 
-pub fn discover_posts(root: impl AsRef<Path>) -> Result<Vec<Post>> {
+pub fn discover_posts(root: impl AsRef<Path>, config: &Config) -> Result<Vec<Post>> {
     let root = root.as_ref();
     if !root.exists() {
         bail!("posts directory {} does not exist", root.display());
@@ -61,7 +62,7 @@ pub fn discover_posts(root: impl AsRef<Path>) -> Result<Vec<Post>> {
         if !entry.file_type().is_dir() {
             continue;
         }
-        match load_post(entry.path())? {
+        match load_post(entry.path(), config)? {
             Some(post) => posts.push(post),
             None => continue,
         }
@@ -74,7 +75,7 @@ pub fn discover_posts(root: impl AsRef<Path>) -> Result<Vec<Post>> {
     Ok(posts)
 }
 
-fn load_post(dir: &Path) -> Result<Option<Post>> {
+fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
     let mut main_files = Vec::new();
     for entry in
         fs::read_dir(dir).with_context(|| format!("failed to enumerate {}", dir.display()))?
@@ -111,8 +112,7 @@ fn load_post(dir: &Path) -> Result<Option<Post>> {
         .date
         .as_ref()
         .with_context(|| format!("{}: date is required", content_path.display()))?;
-    let date = OffsetDateTime::parse(date_str, &Rfc3339)
-        .with_context(|| format!("{}: date must be RFC3339", content_path.display()))?;
+    let date = parse_post_date(date_str, config, &content_path)?;
 
     let slug = determine_slug(dir, front.slug.as_deref())?;
     let permalink = build_permalink(&date, &slug);
@@ -136,6 +136,31 @@ fn load_post(dir: &Path) -> Result<Option<Post>> {
     };
 
     Ok(Some(post))
+}
+
+fn parse_post_date(date_str: &str, config: &Config, origin: &Path) -> Result<OffsetDateTime> {
+    if let Ok(datetime) = OffsetDateTime::parse(date_str, &Rfc3339) {
+        return Ok(datetime);
+    }
+
+    let naive_format = format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]")
+        .expect("static datetime format to parse");
+    let naive = PrimitiveDateTime::parse(date_str, &naive_format).with_context(|| {
+        format!(
+            "{}: date must be RFC3339 or 'YYYY-MM-DD HH:MM:SS'",
+            origin.display()
+        )
+    })?;
+
+    let offset = config.default_offset().with_context(|| {
+        format!(
+            "{}: default_timezone '{}' is invalid",
+            origin.display(),
+            config.default_timezone
+        )
+    })?;
+
+    Ok(naive.assume_offset(offset))
 }
 
 fn determine_slug(dir: &Path, provided: Option<&str>) -> Result<String> {
@@ -275,6 +300,7 @@ fn excerpt_from_html(html: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -289,7 +315,8 @@ mod tests {
         )
         .unwrap();
 
-        let posts = discover_posts(&root).unwrap();
+        let config = Config::default();
+        let posts = discover_posts(&root, &config).unwrap();
         assert_eq!(posts.len(), 1);
         let post = &posts[0];
         assert_eq!(post.slug, "hello-world");
@@ -310,7 +337,8 @@ mod tests {
         )
         .unwrap();
 
-        let posts = discover_posts(&root).unwrap();
+        let config = Config::default();
+        let posts = discover_posts(&root, &config).unwrap();
         assert_eq!(posts[0].slug, "custom-slug");
     }
 
@@ -325,7 +353,8 @@ mod tests {
         )
         .unwrap();
 
-        let posts = discover_posts(root.parent().unwrap()).unwrap();
+        let config = Config::default();
+        let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
         let post = &posts[0];
         assert_eq!(post.title.as_deref(), Some("Sample"));
         assert_eq!(post.tags, vec!["summary".to_string(), "rust".to_string()]);
@@ -352,7 +381,8 @@ mod tests {
         )
         .unwrap();
 
-        let error = discover_posts(root.parent().unwrap()).unwrap_err();
+        let config = Config::default();
+        let error = discover_posts(root.parent().unwrap(), &config).unwrap_err();
         assert!(format!("{error}").contains("expected exactly one"));
     }
 
@@ -363,7 +393,8 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("post.md"), "no front matter").unwrap();
 
-        let error = discover_posts(root.parent().unwrap()).unwrap_err();
+        let config = Config::default();
+        let error = discover_posts(root.parent().unwrap(), &config).unwrap_err();
         assert!(format!("{error}").contains("front matter"));
     }
 
@@ -378,9 +409,33 @@ mod tests {
         )
         .unwrap();
 
-        let posts = discover_posts(root.parent().unwrap()).unwrap();
+        let config = Config::default();
+        let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
         assert_eq!(posts[0].body_html, "");
         assert_eq!(posts[0].excerpt, "");
+    }
+
+    #[test]
+    fn accepts_naive_datetime_with_default_timezone() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/naive");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("post.md"),
+            "---\ndate: 2024-01-02 09:30:00\n---\nBody",
+        )
+        .unwrap();
+
+        let mut config = Config::default();
+        config.default_timezone = "+02:00".to_string();
+
+        let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+        let post = &posts[0];
+        let offset = config.default_offset().unwrap();
+        assert_eq!(post.date.offset(), offset);
+        assert_eq!(post.date.hour(), 9);
+        assert_eq!(post.date.minute(), 30);
+        assert_eq!(post.excerpt, "Body");
     }
 
     #[test]
@@ -400,7 +455,8 @@ mod tests {
         )
         .unwrap();
 
-        let posts = discover_posts(root.parent().unwrap()).unwrap();
+        let config = Config::default();
+        let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
         assert_eq!(posts[0].body_html, "<p>Sunny</p>");
         assert_eq!(posts[0].excerpt, "Sunny");
     }
