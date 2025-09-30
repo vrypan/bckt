@@ -101,10 +101,10 @@ This file tracks the work plan for **bucket3rs**. Tasks are grouped into milesto
 ## Milestone 7 — Feeds & SEO (PR: `feat:feeds-seo`)
 **Goal:** RSS + sitemap + metadata.
 
-- [ ] Generate `/rss.xml` (last 50 posts, absolute URLs).
-- [ ] Generate `/sitemap.xml` (posts, tags, homepage, pages).
-- [ ] `<link rel="alternate" type="application/rss+xml">` in base template.
-- [ ] Tests: well-formed XML, absolute URLs based on `base_url`.
+- [x] Generate `/rss.xml` (last 50 posts, absolute URLs).
+- [x] Generate `/sitemap.xml` (posts, tags, homepage, pages).
+- [x] `<link rel="alternate" type="application/rss+xml">` in base template.
+- [x] Tests: well-formed XML, absolute URLs based on `base_url`.
 **DoD:** Feed validates in common validators; sitemap indexes all pages.
 
 ---
