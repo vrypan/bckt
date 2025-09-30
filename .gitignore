@@ -5,4 +5,5 @@ posts/
 skel/
 templates/*
 !templates/base.html
+!templates/post.html
 !templates/rss.xml
