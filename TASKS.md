@@ -112,10 +112,10 @@ This file tracks the work plan for **bucket3rs**. Tasks are grouped into milesto
 ## Milestone 8 — KV Index & Incremental Builds (PR: `feat:incremental`)
 **Goal:** Faster rebuilds with `sled`.
 
-- [ ] Store content hashes (front-matter + body + asset mtimes) per post.
-- [ ] Skip rendering/copy when unchanged; detect template or config changes → invalidate all.
-- [ ] Command: `bucket3 render --changed` and `--force`.
-- [ ] Tests: changing a single post only rebuilds its outputs; changing base.html triggers full rebuild.
+- [x] Store content hashes (front-matter + body + asset mtimes) per post.
+- [x] Skip rendering/copy when unchanged; detect template or config changes → invalidate all.
+- [x] Command: `bucket3 render --changed` and `--force`.
+- [x] Tests: changing a single post only rebuilds its outputs; changing base.html triggers full rebuild.
 **DoD:** Re-running `render` on unchanged repo performs near-no work.
 
 ---
@@ -155,7 +155,7 @@ This file tracks the work plan for **bucket3rs**. Tasks are grouped into milesto
 ## Future / Stretch (not required for v1)
 - [ ] **Stable pagination strategy** that minimizes regen churn (e.g., reverse-chron buckets by month, or “cursor” pages) to avoid rebuilding all pages on new posts.
 - [ ] **Image pipeline**: thumb generation, responsive `srcset`.
-- [ ] **Dev server**: `bucket3 serve` with file-watch and live reload.
+- [x] **Dev server**: `bucket3 dev` with file-watch and live reload.
 - [ ] **Theme packs** and a theme registry.
 - [ ] **Importers** (Micro.blog export, RSS/JSON feed import).
 - [ ] **Search**: client-side JSON index or external search integration.

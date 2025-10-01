@@ -24,6 +24,12 @@ bucket3 render [--posts] [--static] [--changed|--force] [-v|--verbose]
 
 `render` processes the Markdown/HTML sources under `posts/` and writes files into `html/yyyy/mm/dd/slug/index.html`, copying any attachments listed in front matter into the same directory. Static assets under `skel/` are mirrored into `html/`. If no flags are provided, both posts and static assets are refreshed; `--posts` or `--static` can be used to run individual portions of the pipeline. `--changed` reuses cached digests so only modified posts are rebuilt, while `--force` discards the cache and renders everything. Add `-v/--verbose` to see per-step progress and which posts were rendered or skipped.
 
+```
+bucket3 dev [--host <host>] [--port <port>] [--changed] [--verbose]
+```
+
+`dev` starts a tiny HTTP server rooted at `html/`, recompiling the site when files in `posts/`, `templates/`, `skel/`, or `bucket3.yaml` change. Served HTML is augmented with a small polling script so connected browsers reload automatically after each rebuild. Use `--host` and `--port` to bind to a different interface, `--changed` to prefer incremental rebuilds, and `--verbose` for detailed render logs.
+
 ### Configuration
 
 `bucket3.yaml` drives site-wide settings. All fields are optional; missing values fall back to:
