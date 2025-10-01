@@ -26,4 +26,10 @@ pub struct RenderArgs {
     pub posts: bool,
     #[arg(long = "static")]
     pub static_assets: bool,
+    #[arg(long, conflicts_with = "force")]
+    pub changed: bool,
+    #[arg(long)]
+    pub force: bool,
+    #[arg(short, long)]
+    pub verbose: bool,
 }

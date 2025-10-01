@@ -2,8 +2,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
+use blake3::Hasher;
 use minijinja::Environment;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -16,14 +18,32 @@ use crate::content::{Post, discover_posts};
 use crate::template;
 use crate::utils::absolute_url;
 
+#[derive(Clone, Copy, Debug)]
 pub struct RenderPlan {
     pub posts: bool,
     pub static_assets: bool,
+    pub mode: BuildMode,
+    pub verbose: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuildMode {
+    Full,
+    Changed,
 }
 
 const CACHE_DIR: &str = ".bucket3/cache";
 const HOME_PAGES_KEY: &str = "home_pages";
 const TAG_PAGES_KEY: &str = "tag_pages";
+const POST_HASH_PREFIX: &str = "post:";
+const SITE_INPUTS_KEY: &str = "site_inputs_hash";
+const STATIC_HASH_KEY: &str = "static_hash";
+
+fn log_status(enabled: bool, label: &str, message: impl AsRef<str>) {
+    if enabled {
+        println!("[{}] {}", label, message.as_ref());
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 struct StoredPage {
@@ -118,64 +138,171 @@ fn open_cache_db(root: &Path) -> Result<sled::Db> {
     sled::open(cache_dir.join("sled")).context("failed to open cache database")
 }
 
+fn read_cached_string(db: &sled::Db, key: &str) -> Result<Option<String>> {
+    let value = db
+        .get(key.as_bytes())
+        .with_context(|| format!("failed to read cache key {}", key))?;
+    if let Some(bytes) = value {
+        let string = String::from_utf8(bytes.to_vec())
+            .with_context(|| format!("cache entry for {} is not valid utf-8", key))?;
+        Ok(Some(string))
+    } else {
+        Ok(None)
+    }
+}
+
+fn store_cached_string(db: &sled::Db, key: &str, value: &str) -> Result<()> {
+    db.insert(key.as_bytes(), value.as_bytes())
+        .with_context(|| format!("failed to update cache key {}", key))?;
+    Ok(())
+}
+
 pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
     let config_path = root.join("bucket3.yaml");
+    let config_raw = if config_path.exists() {
+        fs::read_to_string(&config_path)
+            .with_context(|| format!("failed to read config file {}", config_path.display()))?
+    } else {
+        String::new()
+    };
     let config = Config::load(&config_path)?;
     let html_root = root.join("html");
     fs::create_dir_all(&html_root).context("failed to ensure html directory exists")?;
 
     let cache_db = open_cache_db(root)?;
-    let cache = HomePageCache::new(cache_db.clone());
-    let tag_cache = TagPageCache::new(cache_db);
     let mut env = template::environment(&config)?;
-    load_templates(root, &mut env)?;
+    let template_hash = load_templates(root, &mut env)?;
+    let site_inputs_hash = compute_site_inputs_hash(&config_raw, &template_hash);
+
+    let stored_site_hash = read_cached_string(&cache_db, SITE_INPUTS_KEY)?;
+    let site_changed = stored_site_hash.as_deref() != Some(site_inputs_hash.as_str());
+
+    if plan.verbose {
+        if plan.mode == BuildMode::Full {
+            log_status(true, "MODE", "Full rebuild requested");
+        } else {
+            log_status(true, "MODE", "Incremental rebuild requested");
+        }
+    }
+
+    let effective_mode = match plan.mode {
+        BuildMode::Full => BuildMode::Full,
+        BuildMode::Changed => {
+            if site_changed {
+                log_status(
+                    plan.verbose,
+                    "MODE",
+                    "Config or templates changed; forcing full rebuild",
+                );
+                BuildMode::Full
+            } else {
+                BuildMode::Changed
+            }
+        }
+    };
+
+    if plan.verbose {
+        match effective_mode {
+            BuildMode::Full => log_status(true, "MODE", "Executing full rebuild"),
+            BuildMode::Changed => log_status(true, "MODE", "Executing incremental rebuild"),
+        }
+    }
+
+    let cache = HomePageCache::new(cache_db.clone());
+    let tag_cache = TagPageCache::new(cache_db.clone());
 
     let posts = if plan.posts {
-        render_posts(root, &html_root, &config, &env)?
+        log_status(plan.verbose, "STEP", "Rendering posts");
+        let posts = render_posts(
+            root,
+            &html_root,
+            &config,
+            &env,
+            &cache_db,
+            effective_mode,
+            plan.verbose,
+        )?;
+        log_status(
+            plan.verbose,
+            "STEP",
+            format!("Processed {} posts", posts.len()),
+        );
+        posts
     } else {
+        log_status(plan.verbose, "STEP", "Skipping post rendering");
         Vec::new()
     };
 
     if plan.posts {
+        log_status(plan.verbose, "STEP", "Rendering indexes and feeds");
         render_homepage(&posts, &html_root, &config, &env, &cache)?;
         render_tag_archives(&posts, &html_root, &config, &env, &tag_cache)?;
         render_archives(&posts, &html_root, &config, &env)?;
         render_feeds(&posts, &html_root, &config, &env)?;
+        store_cached_string(&cache_db, SITE_INPUTS_KEY, &site_inputs_hash)?;
     }
 
     if plan.static_assets {
-        copy_static_assets(root, &html_root)?;
+        let static_hash = compute_static_digest(root)?;
+        let stored_static_hash = read_cached_string(&cache_db, STATIC_HASH_KEY)?;
+        let static_changed = stored_static_hash.as_deref() != Some(static_hash.as_str());
+        let should_copy_static = matches!(effective_mode, BuildMode::Full) || static_changed;
+        if should_copy_static {
+            log_status(plan.verbose, "STATIC", "Copying static assets");
+            copy_static_assets(root, &html_root)?;
+        } else {
+            log_status(plan.verbose, "STATIC", "Static assets unchanged");
+        }
+        store_cached_string(&cache_db, STATIC_HASH_KEY, &static_hash)?;
+    } else {
+        log_status(plan.verbose, "STATIC", "Skipping static assets");
     }
+
+    cache_db.flush().context("failed to flush cache database")?;
+
+    log_status(plan.verbose, "DONE", "Render complete");
 
     Ok(())
 }
 
-fn load_templates(root: &Path, env: &mut Environment<'static>) -> Result<()> {
+fn compute_site_inputs_hash(config_raw: &str, template_hash: &str) -> String {
+    let mut hasher = Hasher::new();
+    hasher.update(config_raw.as_bytes());
+    hasher.update(template_hash.as_bytes());
+    hasher.finalize().to_hex().to_string()
+}
+
+fn load_templates(root: &Path, env: &mut Environment<'static>) -> Result<String> {
     let templates_dir = root.join("templates");
     if !templates_dir.exists() {
         bail!("templates directory {} not found", templates_dir.display());
     }
 
+    let mut files = Vec::new();
     for entry in WalkDir::new(&templates_dir) {
         let entry = entry?;
-        if !entry.file_type().is_file() {
-            continue;
+        if entry.file_type().is_file() {
+            files.push(entry.into_path());
         }
-        let template_body = fs::read_to_string(entry.path())
-            .with_context(|| format!("failed to read template {}", entry.path().display()))?;
-        let relative_name = entry
-            .path()
-            .strip_prefix(&templates_dir)
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/");
+    }
+    files.sort();
+
+    let mut hasher = Hasher::new();
+
+    for path in files {
+        let template_body = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read template {}", path.display()))?;
+        let relative_path = path.strip_prefix(&templates_dir).unwrap();
+        let relative_name = normalize_path(relative_path);
+        hasher.update(relative_name.as_bytes());
+        hasher.update(template_body.as_bytes());
         let name_static = Box::leak(relative_name.clone().into_boxed_str());
         let template_static = Box::leak(template_body.into_boxed_str());
         env.add_template(name_static, template_static)
             .with_context(|| format!("failed to register template {}", relative_name))?;
     }
 
-    Ok(())
+    Ok(hasher.finalize().to_hex().to_string())
 }
 
 fn render_posts(
@@ -183,6 +310,9 @@ fn render_posts(
     html_root: &Path,
     config: &Config,
     env: &Environment<'static>,
+    cache_db: &sled::Db,
+    mode: BuildMode,
+    verbose: bool,
 ) -> Result<Vec<Post>> {
     let posts_dir = root.join("posts");
     let mut posts = discover_posts(&posts_dir, config)?;
@@ -196,27 +326,125 @@ fn render_posts(
         .get_template("post.html")
         .context("post.html template missing")?;
 
+    let mut cache_keys: BTreeSet<String> = BTreeSet::new();
+
     for post in &posts {
-        let render_target = html_root.join(post.permalink.trim_start_matches('/'));
-        let output_path = render_target.join("index.html");
-        if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
+        let cache_key = format!("{POST_HASH_PREFIX}{}", post.permalink);
+        cache_keys.insert(cache_key.clone());
+
+        let digest = compute_post_digest(post)?;
+        let cached = cache_db
+            .get(cache_key.as_bytes())
+            .with_context(|| format!("failed to read cache entry for {}", post.slug))?;
+        let digest_bytes = digest.as_bytes();
+        let needs_render = if matches!(mode, BuildMode::Full) {
+            true
+        } else if let Some(value) = cached.as_ref() {
+            value.as_ref() != digest_bytes
+        } else {
+            true
+        };
+
+        if needs_render {
+            let render_target = html_root.join(post.permalink.trim_start_matches('/'));
+            let output_path = render_target.join("index.html");
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+
+            let context = build_post_context(config, post)?;
+            let rendered = post_template
+                .render(minijinja::context! { post => context })
+                .with_context(|| format!("failed to render template for {}", post.slug))?;
+
+            fs::write(&output_path, rendered)
+                .with_context(|| format!("failed to write {}", output_path.display()))?;
+
+            copy_post_assets(post, &render_target)
+                .with_context(|| format!("failed to copy assets for {}", post.slug))?;
+
+            log_status(
+                verbose,
+                "RENDER",
+                format!("Rendered post {}", post.permalink),
+            );
+        } else {
+            log_status(
+                verbose,
+                "SKIP",
+                format!("Post {} unchanged", post.permalink),
+            );
         }
 
-        let context = build_post_context(config, post)?;
-        let rendered = post_template
-            .render(minijinja::context! { post => context })
-            .with_context(|| format!("failed to render template for {}", post.slug))?;
-
-        fs::write(&output_path, rendered)
-            .with_context(|| format!("failed to write {}", output_path.display()))?;
-
-        copy_post_assets(post, &render_target)
-            .with_context(|| format!("failed to copy assets for {}", post.slug))?;
+        cache_db
+            .insert(cache_key.as_bytes(), digest_bytes)
+            .with_context(|| format!("failed to update cache entry for {}", post.slug))?;
     }
 
+    cleanup_post_hashes(cache_db, &cache_keys)?;
+
     Ok(posts)
+}
+
+fn compute_post_digest(post: &Post) -> Result<String> {
+    let mut hasher = Hasher::new();
+    let content = fs::read(&post.content_path).with_context(|| {
+        format!(
+            "failed to read content file {}",
+            post.content_path.display()
+        )
+    })?;
+    hasher.update(&content);
+
+    let mut assets: Vec<PathBuf> = post
+        .attached
+        .iter()
+        .chain(post.images.iter())
+        .cloned()
+        .collect();
+    assets.sort();
+
+    for relative in assets {
+        let normalized = normalize_path(&relative);
+        hasher.update(normalized.as_bytes());
+        let asset_path = post.source_dir.join(&relative);
+        let metadata = fs::metadata(&asset_path)
+            .with_context(|| format!("failed to inspect asset {}", asset_path.display()))?;
+        hasher.update(&metadata.len().to_le_bytes());
+        let modified = metadata.modified().with_context(|| {
+            format!(
+                "failed to read modification time for {}",
+                asset_path.display()
+            )
+        })?;
+        let duration = modified
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::new(0, 0));
+        hasher.update(&duration.as_secs().to_le_bytes());
+        hasher.update(&duration.subsec_nanos().to_le_bytes());
+    }
+
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
+fn cleanup_post_hashes(db: &sled::Db, keep: &BTreeSet<String>) -> Result<()> {
+    let mut stale: Vec<Vec<u8>> = Vec::new();
+    for entry in db.scan_prefix(POST_HASH_PREFIX.as_bytes()) {
+        let (key, _) = entry.context("failed to iterate post cache entries")?;
+        let key_vec = key.to_vec();
+        let key_str =
+            String::from_utf8(key_vec.clone()).context("post cache key is not valid utf-8")?;
+        if !keep.contains(&key_str) {
+            stale.push(key_vec);
+        }
+    }
+
+    for key in stale {
+        db.remove(&key)
+            .context("failed to remove stale post cache entry")?;
+    }
+    Ok(())
 }
 
 fn render_homepage(
@@ -908,6 +1136,48 @@ fn copy_post_assets(post: &Post, target_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+fn compute_static_digest(root: &Path) -> Result<String> {
+    let skel_dir = root.join("skel");
+    if !skel_dir.exists() {
+        return Ok(Hasher::new().finalize().to_hex().to_string());
+    }
+
+    let mut files = Vec::new();
+    for entry in WalkDir::new(&skel_dir) {
+        let entry = entry?;
+        if entry.file_type().is_file() {
+            files.push(entry.into_path());
+        }
+    }
+    files.sort();
+
+    let mut hasher = Hasher::new();
+    for path in files {
+        let relative = path.strip_prefix(&skel_dir).unwrap();
+        let normalized = normalize_path(relative);
+        hasher.update(normalized.as_bytes());
+        let data = fs::read(&path)
+            .with_context(|| format!("failed to read static asset {}", path.display()))?;
+        hasher.update(&data);
+        let metadata = fs::metadata(&path)
+            .with_context(|| format!("failed to inspect static asset {}", path.display()))?;
+        hasher.update(&metadata.len().to_le_bytes());
+        let modified = metadata.modified().with_context(|| {
+            format!(
+                "failed to read modification time for static asset {}",
+                path.display()
+            )
+        })?;
+        let duration = modified
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::new(0, 0));
+        hasher.update(&duration.as_secs().to_le_bytes());
+        hasher.update(&duration.subsec_nanos().to_le_bytes());
+    }
+
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
 fn copy_static_assets(root: &Path, html_root: &Path) -> Result<()> {
     let skel_dir = root.join("skel");
     if !skel_dir.exists() {
@@ -1320,6 +1590,19 @@ mod tests {
         .unwrap();
     }
 
+    fn file_mtime(path: &Path) -> std::time::Duration {
+        fs::metadata(path)
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(super::UNIX_EPOCH)
+            .unwrap()
+    }
+
+    fn wait_for_filesystem_tick() {
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+    }
+
     #[test]
     fn renders_markdown_post_to_expected_location() {
         let temp = TempDir::new().unwrap();
@@ -1334,6 +1617,8 @@ mod tests {
             RenderPlan {
                 posts: true,
                 static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
             },
         )
         .unwrap();
@@ -1367,6 +1652,8 @@ mod tests {
             RenderPlan {
                 posts: true,
                 static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
             },
         )
         .unwrap();
@@ -1402,6 +1689,8 @@ mod tests {
             RenderPlan {
                 posts: true,
                 static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
             },
         )
         .unwrap();
@@ -1424,6 +1713,8 @@ mod tests {
             RenderPlan {
                 posts: false,
                 static_assets: true,
+                mode: BuildMode::Full,
+                verbose: false,
             },
         )
         .unwrap();
@@ -1449,6 +1740,8 @@ mod tests {
             RenderPlan {
                 posts: true,
                 static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
             },
         )
         .unwrap();
@@ -1487,6 +1780,8 @@ mod tests {
             RenderPlan {
                 posts: true,
                 static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
             },
         )
         .unwrap();
@@ -1519,6 +1814,8 @@ mod tests {
             RenderPlan {
                 posts: true,
                 static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
             },
         )
         .unwrap();
@@ -1549,6 +1846,8 @@ mod tests {
             RenderPlan {
                 posts: true,
                 static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
             },
         )
         .unwrap();
@@ -1598,6 +1897,8 @@ mod tests {
             RenderPlan {
                 posts: true,
                 static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
             },
         )
         .unwrap();
@@ -1631,6 +1932,8 @@ mod tests {
             RenderPlan {
                 posts: true,
                 static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
             },
         )
         .unwrap();
@@ -1675,6 +1978,8 @@ mod tests {
             RenderPlan {
                 posts: true,
                 static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
             },
         )
         .unwrap();
@@ -1682,5 +1987,103 @@ mod tests {
         assert!(root.join("html/2024/index.html").exists());
         assert!(root.join("html/2024/03/index.html").exists());
         assert!(root.join("html/2023/index.html").exists());
+    }
+
+    #[test]
+    fn incremental_rebuilds_only_changed_post() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        setup_markdown_templates(root);
+
+        write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "Alpha body");
+        write_dated_post(root, "beta", "2024-02-01T00:00:00Z", "Beta body");
+
+        let alpha_output = root.join("html/2024/01/01/alpha/index.html");
+        let beta_output = root.join("html/2024/02/01/beta/index.html");
+
+        let full_plan = RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        };
+        let changed_plan = RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Changed,
+            verbose: false,
+        };
+
+        render_site(root, full_plan).unwrap();
+
+        let alpha_first = file_mtime(&alpha_output);
+        let beta_first = file_mtime(&beta_output);
+
+        wait_for_filesystem_tick();
+        render_site(root, changed_plan).unwrap();
+
+        let alpha_second = file_mtime(&alpha_output);
+        let beta_second = file_mtime(&beta_output);
+        assert_eq!(alpha_first, alpha_second);
+        assert_eq!(beta_first, beta_second);
+
+        wait_for_filesystem_tick();
+        write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "Alpha updated");
+        render_site(root, changed_plan).unwrap();
+
+        let alpha_third = file_mtime(&alpha_output);
+        let beta_third = file_mtime(&beta_output);
+        assert!(alpha_third > alpha_second);
+        assert_eq!(beta_second, beta_third);
+    }
+
+    #[test]
+    fn template_change_triggers_full_rebuild() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        setup_markdown_templates(root);
+
+        write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "Alpha body");
+        write_dated_post(root, "beta", "2024-02-01T00:00:00Z", "Beta body");
+
+        let alpha_output = root.join("html/2024/01/01/alpha/index.html");
+        let beta_output = root.join("html/2024/02/01/beta/index.html");
+
+        let full_plan = RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        };
+        let changed_plan = RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Changed,
+            verbose: false,
+        };
+
+        render_site(root, full_plan).unwrap();
+        let alpha_initial = file_mtime(&alpha_output);
+        let beta_initial = file_mtime(&beta_output);
+
+        wait_for_filesystem_tick();
+        render_site(root, changed_plan).unwrap();
+        let alpha_after_changed = file_mtime(&alpha_output);
+        let beta_after_changed = file_mtime(&beta_output);
+        assert_eq!(alpha_initial, alpha_after_changed);
+        assert_eq!(beta_initial, beta_after_changed);
+
+        wait_for_filesystem_tick();
+        write_template(
+            root,
+            "base.html",
+            "<!doctype html><html><body data-version=\"v2\">{% block content %}{% endblock %}</body></html>",
+        );
+        render_site(root, changed_plan).unwrap();
+
+        let alpha_after_template = file_mtime(&alpha_output);
+        let beta_after_template = file_mtime(&beta_output);
+        assert!(alpha_after_template > alpha_after_changed);
+        assert!(beta_after_template > beta_after_changed);
     }
 }
