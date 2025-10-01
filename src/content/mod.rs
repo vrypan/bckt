@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
+use serde_json::{Map as JsonMap, Value as JsonValue};
+use serde_yaml::Mapping;
 use time::format_description::{self, well_known::Rfc3339};
 use time::{OffsetDateTime, PrimitiveDateTime};
 use walkdir::WalkDir;
@@ -27,6 +29,7 @@ pub struct Post {
     pub source_dir: PathBuf,
     pub content_path: PathBuf,
     pub permalink: String,
+    pub extra: JsonMap<String, JsonValue>,
 }
 
 impl Post {
@@ -50,6 +53,8 @@ struct FrontMatter {
     #[serde(deserialize_with = "deserialize_path_list")]
     pub images: Vec<PathBuf>,
     pub video_url: Option<String>,
+    #[serde(flatten)]
+    pub extra: Mapping,
 }
 
 pub fn discover_posts(root: impl AsRef<Path>, config: &Config) -> Result<Vec<Post>> {
@@ -122,6 +127,13 @@ fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
 
     let (body_html, excerpt) = render_body(&content_path, &body)?;
 
+    let extras = mapping_to_json_map(&front.extra).with_context(|| {
+        format!(
+            "{}: front matter keys must be strings",
+            content_path.display()
+        )
+    })?;
+
     let post = Post {
         title: front.title,
         slug,
@@ -136,6 +148,7 @@ fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
         source_dir: dir.to_path_buf(),
         content_path,
         permalink,
+        extra: extras,
     };
 
     Ok(Some(post))
@@ -289,6 +302,19 @@ fn split_csv(input: &str) -> Vec<&str> {
         .collect()
 }
 
+fn mapping_to_json_map(mapping: &Mapping) -> Result<JsonMap<String, JsonValue>> {
+    let mut map = JsonMap::new();
+    for (key, value) in mapping {
+        let key = key
+            .as_str()
+            .with_context(|| format!("front matter key {key:?} is not a string"))?;
+        let json = serde_json::to_value(value)
+            .with_context(|| format!("failed to convert front matter value for '{key}'"))?;
+        map.insert(key.to_string(), json);
+    }
+    Ok(map)
+}
+
 fn build_permalink(date: &OffsetDateTime, slug: &str) -> String {
     format!(
         "/{:04}/{:02}/{:02}/{slug}/",
@@ -400,7 +426,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(
             root.join("post.md"),
-            "---\ntitle: Sample\ndate: 2024-05-06T08:09:10Z\ntags:\n  - summary\n  - rust\nabstract: Short\nattached:\n  - files/data.csv\nimages:\n  - img.png\nvideo_url: https://example.com/video.mp4\n---\nBody\n",
+            "---\ntitle: Sample\ndate: 2024-05-06T08:09:10Z\ntags:\n  - summary\n  - rust\nabstract: Short\nattached:\n  - files/data.csv\nimages:\n  - img.png\nvideo_url: https://example.com/video.mp4\nlocation:\n  country: GR\n---\nBody\n",
         )
         .unwrap();
 
@@ -418,6 +444,12 @@ mod tests {
         );
         assert_eq!(post.body_html, "<p>Body</p>\n");
         assert_eq!(post.excerpt, "Body");
+        assert_eq!(
+            post.extra
+                .get("location")
+                .and_then(|value| value.get("country")),
+            Some(&JsonValue::String("GR".to_string()))
+        );
     }
 
     #[test]
@@ -467,6 +499,28 @@ mod tests {
     }
 
     #[test]
+    fn retains_additional_front_matter() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/extras");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("post.md"),
+            "---\ndate: 2024-01-01T00:00:00Z\nlocation:\n  country: GR\n  city: Athens\n---\n",
+        )
+        .unwrap();
+
+        let config = Config::default();
+        let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+        let value = posts[0]
+            .extra
+            .get("location")
+            .and_then(|map| map.get("city"))
+            .cloned();
+
+        assert_eq!(value, Some(JsonValue::String("Athens".to_string())));
+    }
+
+    #[test]
     fn parse_comma_separated_lists() {
         let dir = TempDir::new().unwrap();
         let root = dir.path().join("posts/list");
@@ -487,6 +541,7 @@ mod tests {
             vec![PathBuf::from("file-a.txt"), PathBuf::from("file-b.txt")]
         );
         assert_eq!(post.images, vec![PathBuf::from("img-a.png")]);
+        assert!(post.extra.is_empty());
     }
 
     #[test]

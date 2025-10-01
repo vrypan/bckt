@@ -723,6 +723,7 @@ fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
         images,
         video_url: post.video_url.clone(),
         permalink: post.permalink.clone(),
+        extra: post.extra.clone(),
     })
 }
 
@@ -741,6 +742,7 @@ fn build_post_summary(config: &Config, post: &Post) -> Result<PostSummary> {
         body: post.body_html.clone(),
         excerpt: post.excerpt.clone(),
         permalink: post.permalink.clone(),
+        extra: post.extra.clone(),
     })
 }
 
@@ -1187,6 +1189,8 @@ struct PostTemplate {
     images: Vec<String>,
     video_url: Option<String>,
     permalink: String,
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -1198,6 +1202,8 @@ struct PostSummary {
     body: String,
     excerpt: String,
     permalink: String,
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -1369,6 +1375,40 @@ mod tests {
         let image = root.join("html/2024/01/01/assets-post/images/pic.png");
         assert!(asset.exists());
         assert!(image.exists());
+    }
+
+    #[test]
+    fn exposes_additional_front_matter_in_templates() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+
+        fs::write(
+            root.join("templates/post.html"),
+            "{% extends \"base.html\" %}{% block content %}<article>{{ post.location.country }}</article>{% endblock %}",
+        )
+        .unwrap();
+
+        fs::create_dir_all(root.join("posts/location")).unwrap();
+        fs::write(
+            root.join("posts/location/post.md"),
+            "---\ndate: 2024-01-01T00:00:00Z\nlocation:\n  country: GR\n---\nBody",
+        )
+        .unwrap();
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+            },
+        )
+        .unwrap();
+
+        let rendered =
+            fs::read_to_string(root.join("html/2024/01/01/location/index.html")).unwrap();
+        assert!(rendered.contains("GR"));
     }
 
     #[test]
