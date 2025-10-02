@@ -41,7 +41,7 @@ bucket3 themes list
 bucket3 themes use <name>
 ```
 
-`themes` inspects the `themes/` directory bundled with the project. `list` highlights the active theme, while `use` copies the selected theme’s templates and static assets into the project and updates `bucket3.yaml`.
+`themes` inspects the `themes/` directory bundled with the project. `list` highlights the active theme, while `use` copies the selected theme’s templates and static assets into the project and updates `bucket3.yaml`. You’ll be prompted before existing `templates/` or `skel/` content is overwritten; pass `--force` to skip the confirmation.
 
 Each command now ships with expanded `--help` output; run `bucket3 <command> --help` to see descriptions of every flag and workflow.
 

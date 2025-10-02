@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::io::{self, Write};
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
@@ -13,7 +14,7 @@ pub fn run_themes_command(args: ThemesArgs) -> Result<()> {
 
     match args.command {
         ThemesSubcommand::List => list_themes(&root),
-        ThemesSubcommand::Use { name } => use_theme(&root, &name),
+        ThemesSubcommand::Use { name, force } => use_theme(&root, &name, force),
     }
 }
 
@@ -54,12 +55,13 @@ fn list_themes(root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn use_theme(root: &Path, name: &str) -> Result<()> {
+fn use_theme(root: &Path, name: &str, force: bool) -> Result<()> {
     let theme_root = root.join("themes").join(name);
     if !theme_root.exists() {
         bail!("theme '{}' is not installed", name);
     }
 
+    confirm_overwrite(root, force)?;
     apply_theme(&theme_root, root)?;
 
     let config_path = root.join("bucket3.yaml");
@@ -69,6 +71,50 @@ fn use_theme(root: &Path, name: &str) -> Result<()> {
 
     println!("Applied theme '{}'.", name);
     Ok(())
+}
+
+fn confirm_overwrite(project_root: &Path, force: bool) -> Result<()> {
+    if force {
+        return Ok(());
+    }
+
+    let mut conflicts = Vec::new();
+    for name in ["templates", "skel"] {
+        let path = project_root.join(name);
+        if directory_has_contents(&path)? {
+            conflicts.push(name);
+        }
+    }
+
+    if conflicts.is_empty() {
+        return Ok(());
+    }
+
+    println!(
+        "The following directories will be overwritten: {}",
+        conflicts.join(", ")
+    );
+    print!("Proceed? [y/N]: ");
+    io::stdout().flush().context("failed to flush stdout")?;
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .context("failed to read confirmation input")?;
+    let answer = input.trim().to_lowercase();
+    if matches!(answer.as_str(), "y" | "yes") {
+        Ok(())
+    } else {
+        bail!("theme installation aborted by user");
+    }
+}
+
+fn directory_has_contents(path: &Path) -> Result<bool> {
+    if !path.exists() || !path.is_dir() {
+        return Ok(false);
+    }
+    let mut entries = fs::read_dir(path)
+        .with_context(|| format!("failed to read directory {}", path.display()))?;
+    Ok(entries.next().is_some())
 }
 
 fn apply_theme(theme_root: &Path, project_root: &Path) -> Result<()> {

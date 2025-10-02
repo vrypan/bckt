@@ -142,5 +142,11 @@ pub enum ThemesSubcommand {
     Use {
         #[arg(help = "Name of the theme directory inside themes/")]
         name: String,
+        #[arg(
+            long,
+            help = "Overwrite templates/ and skel/ without prompting",
+            long_help = "Bypass the confirmation prompt when the destination directories already contain files."
+        )]
+        force: bool,
     },
 }
