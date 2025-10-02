@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-section">
+  <h1 class="page-title">Tag: {{ tag }}</h1>
+  {% for post in posts %}
+  <article class="post-card">
+    <header class="post-card__header">
+      <p class="post-card__meta">
+        <time datetime="{{ post.date_iso }}">{{ post.date }}</time>
+      </p>
+      <h2 class="post-card__title">
+        <a href="{{ post.permalink }}" rel="bookmark">
+          {% if post.title %}{{ post.title }}{% else %}{{ post.slug }}{% endif %}
+        </a>
+      </h2>
+      {% if post.abstract or post.excerpt %}
+      <p class="post-card__summary">{{ post.abstract | default(post.excerpt) }}</p>
+      {% endif %}
+    </header>
+    <p class="post-card__action">
+      <a href="{{ post.permalink }}" aria-label="Read full post">Continue reading →</a>
+    </p>
+  </article>
+  {% else %}
+  <p class="empty-state">No posts for this tag.</p>
+  {% endfor %}
+  {% if pagination.prev or pagination.next %}
+  <nav class="pager" aria-label="Tag pagination">
+    <p class="pager__status">Browse tagged posts</p>
+    <div class="pager__links">
+      {% if pagination.prev %}<a href="{{ pagination.prev }}">← Newer Posts</a>{% endif %}
+      {% if pagination.next %}<a href="{{ pagination.next }}">Older Posts →</a>{% endif %}
+    </div>
+  </nav>
+  {% endif %}
+</section>
+{% endblock content %}

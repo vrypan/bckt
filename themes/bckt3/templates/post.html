@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block page_title %}
+{% if post.title %}{{ post.title }} · {{ config.title | default("bucket3") }}{% else %}{{ config.title | default("bucket3") }}{% endif %}
+{% endblock page_title %}
+
+{% block page_meta %}
+{% set canonical = (config.base_url | default("")) ~ post.permalink %}
+<meta name="description" content="{{ post.abstract | default(post.excerpt) }}">
+<meta property="og:site_name" content="{{ config.title | default("bucket3") }}">
+<meta property="og:type" content="article">
+<meta property="og:title" content="{{ post.title | default(config.title | default("bucket3")) }}">
+<meta property="og:url" content="{{ canonical }}">
+<meta property="og:description" content="{{ post.abstract | default(post.excerpt) }}">
+<link rel="canonical" href="{{ canonical }}">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{{ post.title | default(config.title | default("bucket3")) }}">
+<meta name="twitter:description" content="{{ post.abstract | default(post.excerpt) }}">
+{% endblock page_meta %}
+
+{% block content %}
+<article class="post-article">
+  <header class="post-header">
+    {% if post.title %}
+    <h1 class="post-title">{{ post.title }}</h1>
+    {% endif %}
+    <div class="post-meta">
+      <time datetime="{{ post.date_iso }}">{{ post.date }}</time>
+      {% if post.weather %}
+        <span class="meta-divider">&mdash;</span>
+        {% if post.weather.icon %}
+          <i class="wi wi-forecast-io-{{ post.weather.icon|lower }}"></i>
+        {% endif %}
+        {% if post.weather.icon2 %}
+          <i class="wi {{ post.weather.icon2|lower }}"></i>
+        {% endif %}
+        <span>{{ post.weather.description|capitalize }} {{ post.weather.C|round|int }}&deg;C</span>
+      {% endif %}
+      {% if post.location %}
+        <span class="meta-divider">&mdash;</span>
+        <span>{{ post.location.locality }}, {{ post.location.country }}</span>
+      {% endif %}
+      {% if post.tags %}
+        <span class="meta-divider">•</span>
+        <ul class="post-tags">
+          {% for tag in post.tags %}
+          <li><a href="/tags/{{ tag | replace(' ', '-') | lower }}/">#{{ tag }}</a></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+    {% if post.abstract %}
+    <p class="post-subtitle">{{ post.abstract }}</p>
+    {% endif %}
+    {% if post.image %}
+    <img class="post-hero" src="{{ post.permalink }}{{ post.image }}" alt="">
+    {% endif %}
+  </header>
+  <div class="post-content">
+    {{ post.body | safe }}
+  </div>
+  {% if post.attached %}
+  <section class="post-attachments">
+    <h2>Attachments</h2>
+    <ul>
+      {% for item in post.attached %}
+      <li><a href="{{ item }}">{{ item }}</a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  {% if post.location %}
+  <p class="post-location">Country: {{ post.location.country }}</p>
+  {% endif %}
+</article>
+{% endblock content %}

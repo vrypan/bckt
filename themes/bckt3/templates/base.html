@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>{% block page_title %}{{ config.title | default("bucket3") }}{% endblock page_title %}</title>
+    <link rel="alternate" type="application/rss+xml" title="RSS" href="{{ feed_url }}">
+    <link rel="icon" href="/img/favicon.ico">
+    <link rel="stylesheet" href="/style.css">
+    {% block page_meta %}{% endblock page_meta %}
+  </head>
+  <body>
+    {% set base = config.base_url | default('/') %}
+    {% if base[-1] != '/' %}
+      {% set base = base ~ '/' %}
+    {% endif %}
+    <header class="site-header">
+      <div class="site-header__inner">
+        <h1 class="site-title">
+          <a href="{{ base }}">{{ config.title | default("bucket3") }}</a>
+        </h1>
+        <nav class="site-nav">
+          <a href="{{ base }}">Home</a>
+          <a href="{{ base }}archive/">Archive</a>
+          <a href="{{ base }}tags/">Tags</a>
+          <a href="{{ feed_url }}">RSS</a>
+        </nav>
+      </div>
+    </header>
+    <main class="site-main">
+      <div class="site-main__inner">
+        {% block content %}{% endblock content %}
+      </div>
+    </main>
+    <footer class="site-footer">
+      <div class="site-main__inner">
+        <p>Powered by <a href="https://bucket3.com">bucket3</a>.</p>
+      </div>
+    </footer>
+  </body>
+</html>
