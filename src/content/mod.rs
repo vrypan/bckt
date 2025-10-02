@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use serde_yaml::Mapping;
 use time::format_description::{self, well_known::Rfc3339};
-use time::{OffsetDateTime, PrimitiveDateTime};
+use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 use walkdir::WalkDir;
 
 use crate::config::Config;
@@ -154,22 +154,66 @@ fn parse_post_date(date_str: &str, config: &Config, origin: &Path) -> Result<Off
 
     let naive_format = format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]")
         .expect("static datetime format to parse");
-    let naive = PrimitiveDateTime::parse(date_str, &naive_format).with_context(|| {
-        format!(
-            "{}: date must be RFC3339 or 'YYYY-MM-DD HH:MM:SS'",
-            origin.display()
-        )
-    })?;
 
-    let offset = config.default_offset().with_context(|| {
-        format!(
-            "{}: default_timezone '{}' is invalid",
-            origin.display(),
-            config.default_timezone
-        )
-    })?;
+    if let Ok(datetime) = PrimitiveDateTime::parse(date_str, &naive_format) {
+        let offset = config.default_offset().with_context(|| {
+            format!(
+                "{}: default_timezone '{}' is invalid",
+                origin.display(),
+                config.default_timezone
+            )
+        })?;
+        return Ok(datetime.assume_offset(offset));
+    }
 
-    Ok(naive.assume_offset(offset))
+    if let Some((main, offset_part)) = date_str.rsplit_once(' ') {
+        if let Ok(datetime) = PrimitiveDateTime::parse(main, &naive_format) {
+            if let Ok(offset) = parse_offset_str(offset_part) {
+                return Ok(datetime.assume_offset(offset));
+            }
+        }
+    }
+
+    bail!(
+        "{}: date must be RFC3339, 'YYYY-MM-DD HH:MM:SS', or 'YYYY-MM-DD HH:MM:SS ±HHMM/±HH:MM'",
+        origin.display()
+    )
+}
+
+fn parse_offset_str(value: &str) -> Result<UtcOffset> {
+    if value.eq_ignore_ascii_case("UTC") || value.eq_ignore_ascii_case("Z") {
+        return Ok(UtcOffset::UTC);
+    }
+
+    let trimmed = value.trim();
+    if trimmed.len() < 3 {
+        bail!("offset '{}' is too short", value);
+    }
+
+    let normalized = if trimmed.len() == 5 && (trimmed.starts_with('+') || trimmed.starts_with('-'))
+    {
+        format!("{}:{}", &trimmed[..3], &trimmed[3..])
+    } else {
+        trimmed.to_string()
+    };
+
+    if let Ok(offset) = UtcOffset::parse(
+        &normalized,
+        &format_description::parse("[offset_hour sign:mandatory]:[offset_minute]")
+            .expect("offset format to parse"),
+    ) {
+        return Ok(offset);
+    }
+
+    if let Ok(offset) = UtcOffset::parse(
+        &normalized,
+        &format_description::parse("[offset_hour sign:mandatory]:[offset_minute]:[offset_second]")
+            .expect("offset format to parse"),
+    ) {
+        return Ok(offset);
+    }
+
+    bail!("offset '{}' is invalid", value)
 }
 
 fn determine_slug(dir: &Path, provided: Option<&str>) -> Result<String> {
@@ -256,6 +300,7 @@ where
     enum Value {
         Many(Vec<String>),
         One(String),
+        None(serde::de::IgnoredAny),
     }
 
     Ok(match Value::deserialize(deserializer)? {
@@ -267,6 +312,7 @@ where
             .into_iter()
             .map(|item| item.to_string())
             .collect(),
+        Value::None(_) => Vec::new(),
     })
 }
 
@@ -279,13 +325,13 @@ where
     enum Value {
         Many(Vec<PathBuf>),
         One(String),
-        None,
+        None(serde::de::IgnoredAny),
     }
 
     Ok(match Value::deserialize(deserializer)? {
         Value::Many(items) => items,
         Value::One(value) => split_csv(&value).into_iter().map(PathBuf::from).collect(),
-        Value::None => Vec::new(),
+        Value::None(_) => Vec::new(),
     })
 }
 
@@ -375,6 +421,7 @@ mod tests {
     use crate::config::Config;
     use std::path::PathBuf;
     use tempfile::TempDir;
+    use time::UtcOffset;
 
     #[test]
     fn discover_single_markdown_post() {
@@ -542,6 +589,55 @@ mod tests {
             post.extra.get("images"),
             Some(&JsonValue::String("img-a.png".into()))
         );
+    }
+
+    #[test]
+    fn allows_empty_tags_field() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/empty-tags");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("post.md"),
+            "---\ndate: 2024-01-01T00:00:00Z\ntags:\n---\nBody",
+        )
+        .unwrap();
+
+        let config = Config::default();
+        let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+        assert!(posts[0].tags.is_empty());
+    }
+
+    #[test]
+    fn allows_empty_attached_field() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/empty-attached");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("post.md"),
+            "---\ndate: 2024-01-01T00:00:00Z\nattached:\n---\nBody",
+        )
+        .unwrap();
+
+        let config = Config::default();
+        let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+        assert!(posts[0].attached.is_empty());
+    }
+
+    #[test]
+    fn accepts_datetime_with_numeric_offset() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/offset");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("post.md"),
+            "---\ndate: 2013-01-18 00:25:24 +0200\n---\nBody",
+        )
+        .unwrap();
+
+        let config = Config::default();
+        let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+        let post = &posts[0];
+        assert_eq!(post.date.offset(), UtcOffset::from_hms(2, 0, 0).unwrap());
     }
 
     #[test]
