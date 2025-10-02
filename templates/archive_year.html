@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section>
+  <h1>{{ year }}</h1>
+  {% for post in posts %}
+  <article>
+    {% if post.title %}<h2>{{ post.title }}</h2>{% endif %}
+    <div>{{ post.body | safe }}</div>
+  </article>
+  {% else %}
+  <p>No posts yet.</p>
+  {% endfor %}
+</section>
+{% endblock content %}

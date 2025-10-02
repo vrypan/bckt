@@ -3,6 +3,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use time::UtcOffset;
 use time::format_description::{self, FormatItem};
 use url::Url;
@@ -16,6 +17,8 @@ pub struct Config {
     pub date_format: String,
     pub paginate_tags: bool,
     pub default_timezone: String,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, JsonValue>,
 }
 
 impl Config {
@@ -60,6 +63,7 @@ impl Default for Config {
             date_format: "[year]-[month]-[day]".to_string(),
             paginate_tags: true,
             default_timezone: "+00:00".to_string(),
+            extra: serde_json::Map::new(),
         }
     }
 }

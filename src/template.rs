@@ -54,6 +54,7 @@ pub fn environment(config: &Config) -> Result<Environment<'static>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value as JsonValue;
 
     #[test]
     fn config_available_in_templates() {
@@ -97,5 +98,20 @@ mod tests {
 
         let rendered = env.get_template("feed").unwrap().render(()).unwrap();
         assert_eq!(rendered, "https://example.com/blog/rss.xml");
+    }
+
+    #[test]
+    fn extra_config_fields_are_exposed() {
+        let mut config = Config::default();
+        config.extra.insert(
+            "theme".to_string(),
+            JsonValue::String("solarized".to_string()),
+        );
+
+        let mut env = environment(&config).unwrap();
+        env.add_template("theme", "{{ config.theme }}").unwrap();
+
+        let rendered = env.get_template("theme").unwrap().render(()).unwrap();
+        assert_eq!(rendered, "solarized");
     }
 }
