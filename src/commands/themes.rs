@@ -72,26 +72,15 @@ fn use_theme(root: &Path, name: &str) -> Result<()> {
 }
 
 fn apply_theme(theme_root: &Path, project_root: &Path) -> Result<()> {
-    for entry in fs::read_dir(theme_root)
-        .with_context(|| format!("failed to read theme directory {}", theme_root.display()))?
-    {
-        let entry = entry?;
-        let file_name = entry.file_name();
-        let name = file_name.to_string_lossy();
+    let copies = ["templates", "skel"];
 
-        if name == "theme.yaml" {
+    for name in copies {
+        let source_path = theme_root.join(name);
+        if !source_path.exists() {
             continue;
         }
-
-        let source_path = entry.path();
-        let destination_path = project_root.join(&file_name);
-
-        if entry.file_type()?.is_dir() {
-            copy_dir(&source_path, &destination_path)?;
-        } else {
-            // Ignore stray files at the theme root so only scoped directories are applied.
-            continue;
-        }
+        let destination_path = project_root.join(name);
+        copy_dir(&source_path, &destination_path)?;
     }
 
     Ok(())
