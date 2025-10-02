@@ -1103,27 +1103,123 @@ fn att_to_absolute(body: &str, permalink: &str, base_url: &str, attached: &[Path
     if attached.is_empty() {
         return body.to_string();
     }
-    let mut transformed = body.to_string();
+
+    let mut attached_paths: HashSet<String> = HashSet::new();
     for item in attached {
         if item.is_absolute() {
             continue;
         }
-        let normalized = normalize_path(item);
-        let relative = join_permalink(permalink, &normalized);
-        let absolute = absolute_url(base_url, &relative);
+        attached_paths.insert(normalize_path(item));
+    }
+    if attached_paths.is_empty() {
+        return body.to_string();
+    }
 
-        for target in [&normalized, relative.as_str()] {
-            if transformed.contains(target) {
-                transformed = transformed.replace(target, &absolute);
+    let mut output = String::with_capacity(body.len());
+    let mut i = 0;
+    let bytes = body.as_bytes();
+
+    while i < bytes.len() {
+        if let Some((quote, prefix_len)) = match_attribute(&body[i..]) {
+            output.push_str(&body[i..i + prefix_len]);
+            let mut value_end = i + prefix_len;
+            while value_end < bytes.len() {
+                let ch = body[value_end..].chars().next().unwrap();
+                if ch == quote {
+                    break;
+                }
+                value_end += ch.len_utf8();
             }
-        }
 
-        let dotted = format!("./{}", normalized);
-        if transformed.contains(&dotted) {
-            transformed = transformed.replace(&dotted, &absolute);
+            if value_end >= bytes.len() {
+                output.push_str(&body[i + prefix_len..]);
+                break;
+            }
+
+            let value = &body[i + prefix_len..value_end];
+            if let Some(rewritten) =
+                rewrite_if_attached(value, permalink, base_url, &attached_paths)
+            {
+                output.push_str(&rewritten);
+            } else {
+                output.push_str(value);
+            }
+
+            output.push(quote);
+            i = value_end + quote.len_utf8();
+        } else {
+            let ch = body[i..].chars().next().unwrap();
+            output.push(ch);
+            i += ch.len_utf8();
         }
     }
-    transformed
+
+    output
+}
+
+fn match_attribute(input: &str) -> Option<(char, usize)> {
+    if input.starts_with("src=\"") {
+        Some(('"', 5))
+    } else if input.starts_with("src='") {
+        Some(('\'', 5))
+    } else if input.starts_with("href=\"") {
+        Some(('"', 6))
+    } else if input.starts_with("href='") {
+        Some(('\'', 6))
+    } else {
+        None
+    }
+}
+
+fn rewrite_if_attached(
+    value: &str,
+    permalink: &str,
+    base_url: &str,
+    attached: &HashSet<String>,
+) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    if trimmed.starts_with('/')
+        || trimmed.starts_with('#')
+        || trimmed.starts_with("//")
+        || lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("mailto:")
+        || lower.starts_with("tel:")
+        || lower.starts_with("data:")
+        || lower.starts_with("javascript:")
+    {
+        return None;
+    }
+
+    let mut relative = trimmed;
+    while let Some(stripped) = relative.strip_prefix("./") {
+        relative = stripped;
+    }
+    if relative.is_empty() {
+        return None;
+    }
+
+    let (path_part, suffix) = match relative.find(|c| c == '?' || c == '#') {
+        Some(idx) => relative.split_at(idx),
+        None => (relative, ""),
+    };
+
+    if !attached.contains(path_part) {
+        return None;
+    }
+
+    let base = join_permalink(permalink, path_part);
+    let joined = if suffix.is_empty() {
+        base
+    } else {
+        format!("{}{}", base, suffix)
+    };
+    Some(absolute_url(base_url, &joined))
 }
 
 fn post_key(post: &Post) -> String {
