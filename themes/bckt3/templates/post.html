@@ -59,18 +59,5 @@
   <div class="post-content">
     {{ post.body | safe }}
   </div>
-  {% if post.attached %}
-  <section class="post-attachments">
-    <h2>Attachments</h2>
-    <ul>
-      {% for item in post.attached %}
-      <li><a href="{{ item }}">{{ item }}</a></li>
-      {% endfor %}
-    </ul>
-  </section>
-  {% endif %}
-  {% if post.location %}
-  <p class="post-location">Country: {{ post.location.country }}</p>
-  {% endif %}
 </article>
 {% endblock content %}
