@@ -18,20 +18,20 @@ default_timezone: "+00:00"
 theme: bckt3
 "#;
 
-const THEME_MANIFEST: &str = r#"name: "bckt3"
-description: "Default bucket3rs theme"
-version: "0.1.0"
-"#;
+const THEME_MANIFEST: &str = include_str!("../../themes/bckt3/theme.yaml");
+const THEME_TAILWIND_CONFIG: &str = include_str!("../../themes/bckt3/tailwind.config.js");
+const THEME_STYLE_SOURCE: &str = include_str!("../../themes/bckt3/style.tailwind.css");
 
-const THEME_BASE_TEMPLATE: &str = include_str!("../../templates/base.html");
-const THEME_POST_TEMPLATE: &str = include_str!("../../templates/post.html");
-const THEME_INDEX_TEMPLATE: &str = include_str!("../../templates/index.html");
-const THEME_TAG_TEMPLATE: &str = include_str!("../../templates/tag.html");
-const THEME_ARCHIVE_YEAR_TEMPLATE: &str = include_str!("../../templates/archive_year.html");
-const THEME_ARCHIVE_MONTH_TEMPLATE: &str = include_str!("../../templates/archive_month.html");
-const THEME_RSS_TEMPLATE: &str = include_str!("../../templates/rss.xml");
-const THEME_STYLE_CSS: &str = include_str!("../../skel/style.css");
-const THEME_STYLE_TAILWIND_CSS: &str = include_str!("../../skel/style.tailwind.css");
+const THEME_BASE_TEMPLATE: &str = include_str!("../../themes/bckt3/templates/base.html");
+const THEME_POST_TEMPLATE: &str = include_str!("../../themes/bckt3/templates/post.html");
+const THEME_INDEX_TEMPLATE: &str = include_str!("../../themes/bckt3/templates/index.html");
+const THEME_TAG_TEMPLATE: &str = include_str!("../../themes/bckt3/templates/tag.html");
+const THEME_ARCHIVE_YEAR_TEMPLATE: &str =
+    include_str!("../../themes/bckt3/templates/archive_year.html");
+const THEME_ARCHIVE_MONTH_TEMPLATE: &str =
+    include_str!("../../themes/bckt3/templates/archive_month.html");
+const THEME_RSS_TEMPLATE: &str = include_str!("../../themes/bckt3/templates/rss.xml");
+const THEME_STYLE_CSS: &str = include_str!("../../themes/bckt3/skel/style.css");
 
 const SAMPLE_POST: &str = r#"---
 title: "Hello From bucket3rs"
@@ -55,7 +55,7 @@ pub fn run_init_command() -> Result<()> {
     seed_theme(&root)?;
     seed_templates(&root)?;
     seed_static_assets(&root)?;
-    seed_theme_manifest(&root)?;
+    seed_theme_metadata(&root)?;
     seed_sample_post(&root)?;
 
     println!("Initialized");
@@ -97,9 +97,24 @@ fn seed_theme(root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn seed_theme_manifest(root: &Path) -> Result<()> {
-    let manifest = root.join("themes").join(THEME_NAME).join("theme.yaml");
-    write_if_missing(&manifest, THEME_MANIFEST).context("failed to write theme manifest")
+fn seed_theme_metadata(root: &Path) -> Result<()> {
+    let theme_root = root.join("themes").join(THEME_NAME);
+    write_if_missing(&theme_root.join("theme.yaml"), THEME_MANIFEST)
+        .context("failed to write theme manifest")?;
+    write_if_missing(&theme_root.join("style.tailwind.css"), THEME_STYLE_SOURCE)
+        .context("failed to write theme CSS source")?;
+    write_if_missing(
+        &theme_root.join("tailwind.config.js"),
+        THEME_TAILWIND_CONFIG,
+    )
+    .context("failed to write theme Tailwind config")?;
+
+    write_if_missing(&root.join("style.tailwind.css"), THEME_STYLE_SOURCE)
+        .context("failed to write style.tailwind.css")?;
+    write_if_missing(&root.join("tailwind.config.js"), THEME_TAILWIND_CONFIG)
+        .context("failed to write tailwind.config.js")?;
+
+    Ok(())
 }
 
 fn seed_templates(root: &Path) -> Result<()> {
@@ -147,10 +162,7 @@ fn seed_sample_post(root: &Path) -> Result<()> {
 fn seed_static_assets(root: &Path) -> Result<()> {
     let asset_pairs = [
         (PathBuf::from("style.css"), THEME_STYLE_CSS),
-        (
-            PathBuf::from("style.tailwind.css"),
-            THEME_STYLE_TAILWIND_CSS,
-        ),
+        (PathBuf::from("style.tailwind.css"), THEME_STYLE_SOURCE),
     ];
 
     for (relative, contents) in asset_pairs {
