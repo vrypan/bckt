@@ -1,25 +1,34 @@
 {% extends "base.html" %}
 {% block content %}
-<section>
-  <h1>Recent Posts</h1>
+<section class="page-section">
+  <h1 class="page-title">Recent Posts</h1>
   {% for post in posts %}
-  <article>
-    {% if post.title %}
-    <h2><a href="{{ post.permalink }}" rel="bookmark">{{ post.title }}</a></h2>
-    {% else %}
-    <h2><a href="{{ post.permalink }}" rel="bookmark">{{ post.slug }}</a></h2>
-    {% endif %}
-    <div>{{ post.body | safe }}</div>
-    <p><a href="{{ post.permalink }}" aria-label="Read full post">Read more →</a></p>
+  <article class="post-card">
+    <header class="post-card__header">
+      <p class="post-card__meta">
+        <time datetime="{{ post.date_iso }}">{{ post.date }}</time>
+      </p>
+      <h2 class="post-card__title">
+        <a href="{{ post.permalink }}" rel="bookmark">
+          {% if post.title %}{{ post.title }}{% else %}{{ post.slug }}{% endif %}
+        </a>
+      </h2>
+      {% if post.abstract or post.excerpt %}
+      <p class="post-card__summary">{{ post.abstract | default(post.excerpt) }}</p>
+      {% endif %}
+    </header>
+    <p class="post-card__action">
+      <a href="{{ post.permalink }}" aria-label="Read full post">Continue reading →</a>
+    </p>
   </article>
   {% else %}
-  <p>No posts yet.</p>
+  <p class="empty-state">No posts yet.</p>
   {% endfor %}
 </section>
 
 {% if pagination.total > 1 %}
 <nav aria-label="Pagination" class="pager">
-  <p>Page {{ pagination.current }} of {{ pagination.total }}</p>
+  <p class="pager__status">Page {{ pagination.current }} of {{ pagination.total }}</p>
   <div class="pager__links">
     {% if pagination.prev %}
     <a href="{{ pagination.prev }}" rel="prev">← Newer Posts</a>

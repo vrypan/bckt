@@ -10,25 +10,32 @@
     {% block page_meta %}{% endblock page_meta %}
   </head>
   <body>
-    <header>
-      <div class="header-inner">
-        <a class="brand" href="/">
-          <img class="brand-avatar" src="/img/icon.png" alt="">
-          <span>{{ config.title | default("bucket3") }}</span>
-        </a>
-        <nav>
-          <a href="{{ config.base_url | default('/') }}">Home</a>
-          <a href="{{ config.base_url | default('/') }}archive/">Archive</a>
-          <a href="{{ config.base_url | default('/') }}tag/">Tags</a>
+    {% set base = config.base_url | default('/') %}
+    {% if base[-1] != '/' %}
+      {% set base = base ~ '/' %}
+    {% endif %}
+    <header class="site-header">
+      <div class="site-header__inner">
+        <h1 class="site-title">
+          <a href="{{ base }}">{{ config.title | default("bucket3") }}</a>
+        </h1>
+        <nav class="site-nav">
+          <a href="{{ base }}">Home</a>
+          <a href="{{ base }}archive/">Archive</a>
+          <a href="{{ base }}tags/">Tags</a>
           <a href="{{ feed_url }}">RSS</a>
         </nav>
       </div>
     </header>
-    <main>
-      {% block content %}{% endblock content %}
+    <main class="site-main">
+      <div class="site-main__inner">
+        {% block content %}{% endblock content %}
+      </div>
     </main>
-    <footer>
-      <div>Powered by <a href="https://bucket3.com">bucket3</a>.</div>
+    <footer class="site-footer">
+      <div class="site-main__inner">
+        <p>Powered by <a href="https://bucket3.com">bucket3</a>.</p>
+      </div>
     </footer>
   </body>
 </html>

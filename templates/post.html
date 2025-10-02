@@ -19,45 +19,44 @@
 {% endblock page_meta %}
 
 {% block content %}
-<article class="post">
+<article class="post-article">
   <header class="post-header">
-    {% if post.title %}<h1>{{ post.title }}</h1>{% endif %}
+    {% if post.title %}
+    <h1 class="post-title">{{ post.title }}</h1>
+    {% endif %}
     <div class="post-meta">
       <time datetime="{{ post.date_iso }}">{{ post.date }}</time>
-      
-      {% if post.weather %} &mdash; 
+      {% if post.weather %}
+        <span class="meta-divider">&mdash;</span>
         {% if post.weather.icon %}
           <i class="wi wi-forecast-io-{{ post.weather.icon|lower }}"></i>
-        {% endif %} 
+        {% endif %}
         {% if post.weather.icon2 %}
           <i class="wi {{ post.weather.icon2|lower }}"></i>
-        {% endif %} 
-        {{ post.weather.description|capitalize }} {{ post.weather.C|round|int }}&deg;C 
-      {% endif %} 
+        {% endif %}
+        <span>{{ post.weather.description|capitalize }} {{ post.weather.C|round|int }}&deg;C</span>
+      {% endif %}
       {% if post.location %}
-        &mdash;
-        <i class="fas fa-map-marker-alt text-secondary"></i> 
-        {{ post.location.locality }}, {{ post.location.country }} 
-      {% endif %} 
-
+        <span class="meta-divider">&mdash;</span>
+        <span>{{ post.location.locality }}, {{ post.location.country }}</span>
+      {% endif %}
       {% if post.tags %}
-      <span class="meta-sep">•</span>
-      <span class="tags">
-        {% for tag in post.tags %}
-        <a href="/tags/{{ tag | replace(' ', '-') | lower }}/">#{{ tag }}</a>{% if not loop.last %}<span class="meta-sep">,</span>{% endif %}
-        {% endfor %}
-      </span>
+        <span class="meta-divider">•</span>
+        <ul class="post-tags">
+          {% for tag in post.tags %}
+          <li><a href="/tags/{{ tag | replace(' ', '-') | lower }}/">#{{ tag }}</a></li>
+          {% endfor %}
+        </ul>
       {% endif %}
     </div>
     {% if post.abstract %}
     <p class="post-subtitle">{{ post.abstract }}</p>
     {% endif %}
-    {% if post.image %}<img
-        src="{{ post.permalink }}{{ post.image }}"
-        style="max-width: 100%; height: auto; margin-bottom: 2em"
-    />{% endif %} 
+    {% if post.image %}
+    <img class="post-hero" src="{{ post.permalink }}{{ post.image }}" alt="">
+    {% endif %}
   </header>
-  <div class="post-body">
+  <div class="post-content">
     {{ post.body | safe }}
   </div>
   {% if post.attached %}
@@ -71,112 +70,7 @@
   </section>
   {% endif %}
   {% if post.location %}
-  <p>Country: {{ post.location.country }}</p>
+  <p class="post-location">Country: {{ post.location.country }}</p>
   {% endif %}
 </article>
-<style>
-  .post h1 {
-    font-family: var(--font-serif);
-    font-weight: 600;
-    font-size: clamp(2rem, 4vw, 3rem);
-    margin-bottom: 0.4em;
-  }
-  .post-subtitle {
-    color: #4b5563;
-    font-size: 1.1rem;
-    margin-top: 0.4em;
-  }
-  .post-meta {
-    font-size: 0.95rem;
-    color: #6b7280;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-    align-items: center;
-  }
-  .post-meta a {
-    color: inherit;
-    text-decoration: none;
-  }
-  .post-meta a:hover {
-    text-decoration: underline;
-  }
-  .meta-sep {
-    opacity: 0.6;
-  }
-  .post-media {
-    margin: 2rem 0;
-  }
-  .post-media img {
-    width: 100%;
-    border-radius: 0.75rem;
-    display: block;
-  }
-  .post-body {
-    font-family: var(--font-serif);
-    font-size: 1.1rem;
-    line-height: 1.8;
-    text-rendering: optimizeLegibility;
-    font-variant-ligatures: common-ligatures;
-    hyphens: auto;
-    max-width: 68ch;
-    margin: 0 auto 2.5rem;
-  }
-  .post-body p {
-    margin: 1.2em 0;
-  }
-  .post-body a {
-    color: #1d4ed8;
-    text-decoration: underline;
-    text-decoration-thickness: 0.08em;
-    text-underline-offset: 0.22em;
-  }
-  .post-body a:hover {
-    color: #0f172a;
-  }
-  .post-body pre {
-    background: rgba(15, 23, 42, 0.06);
-    color: inherit;
-    padding: 1.1rem 1.25rem;
-    border-radius: 0.75rem;
-    overflow-x: auto;
-    font-family: var(--font-mono);
-    font-size: 0.95rem;
-  }
-  .post-body code {
-    font-family: var(--font-mono);
-    background: rgba(15, 23, 42, 0.05);
-    padding: 0.15em 0.35em;
-    border-radius: 0.4em;
-  }
-  .post-body blockquote {
-    margin: 1.8em 0;
-    padding: 0.75em 1.5em;
-    border-left: 4px solid rgba(37, 99, 235, 0.35);
-    background: rgba(37, 99, 235, 0.08);
-    border-radius: 0 0.75rem 0.75rem 0;
-    color: #1f2933;
-    font-style: italic;
-  }
-  .post-body ul,
-  .post-body ol {
-    padding-left: 1.4em;
-    margin: 1.1em 0;
-  }
-  .post-body li + li {
-    margin-top: 0.35em;
-  }
-  .post-attachments {
-    margin-top: 3rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid rgba(15,23,42,0.08);
-  }
-  .post-attachments ul {
-    list-style: none;
-    padding: 0;
-  }
-  .post-attachments li {
-    margin: 0.4rem 0;
-  }
-</style>
 {% endblock content %}

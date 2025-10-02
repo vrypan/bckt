@@ -1,14 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
-<section>
-  <h1>{{ year }}</h1>
-  {% for post in posts %}
-  <article>
-    {% if post.title %}<h2>{{ post.title }}</h2>{% endif %}
-    <div>{{ post.body | safe }}</div>
-  </article>
+<section class="page-section">
+  <h1 class="page-title">{{ year }}</h1>
+  {% if posts %}
+  <ul class="archive-list">
+    {% for post in posts %}
+    <li class="archive-item">
+      <time datetime="{{ post.date_iso }}">{{ post.date }}</time>
+      <a href="{{ post.permalink }}">
+        {% if post.title %}{{ post.title }}{% else %}{{ post.slug }}{% endif %}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
   {% else %}
-  <p>No posts yet.</p>
-  {% endfor %}
+  <p class="empty-state">No posts yet.</p>
+  {% endif %}
 </section>
 {% endblock content %}
