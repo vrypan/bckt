@@ -81,3 +81,7 @@ Body goes here...
 ```
 
 `slug` falls back to the directory name (kebab-cased) when omitted. Dates may use RFC 3339 or a naive `YYYY-MM-DD HH:MM:SS` timestamp (which will be interpreted with the configured `default_timezone`), and the permalink for a post is `/yyyy/mm/dd/slug/`. The `attached` and `images` lists stay relative to the post directory so later build steps can copy them alongside the rendered HTML. The homepage shows the most recent `homepage_posts` entries and writes immutable archive pages keyed by a cursor (`/page/<timestamp-slug>/`), so new posts only regenerate the head page. Tags render under `/tags/<tag>/` (with optional cursor pagination when `paginate_tags` is enabled) and yearly/monthly archives render under `/yyyy/` and `/yyyy/mm/`.
+
+### Pages
+
+Drop standalone HTML files under `pages/` to render them as Minijinja templates. The directory structure is mirrored inside `html/`, so `pages/404.html` becomes `html/404.html`, while `pages/about/index.html` becomes `html/about/index.html`. Pages have access to the same globals as posts (e.g. `config`, `feed_url`, `now()`).

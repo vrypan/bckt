@@ -6,7 +6,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use blake3::Hasher;
-use minijinja::Environment;
+use minijinja::{Environment, context};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use time::OffsetDateTime;
@@ -277,6 +277,8 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
         store_cached_string(&cache_db, SITE_INPUTS_KEY, &site_inputs_hash)?;
     }
 
+    render_pages(root, &html_root, &env, plan.verbose)?;
+
     if plan.static_assets {
         let static_hash = compute_static_digest(root)?;
         let stored_static_hash = read_cached_string(&cache_db, STATIC_HASH_KEY)?;
@@ -420,6 +422,62 @@ fn render_posts(
     cleanup_post_hashes(cache_db, &cache_keys)?;
 
     Ok(posts)
+}
+
+fn render_pages(
+    root: &Path,
+    html_root: &Path,
+    env: &Environment<'static>,
+    verbose: bool,
+) -> Result<()> {
+    let pages_dir = root.join("pages");
+    if !pages_dir.exists() {
+        return Ok(());
+    }
+
+    let mut files = Vec::new();
+    for entry in WalkDir::new(&pages_dir) {
+        let entry = entry?;
+        if entry.file_type().is_file() {
+            let path = entry.into_path();
+            if path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map_or(false, |ext| ext.eq_ignore_ascii_case("html"))
+            {
+                files.push(path);
+            }
+        }
+    }
+
+    files.sort();
+
+    for path in files {
+        let relative = path.strip_prefix(&pages_dir).unwrap();
+        let output_path = html_root.join(relative);
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", parent.display()))?;
+        }
+
+        let source = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read page template {}", path.display()))?;
+
+        let rendered = env
+            .render_str(&source, context! {})
+            .with_context(|| format!("failed to render page {}", path.display()))?;
+
+        fs::write(&output_path, rendered)
+            .with_context(|| format!("failed to write page {}", output_path.display()))?;
+
+        log_status(
+            verbose,
+            "PAGE",
+            format!("Rendered {}", normalize_path(relative)),
+        );
+    }
+
+    Ok(())
 }
 
 fn compute_post_digest(post: &Post) -> Result<String> {
@@ -1897,6 +1955,41 @@ mod tests {
         let image = root.join("html/2024/01/01/assets-post/images/pic.png");
         assert!(asset.exists());
         assert!(image.exists());
+    }
+
+    #[test]
+    fn renders_pages_from_pages_directory() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        setup_markdown_templates(root);
+        fs::create_dir_all(root.join("pages/about")).unwrap();
+        fs::write(
+            root.join("pages/404.html"),
+            "{% extends \"base.html\" %}{% block content %}<h1>Missing</h1>{% endblock %}",
+        )
+        .unwrap();
+        fs::write(
+            root.join("pages/about/index.html"),
+            "{% extends \"base.html\" %}{% block content %}<p>About {{ config.title | default('site') }}</p>{% endblock %}",
+        )
+        .unwrap();
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: false,
+                static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let not_found = fs::read_to_string(root.join("html/404.html")).unwrap();
+        assert!(not_found.contains("Missing"));
+
+        let about = fs::read_to_string(root.join("html/about/index.html")).unwrap();
+        assert!(about.contains("About"));
     }
 
     #[test]

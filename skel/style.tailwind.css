@@ -61,8 +61,6 @@
     margin: 0;
     font-size: 1.75rem;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
   }
 
   .site-title a {
@@ -75,8 +73,6 @@
     align-items: center;
     gap: 1.25rem;
     font-size: 0.75rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
   }
 
   .site-nav a {
@@ -120,8 +116,6 @@
   .page-title {
     margin: 0;
     font-size: 1.5rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     font-weight: 700;
     color: #222222;
   }
@@ -150,8 +144,6 @@
   .post-card__meta {
     margin: 0;
     font-size: 0.75rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
     color: #9ca3af;
   }
 
@@ -159,8 +151,6 @@
     margin: 0;
     font-size: 1.35rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
   }
 
   .post-card__title a {
@@ -232,9 +222,7 @@
 
   .post-title {
     margin: 0;
-    font-size: 2rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-size: 1.5rem;
     font-weight: 700;
   }
 
@@ -251,8 +239,6 @@
     gap: 0.5rem 0.75rem;
     margin: 0;
     font-size: 0.8rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
     color: #9ca3af;
   }
 
@@ -282,17 +268,17 @@
 
   .post-hero {
     width: 100%;
-    max-width: 65ch;
+    max-width: 42rem;
     height: auto;
     margin: 0 auto;
     border-radius: 0.5rem;
   }
 
   .post-content {
-    font-size: 1.05rem;
+    font-size: 0.90rem;
     line-height: 1.75;
     color: #333333;
-    max-width: 65ch;
+    max-width: 42rem;
   }
 
   .post-content > * {
@@ -306,8 +292,7 @@
   .post-content h2,
   .post-content h3,
   .post-content h4 {
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    
     line-height: 1.4;
     color: #222222;
   }
@@ -326,6 +311,7 @@
 
   .post-content p {
     margin: 0;
+    padding-bottom: 1em;
   }
 
   .post-content a {
@@ -349,7 +335,7 @@
 
   .post-content code {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: 0.95rem;
+    font-size: 0.8rem;
     background: #f1f5f9;
     padding: 0.15em 0.35em;
     border-radius: 0.3rem;
@@ -417,8 +403,6 @@
   .post-attachments h2 {
     margin: 0 0 0.75rem;
     font-size: 1rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
   }
 
   .post-attachments ul {
@@ -455,7 +439,7 @@
   .post-content,
   .post-attachments {
     width: 100%;
-    max-width: 65ch;
+    max-width: 42rem;
     margin: 0 auto;
   }
 
@@ -477,7 +461,6 @@
     display: block;
     margin-bottom: 0.35rem;
     font-size: 0.75rem;
-    letter-spacing: 0.12em;
     text-transform: uppercase;
     color: #9ca3af;
   }
