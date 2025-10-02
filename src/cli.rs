@@ -48,6 +48,12 @@ The command recreates html/ so the next render starts from a clean slate.",
         alias = "clear"
     )]
     Clean,
+    #[command(
+        about = "Inspect and switch between installed themes",
+        long_about = "List the themes stored in themes/ or apply a different one to the current project.\n\
+Applying a theme copies its templates and assets into place and updates bucket3.yaml."
+    )]
+    Themes(ThemesArgs),
 }
 
 #[derive(Args, Clone, Debug)]
@@ -114,4 +120,27 @@ pub struct DevArgs {
         long_help = "Display the same detailed progress output as `render --verbose` while the dev server is running."
     )]
     pub verbose: bool,
+}
+
+#[derive(Args, Clone, Debug)]
+pub struct ThemesArgs {
+    #[command(subcommand)]
+    pub command: ThemesSubcommand,
+}
+
+#[derive(Subcommand, Clone, Debug)]
+pub enum ThemesSubcommand {
+    #[command(
+        about = "List themes installed under themes/",
+        long_about = "Show the themes available in the local themes/ directory and mark which one is currently active."
+    )]
+    List,
+    #[command(
+        about = "Apply a theme by copying its templates and assets",
+        long_about = "Copy templates and static assets from the selected theme into the project directories and update bucket3.yaml to reference it."
+    )]
+    Use {
+        #[arg(help = "Name of the theme directory inside themes/")]
+        name: String,
+    },
 }

@@ -2,6 +2,7 @@ mod clean;
 mod dev;
 mod init;
 mod render;
+mod themes;
 
 use anyhow::Result;
 
@@ -13,5 +14,6 @@ pub fn run(command: Command) -> Result<()> {
         Command::Render(args) => render::run_render_command(args),
         Command::Dev(args) => dev::run_dev_command(args),
         Command::Clean => clean::run_clean_command(),
+        Command::Themes(args) => themes::run_themes_command(args),
     }
 }

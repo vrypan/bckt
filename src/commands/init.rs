@@ -5,8 +5,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-const DIRECTORIES: &[&str] = &["html", "posts", "templates", "skel"];
+const DIRECTORIES: &[&str] = &["html", "posts", "templates", "skel", "themes"];
 const CONFIG_FILE: &str = "bucket3.yaml";
+const THEME_NAME: &str = "bckt3";
 
 const DEFAULT_CONFIG: &str = r#"title: "My Bucket3 Site"
 base_url: "https://example.com"
@@ -14,120 +15,23 @@ homepage_posts: 5
 date_format: "[year]-[month]-[day]"
 paginate_tags: true
 default_timezone: "+00:00"
+theme: bckt3
 "#;
 
-const BASE_TEMPLATE: &str = r#"<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>{{ title | default(config.title | default("bucket3")) }}</title>
-  <link rel="alternate" type="application/rss+xml" title="{{ config.title | default('bucket3') }}" href="{{ feed_url }}">
-</head>
-<body>
-  <main>
-    {% block content %}{% endblock content %}
-  </main>
-</body>
-</html>
+const THEME_MANIFEST: &str = r#"name: "bckt3"
+description: "Default bucket3rs theme"
+version: "0.1.0"
 "#;
 
-const POST_TEMPLATE: &str = r#"{% extends "base.html" %}
-{% block content %}
-<article>
-  {% if post.title %}<h1>{{ post.title }}</h1>{% endif %}
-  <div>{{ post.body | safe }}</div>
-</article>
-{% endblock content %}
-"#;
-
-const INDEX_TEMPLATE: &str = r#"{% extends "base.html" %}
-{% block content %}
-<section>
-  <h1>Recent Posts</h1>
-  {% for post in posts %}
-  <article>
-    {% if post.title %}<h2>{{ post.title }}</h2>{% endif %}
-    <div>{{ post.body | safe }}</div>
-  </article>
-  {% else %}
-  <p>No posts yet.</p>
-  {% endfor %}
-</section>
-{% endblock content %}
-"#;
-
-const TAG_TEMPLATE: &str = r#"{% extends "base.html" %}
-{% block content %}
-<section>
-  <h1>Tag: {{ tag }}</h1>
-  {% for post in posts %}
-  <article>
-    {% if post.title %}<h2>{{ post.title }}</h2>{% endif %}
-    <div>{{ post.body | safe }}</div>
-  </article>
-  {% else %}
-  <p>No posts for this tag.</p>
-  {% endfor %}
-</section>
-{% endblock content %}
-"#;
-
-const ARCHIVE_YEAR_TEMPLATE: &str = r#"{% extends "base.html" %}
-{% block content %}
-<section>
-  <h1>{{ year }}</h1>
-  {% for post in posts %}
-  <article>
-    {% if post.title %}<h2>{{ post.title }}</h2>{% endif %}
-    <div>{{ post.body | safe }}</div>
-  </article>
-  {% else %}
-  <p>No posts yet.</p>
-  {% endfor %}
-</section>
-{% endblock content %}
-"#;
-
-const ARCHIVE_MONTH_TEMPLATE: &str = r#"{% extends "base.html" %}
-{% block content %}
-<section>
-  <h1>{{ year }}-{{ month }}</h1>
-  {% for post in posts %}
-  <article>
-    {% if post.title %}<h2>{{ post.title }}</h2>{% endif %}
-    <div>{{ post.body | safe }}</div>
-  </article>
-  {% else %}
-  <p>No posts yet.</p>
-  {% endfor %}
-</section>
-{% endblock content %}
-"#;
-
-const RSS_TEMPLATE: &str = r#"{% autoescape false %}
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom">
-  <channel>
-    <title>{{ feed.title }}</title>
-    <link>{{ feed.site_url }}</link>
-    <description>{{ feed.description }}</description>
-    <lastBuildDate>{{ feed.updated }}</lastBuildDate>
-    <generator>bucket3rs</generator>
-    <atom:link href="{{ feed.feed_url }}" rel="self" type="application/rss+xml"/>
-    {% for item in feed.items %}
-    <item>
-      <title>{{ item.title }}</title>
-      <link>{{ item.link }}</link>
-      <guid isPermaLink="true">{{ item.guid }}</guid>
-      <pubDate>{{ item.pub_date }}</pubDate>
-      <description>{{ item.description }}</description>
-      <content:encoded><![CDATA[{{ item.content | safe }}]]></content:encoded>
-    </item>
-    {% endfor %}
-  </channel>
-</rss>
-{% endautoescape %}
-"#;
+const THEME_BASE_TEMPLATE: &str = include_str!("../../templates/base.html");
+const THEME_POST_TEMPLATE: &str = include_str!("../../templates/post.html");
+const THEME_INDEX_TEMPLATE: &str = include_str!("../../templates/index.html");
+const THEME_TAG_TEMPLATE: &str = include_str!("../../templates/tag.html");
+const THEME_ARCHIVE_YEAR_TEMPLATE: &str = include_str!("../../templates/archive_year.html");
+const THEME_ARCHIVE_MONTH_TEMPLATE: &str = include_str!("../../templates/archive_month.html");
+const THEME_RSS_TEMPLATE: &str = include_str!("../../templates/rss.xml");
+const THEME_STYLE_CSS: &str = include_str!("../../skel/style.css");
+const THEME_STYLE_TAILWIND_CSS: &str = include_str!("../../skel/style.tailwind.css");
 
 const SAMPLE_POST: &str = r#"---
 title: "Hello From bucket3rs"
@@ -143,27 +47,16 @@ images: []
 This is the starter post. Edit it or drop in your own content to get going.
 "#;
 
-const SAMPLE_STYLE: &str = r#"body {
-  margin: 0;
-  font-family: system-ui, sans-serif;
-  line-height: 1.5;
-}
-
-main {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 1.5rem;
-}
-"#;
-
 pub fn run_init_command() -> Result<()> {
     let root = env::current_dir().context("failed to resolve current directory")?;
 
     establish_directories(&root)?;
     seed_configuration(&root)?;
+    seed_theme(&root)?;
     seed_templates(&root)?;
-    seed_sample_post(&root)?;
     seed_static_assets(&root)?;
+    seed_theme_manifest(&root)?;
+    seed_sample_post(&root)?;
 
     println!("Initialized");
     Ok(())
@@ -187,25 +80,53 @@ fn seed_configuration(root: &Path) -> Result<()> {
         .with_context(|| format!("failed to write {}", CONFIG_FILE))
 }
 
+fn seed_theme(root: &Path) -> Result<()> {
+    let theme_root = root.join("themes").join(THEME_NAME);
+    fs::create_dir_all(theme_root.join("templates")).with_context(|| {
+        format!(
+            "failed to create theme templates directory at {}",
+            theme_root.join("templates").display()
+        )
+    })?;
+    fs::create_dir_all(theme_root.join("skel")).with_context(|| {
+        format!(
+            "failed to create theme skel directory at {}",
+            theme_root.join("skel").display()
+        )
+    })?;
+    Ok(())
+}
+
+fn seed_theme_manifest(root: &Path) -> Result<()> {
+    let manifest = root.join("themes").join(THEME_NAME).join("theme.yaml");
+    write_if_missing(&manifest, THEME_MANIFEST).context("failed to write theme manifest")
+}
+
 fn seed_templates(root: &Path) -> Result<()> {
-    let templates = root.join("templates");
-    write_if_missing(&templates.join("base.html"), BASE_TEMPLATE)
-        .context("failed to write templates/base.html")?;
-    write_if_missing(&templates.join("post.html"), POST_TEMPLATE)
-        .context("failed to write templates/post.html")?;
-    write_if_missing(&templates.join("index.html"), INDEX_TEMPLATE)
-        .context("failed to write templates/index.html")?;
-    write_if_missing(&templates.join("tag.html"), TAG_TEMPLATE)
-        .context("failed to write templates/tag.html")?;
-    write_if_missing(&templates.join("archive_year.html"), ARCHIVE_YEAR_TEMPLATE)
-        .context("failed to write templates/archive_year.html")?;
-    write_if_missing(
-        &templates.join("archive_month.html"),
-        ARCHIVE_MONTH_TEMPLATE,
-    )
-    .context("failed to write templates/archive_month.html")?;
-    write_if_missing(&templates.join("rss.xml"), RSS_TEMPLATE)
-        .context("failed to write templates/rss.xml")?;
+    let template_pairs = [
+        ("base.html", THEME_BASE_TEMPLATE),
+        ("post.html", THEME_POST_TEMPLATE),
+        ("index.html", THEME_INDEX_TEMPLATE),
+        ("tag.html", THEME_TAG_TEMPLATE),
+        ("archive_year.html", THEME_ARCHIVE_YEAR_TEMPLATE),
+        ("archive_month.html", THEME_ARCHIVE_MONTH_TEMPLATE),
+        ("rss.xml", THEME_RSS_TEMPLATE),
+    ];
+
+    for (name, contents) in template_pairs {
+        let theme_dest = root
+            .join("themes")
+            .join(THEME_NAME)
+            .join("templates")
+            .join(name);
+        write_if_missing(&theme_dest, contents)
+            .with_context(|| format!("failed to write theme template {name}"))?;
+
+        let project_dest = root.join("templates").join(name);
+        write_if_missing(&project_dest, contents)
+            .with_context(|| format!("failed to write templates/{name}"))?;
+    }
+
     Ok(())
 }
 
@@ -224,8 +145,29 @@ fn seed_sample_post(root: &Path) -> Result<()> {
 }
 
 fn seed_static_assets(root: &Path) -> Result<()> {
-    let style_path = root.join(["skel", "style.css"].into_iter().collect::<PathBuf>());
-    write_if_missing(&style_path, SAMPLE_STYLE).context("failed to write skel/style.css")
+    let asset_pairs = [
+        (PathBuf::from("style.css"), THEME_STYLE_CSS),
+        (
+            PathBuf::from("style.tailwind.css"),
+            THEME_STYLE_TAILWIND_CSS,
+        ),
+    ];
+
+    for (relative, contents) in asset_pairs {
+        let theme_dest = root
+            .join("themes")
+            .join(THEME_NAME)
+            .join("skel")
+            .join(&relative);
+        write_if_missing(&theme_dest, contents)
+            .with_context(|| format!("failed to write theme asset {}", relative.display()))?;
+
+        let project_dest = root.join("skel").join(&relative);
+        write_if_missing(&project_dest, contents)
+            .with_context(|| format!("failed to write skel/{}", relative.display()))?;
+    }
+
+    Ok(())
 }
 
 fn write_if_missing(path: &Path, contents: &str) -> Result<()> {

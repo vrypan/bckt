@@ -281,8 +281,10 @@
   }
 
   .post-hero {
-    max-width: 100%;
+    width: 100%;
+    max-width: 65ch;
     height: auto;
+    margin: 0 auto;
     border-radius: 0.5rem;
   }
 
@@ -443,6 +445,18 @@
     margin-top: 1.5rem;
     font-size: 0.9rem;
     color: #666666;
+  }
+
+  .post-article {
+    align-items: center;
+  }
+
+  .post-header,
+  .post-content,
+  .post-attachments {
+    width: 100%;
+    max-width: 65ch;
+    margin: 0 auto;
   }
 
   .archive-list {

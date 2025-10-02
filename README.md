@@ -36,6 +36,13 @@ bucket3 dev [--host <host>] [--port <port>] [--changed] [--verbose]
 
 `dev` starts a tiny HTTP server rooted at `html/`, recompiling the site when files in `posts/`, `templates/`, `skel/`, or `bucket3.yaml` change. Served HTML is augmented with a small polling script so connected browsers reload automatically after each rebuild. Use `--host` and `--port` to bind to a different interface, `--changed` to prefer incremental rebuilds, and `--verbose` for detailed render logs.
 
+```
+bucket3 themes list
+bucket3 themes use <name>
+```
+
+`themes` inspects the `themes/` directory bundled with the project. `list` highlights the active theme, while `use` copies the selected theme’s templates and static assets into the project and updates `bucket3.yaml`.
+
 Each command now ships with expanded `--help` output; run `bucket3 <command> --help` to see descriptions of every flag and workflow.
 
 ### Configuration

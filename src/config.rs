@@ -17,6 +17,7 @@ pub struct Config {
     pub date_format: String,
     pub paginate_tags: bool,
     pub default_timezone: String,
+    pub theme: Option<String>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, JsonValue>,
 }
@@ -34,6 +35,14 @@ impl Config {
             serde_yaml::from_str(&raw).with_context(|| invalid_yaml_message(path))?;
         config.validate(path)?;
         Ok(config)
+    }
+
+    pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
+        let path = path.as_ref();
+        let yaml = serde_yaml::to_string(self)?;
+        fs::write(path, yaml)
+            .with_context(|| format!("failed to write config file {}", path.display()))?;
+        Ok(())
     }
 
     pub fn validate(&self, origin: &Path) -> Result<()> {
@@ -63,6 +72,7 @@ impl Default for Config {
             date_format: "[year]-[month]-[day]".to_string(),
             paginate_tags: true,
             default_timezone: "+00:00".to_string(),
+            theme: Some("bckt3".to_string()),
             extra: serde_json::Map::new(),
         }
     }
@@ -197,6 +207,21 @@ default_timezone: "+05:30"
         assert_eq!(config.date_format, "[year]-[month]-[day]");
         assert!(!config.paginate_tags);
         assert_eq!(config.default_timezone, "+05:30");
+        assert_eq!(config.theme.as_deref(), Some("bckt3"));
+    }
+
+    #[test]
+    fn save_round_trips_config() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("bucket3.yaml");
+        let mut config = Config::default();
+        config.title = Some("Saved".into());
+        config.theme = Some("bckt3".into());
+        config.save(&path).unwrap();
+
+        let loaded = Config::load(&path).unwrap();
+        assert_eq!(loaded.title.as_deref(), Some("Saved"));
+        assert_eq!(loaded.theme.as_deref(), Some("bckt3"));
     }
 
     #[test]
