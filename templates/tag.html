@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<section>
+  <h1>Tag: {{ tag }}</h1>
+  {% for post in posts %}
+  <article>
+    {% if post.title %}
+    <h2><a href="{{ post.permalink }}" rel="bookmark">{{ post.title }}</a></h2>
+    {% else %}
+    <h2><a href="{{ post.permalink }}" rel="bookmark">{{ post.slug }}</a></h2>
+    {% endif %}
+    <div>{{ post.body | safe }}</div>
+  </article>
+  {% else %}
+  <p>No posts for this tag.</p>
+  {% endfor %}
+  <nav class="pager">
+    {% if pagination.prev %}<a href="{{ pagination.prev }}">Newer</a>{% endif %}
+    {% if pagination.next %}<a href="{{ pagination.next }}">Older</a>{% endif %}
+  </nav>
+</section>
+{% endblock content %}

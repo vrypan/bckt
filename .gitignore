@@ -2,8 +2,3 @@ target/
 html/
 bucket3.yaml
 posts/
-skel/
-templates/*
-!templates/base.html
-!templates/post.html
-!templates/rss.xml

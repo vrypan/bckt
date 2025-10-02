@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<section>
+  <h1>Recent Posts</h1>
+  {% for post in posts %}
+  <article>
+    {% if post.title %}
+    <h2><a href="{{ post.permalink }}" rel="bookmark">{{ post.title }}</a></h2>
+    {% else %}
+    <h2><a href="{{ post.permalink }}" rel="bookmark">{{ post.slug }}</a></h2>
+    {% endif %}
+    <div>{{ post.body | safe }}</div>
+    <p><a href="{{ post.permalink }}" aria-label="Read full post">Read more →</a></p>
+  </article>
+  {% else %}
+  <p>No posts yet.</p>
+  {% endfor %}
+</section>
+
+{% if pagination.total > 1 %}
+<nav aria-label="Pagination" class="pager">
+  <p>Page {{ pagination.current }} of {{ pagination.total }}</p>
+  <div class="pager__links">
+    {% if pagination.prev %}
+    <a href="{{ pagination.prev }}" rel="prev">← Newer Posts</a>
+    {% endif %}
+    {% if pagination.next %}
+    <a href="{{ pagination.next }}" rel="next">Older Posts →</a>
+    {% endif %}
+  </div>
+</nav>
+{% endif %}
+{% endblock content %}
