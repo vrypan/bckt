@@ -8,6 +8,7 @@ use anyhow::{Context, Result, bail};
 use blake3::Hasher;
 use minijinja::Environment;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use time::OffsetDateTime;
 use time::format_description;
 use time::format_description::well_known::{Rfc2822, Rfc3339};
@@ -43,6 +44,40 @@ fn log_status(enabled: bool, label: &str, message: impl AsRef<str>) {
     if enabled {
         println!("[{}] {}", label, message.as_ref());
     }
+}
+
+fn config_tag_feeds(config: &Config) -> Vec<String> {
+    fn split_list(value: &str) -> Vec<String> {
+        value
+            .split(',')
+            .map(|part| part.trim().to_string())
+            .filter(|part| !part.is_empty())
+            .collect()
+    }
+
+    let mut tags = Vec::new();
+    if let Some(value) = config.extra.get("rss_tags") {
+        match value {
+            JsonValue::String(s) => tags.extend(split_list(s)),
+            JsonValue::Array(items) => {
+                for item in items {
+                    match item {
+                        JsonValue::String(s) => {
+                            let trimmed = s.trim();
+                            if !trimmed.is_empty() {
+                                tags.push(trimmed.to_string());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    tags.sort();
+    tags.dedup();
+    tags
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -932,6 +967,13 @@ fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
 
     let attached = convert_paths(&post.attached)?;
 
+    let body = att_to_absolute(
+        &post.body_html,
+        &post.permalink,
+        &config.base_url,
+        &post.attached,
+    );
+
     Ok(PostTemplate {
         title: post.title.clone(),
         slug: post.slug.clone(),
@@ -940,7 +982,7 @@ fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
         tags: post.tags.clone(),
         abstract_text: post.abstract_text.clone(),
         attached,
-        body: post.body_html.clone(),
+        body,
         excerpt: post.excerpt.clone(),
         permalink: post.permalink.clone(),
         extra: post.extra.clone(),
@@ -954,12 +996,19 @@ fn build_post_summary(config: &Config, post: &Post) -> Result<PostSummary> {
         .format(&Rfc3339)
         .context("failed to format RFC3339 date")?;
 
+    let body = att_to_absolute(
+        &post.body_html,
+        &post.permalink,
+        &config.base_url,
+        &post.attached,
+    );
+
     Ok(PostSummary {
         title: post.title.clone(),
         slug: post.slug.clone(),
         date,
         date_iso,
-        body: post.body_html.clone(),
+        body,
         excerpt: post.excerpt.clone(),
         permalink: post.permalink.clone(),
         extra: post.extra.clone(),
@@ -980,13 +1029,20 @@ fn build_feed_item(config: &Config, post: &Post) -> Result<FeedItem> {
         post.excerpt.clone()
     };
 
+    let body = att_to_absolute(
+        &post.body_html,
+        &post.permalink,
+        &config.base_url,
+        &post.attached,
+    );
+
     Ok(FeedItem {
         title: xml_escape(item_title),
         link: xml_escape(&link),
         guid: xml_escape(&link),
         pub_date: xml_escape(&pub_date),
         description: xml_escape(&description),
-        content: sanitize_cdata(&post.body_html),
+        content: sanitize_cdata(&body),
     })
 }
 
@@ -1023,6 +1079,51 @@ fn normalize_path(path: &Path) -> String {
         .map(|comp| comp.as_os_str().to_string_lossy())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+fn join_permalink(permalink: &str, relative: &str) -> String {
+    if relative.starts_with('/') {
+        return relative.to_string();
+    }
+
+    let mut full = PathBuf::new();
+    for segment in permalink.trim_matches('/').split('/') {
+        if !segment.is_empty() {
+            full.push(segment);
+        }
+    }
+    let trimmed = relative.trim_start_matches("./");
+    full.push(trimmed);
+
+    let normalized = normalize_path(full.as_path());
+    format!("/{}", normalized)
+}
+
+fn att_to_absolute(body: &str, permalink: &str, base_url: &str, attached: &[PathBuf]) -> String {
+    if attached.is_empty() {
+        return body.to_string();
+    }
+    let mut transformed = body.to_string();
+    for item in attached {
+        if item.is_absolute() {
+            continue;
+        }
+        let normalized = normalize_path(item);
+        let relative = join_permalink(permalink, &normalized);
+        let absolute = absolute_url(base_url, &relative);
+
+        for target in [&normalized, relative.as_str()] {
+            if transformed.contains(target) {
+                transformed = transformed.replace(target, &absolute);
+            }
+        }
+
+        let dotted = format!("./{}", normalized);
+        if transformed.contains(&dotted) {
+            transformed = transformed.replace(&dotted, &absolute);
+        }
+    }
+    transformed
 }
 
 fn post_key(post: &Post) -> String {
@@ -1206,6 +1307,31 @@ fn render_feeds(
     env: &Environment<'static>,
 ) -> Result<()> {
     render_rss(posts, html_root, config, env)?;
+
+    for tag in config_tag_feeds(config) {
+        let slug = tag_slug(&tag);
+        let tag_posts: Vec<&Post> = posts
+            .iter()
+            .filter(|post| post.tags.iter().any(|t| t.eq(&tag)))
+            .collect();
+        let output_path = html_root.join(format!("rss-{}.xml", slug));
+        let title = config
+            .title
+            .clone()
+            .unwrap_or_else(|| "bucket3".to_string());
+        let feed_title = format!("{} · {}", tag, title);
+        let site_path = format!("/tags/{}/", slug);
+        let feed_path = format!("/rss-{}.xml", slug);
+        render_feed(
+            tag_posts,
+            config,
+            env,
+            &site_path,
+            &feed_path,
+            &output_path,
+            Some(feed_title),
+        )?;
+    }
     render_sitemap(posts, html_root, config)?;
     Ok(())
 }
@@ -1216,16 +1342,32 @@ fn render_rss(
     config: &Config,
     env: &Environment<'static>,
 ) -> Result<()> {
+    let output_path = html_root.join("rss.xml");
+    let posts_ref: Vec<&Post> = posts.iter().collect();
+    render_feed(posts_ref, config, env, "/", "/rss.xml", &output_path, None)
+}
+
+fn render_feed(
+    posts: Vec<&Post>,
+    config: &Config,
+    env: &Environment<'static>,
+    site_path: &str,
+    feed_path: &str,
+    output_path: &Path,
+    title: Option<String>,
+) -> Result<()> {
     let template = env
         .get_template("rss.xml")
         .context("rss.xml template missing")?;
 
-    let site_url = absolute_url(&config.base_url, "/");
-    let feed_url = absolute_url(&config.base_url, "/rss.xml");
-    let title = config
-        .title
-        .clone()
-        .unwrap_or_else(|| "bucket3".to_string());
+    let site_url = absolute_url(&config.base_url, site_path);
+    let feed_url = absolute_url(&config.base_url, feed_path);
+    let resolved_title = title.unwrap_or_else(|| {
+        config
+            .title
+            .clone()
+            .unwrap_or_else(|| "bucket3".to_string())
+    });
     let build_date = posts
         .first()
         .map(|post| post.date)
@@ -1233,16 +1375,16 @@ fn render_rss(
     let last_build_date = format_rfc2822(&build_date)?;
 
     let items = posts
-        .iter()
+        .into_iter()
         .take(50)
         .map(|post| build_feed_item(config, post))
         .collect::<Result<Vec<_>>>()?;
 
     let context = FeedContext {
-        title: xml_escape(&title),
+        title: xml_escape(&resolved_title),
         site_url: xml_escape(&site_url),
         feed_url: xml_escape(&feed_url),
-        description: xml_escape(&title),
+        description: xml_escape(&resolved_title),
         updated: xml_escape(&last_build_date),
         items,
     };
@@ -1251,8 +1393,11 @@ fn render_rss(
         .render(minijinja::context! { feed => context })
         .context("failed to render rss.xml")?;
 
-    let output_path = html_root.join("rss.xml");
-    fs::write(&output_path, rendered)
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    fs::write(output_path, rendered)
         .with_context(|| format!("failed to write {}", output_path.display()))?;
     Ok(())
 }
@@ -1903,6 +2048,74 @@ mod tests {
         assert!(feed.contains("<link>https://example.com/blog/2024/02/01/beta/</link>"));
         assert!(feed.contains("<description>Beta body"));
         assert!(feed.contains("<content:encoded><![CDATA["));
+    }
+
+    #[test]
+    fn generates_tag_rss_feeds_when_configured() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+        fs::write(
+            root.join("bucket3.yaml"),
+            "title: Demo Site\nbase_url: \"https://example.com\"\nrss_tags:\n  - shared\n",
+        )
+        .unwrap();
+
+        write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+        write_tagged_post(root, "beta", "other", "2024-02-01T00:00:00Z", "B");
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let feed_path = root.join("html/rss-shared.xml");
+        assert!(feed_path.exists());
+        let feed = fs::read_to_string(feed_path).unwrap();
+        assert!(feed.contains("shared · Demo Site"));
+        assert!(feed.contains("/2024/01/01/alpha/"));
+        assert!(!feed.contains("/2024/02/01/beta/"));
+    }
+
+    #[test]
+    fn rewrites_relative_asset_urls_to_absolute() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts/media/images")).unwrap();
+        setup_markdown_templates(root);
+        fs::write(root.join("posts/media/images/pic.png"), "image-bytes").unwrap();
+        fs::write(root.join("posts/media/notes.txt"), "notes").unwrap();
+        fs::write(
+            root.join("posts/media/post.md"),
+            "---\ndate: 2024-01-01T00:00:00Z\nattached:\n  - images/pic.png\n  - notes.txt\n---\n![Alt](images/pic.png)\n\n[Download](notes.txt)\n",
+        )
+        .unwrap();
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let post_page = fs::read_to_string(root.join("html/2024/01/01/media/index.html")).unwrap();
+        assert!(post_page.contains("/2024/01/01/media/images/pic.png"));
+        assert!(post_page.contains("/2024/01/01/media/notes.txt"));
+
+        let feed = fs::read_to_string(root.join("html/rss.xml")).unwrap();
+        assert!(feed.contains("/2024/01/01/media/images/pic.png"));
+        assert!(feed.contains("/2024/01/01/media/notes.txt"));
     }
 
     #[test]
