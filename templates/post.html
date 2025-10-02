@@ -52,12 +52,11 @@
     {% if post.abstract %}
     <p class="post-subtitle">{{ post.abstract }}</p>
     {% endif %}
+    {% if post.image %}<img
+        src="{{ post.permalink }}{{ post.image }}"
+        style="max-width: 100%; height: auto; margin-bottom: 2em"
+    />{% endif %} 
   </header>
-  {% if post.images %}
-  <figure class="post-media">
-    <img src="{{ post.images[0] }}" alt="">
-  </figure>
-  {% endif %}
   <div class="post-body">
     {{ post.body | safe }}
   </div>

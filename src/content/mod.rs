@@ -22,8 +22,6 @@ pub struct Post {
     pub tags: Vec<String>,
     pub abstract_text: Option<String>,
     pub attached: Vec<PathBuf>,
-    pub images: Vec<PathBuf>,
-    pub video_url: Option<String>,
     pub body_html: String,
     pub excerpt: String,
     pub source_dir: PathBuf,
@@ -50,9 +48,6 @@ struct FrontMatter {
     pub abstract_text: Option<String>,
     #[serde(deserialize_with = "deserialize_path_list")]
     pub attached: Vec<PathBuf>,
-    #[serde(deserialize_with = "deserialize_path_list")]
-    pub images: Vec<PathBuf>,
-    pub video_url: Option<String>,
     #[serde(flatten)]
     pub extra: Mapping,
 }
@@ -141,8 +136,6 @@ fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
         tags: front.tags,
         abstract_text: front.abstract_text,
         attached: front.attached,
-        images: front.images,
-        video_url: front.video_url,
         body_html,
         excerpt,
         source_dir: dir.to_path_buf(),
@@ -286,11 +279,13 @@ where
     enum Value {
         Many(Vec<PathBuf>),
         One(String),
+        None,
     }
 
     Ok(match Value::deserialize(deserializer)? {
         Value::Many(items) => items,
         Value::One(value) => split_csv(&value).into_iter().map(PathBuf::from).collect(),
+        Value::None => Vec::new(),
     })
 }
 
@@ -437,11 +432,6 @@ mod tests {
         assert_eq!(post.tags, vec!["summary".to_string(), "rust".to_string()]);
         assert_eq!(post.abstract_text.as_deref(), Some("Short"));
         assert_eq!(post.attached, vec![PathBuf::from("files/data.csv")]);
-        assert_eq!(post.images, vec![PathBuf::from("img.png")]);
-        assert_eq!(
-            post.video_url.as_deref(),
-            Some("https://example.com/video.mp4")
-        );
         assert_eq!(post.body_html, "<p>Body</p>\n");
         assert_eq!(post.excerpt, "Body");
         assert_eq!(
@@ -449,6 +439,14 @@ mod tests {
                 .get("location")
                 .and_then(|value| value.get("country")),
             Some(&JsonValue::String("GR".to_string()))
+        );
+        assert_eq!(
+            post.extra.get("images"),
+            Some(&JsonValue::Array(vec![JsonValue::String("img.png".into())]))
+        );
+        assert_eq!(
+            post.extra.get("video_url"),
+            Some(&JsonValue::String("https://example.com/video.mp4".into()))
         );
     }
 
@@ -540,8 +538,10 @@ mod tests {
             post.attached,
             vec![PathBuf::from("file-a.txt"), PathBuf::from("file-b.txt")]
         );
-        assert_eq!(post.images, vec![PathBuf::from("img-a.png")]);
-        assert!(post.extra.is_empty());
+        assert_eq!(
+            post.extra.get("images"),
+            Some(&JsonValue::String("img-a.png".into()))
+        );
     }
 
     #[test]

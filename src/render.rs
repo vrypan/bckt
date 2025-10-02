@@ -397,12 +397,7 @@ fn compute_post_digest(post: &Post) -> Result<String> {
     })?;
     hasher.update(&content);
 
-    let mut assets: Vec<PathBuf> = post
-        .attached
-        .iter()
-        .chain(post.images.iter())
-        .cloned()
-        .collect();
+    let mut assets: Vec<PathBuf> = post.attached.iter().cloned().collect();
     assets.sort();
 
     for relative in assets {
@@ -936,7 +931,6 @@ fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
         .context("failed to format RFC3339 date")?;
 
     let attached = convert_paths(&post.attached)?;
-    let images = convert_paths(&post.images)?;
 
     Ok(PostTemplate {
         title: post.title.clone(),
@@ -948,8 +942,6 @@ fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
         attached,
         body: post.body_html.clone(),
         excerpt: post.excerpt.clone(),
-        images,
-        video_url: post.video_url.clone(),
         permalink: post.permalink.clone(),
         extra: post.extra.clone(),
     })
@@ -1107,7 +1099,7 @@ fn archive_month_path(html_root: &Path, year: i32, month: u8) -> PathBuf {
 
 fn copy_post_assets(post: &Post, target_dir: &Path) -> Result<()> {
     let mut assets = BTreeSet::new();
-    for entry in post.attached.iter().chain(post.images.iter()) {
+    for entry in &post.attached {
         if entry.is_absolute() {
             bail!("{}: asset path must be relative", entry.display());
         }
@@ -1456,8 +1448,6 @@ struct PostTemplate {
     attached: Vec<String>,
     body: String,
     excerpt: String,
-    images: Vec<String>,
-    video_url: Option<String>,
     permalink: String,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
@@ -1641,7 +1631,11 @@ mod tests {
         let root = temp.path();
         fs::create_dir_all(root.join("posts/assets-post")).unwrap();
         setup_markdown_templates(root);
-        fs::write(root.join("posts/assets-post/post.md"), "---\ndate: 2024-01-01T00:00:00Z\nattached: [data/notes.txt]\nimages: [images/pic.png]\n---\nBody").unwrap();
+        fs::write(
+            root.join("posts/assets-post/post.md"),
+            "---\ndate: 2024-01-01T00:00:00Z\nattached: [data/notes.txt, images/pic.png]\n---\nBody",
+        )
+        .unwrap();
         fs::create_dir_all(root.join("posts/assets-post/data")).unwrap();
         fs::create_dir_all(root.join("posts/assets-post/images")).unwrap();
         fs::write(root.join("posts/assets-post/data/notes.txt"), "notes").unwrap();
