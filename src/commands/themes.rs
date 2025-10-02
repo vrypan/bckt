@@ -89,13 +89,8 @@ fn apply_theme(theme_root: &Path, project_root: &Path) -> Result<()> {
         if entry.file_type()?.is_dir() {
             copy_dir(&source_path, &destination_path)?;
         } else {
-            fs::copy(&source_path, &destination_path).with_context(|| {
-                format!(
-                    "failed to copy {} to {}",
-                    source_path.display(),
-                    destination_path.display()
-                )
-            })?;
+            // Ignore stray files at the theme root so only scoped directories are applied.
+            continue;
         }
     }
 
