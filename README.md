@@ -22,13 +22,21 @@ The `init` command creates the starter structure: `html/`, `posts/`, `templates/
 bucket3 render [--posts] [--static] [--changed|--force] [-v|--verbose]
 ```
 
-`render` processes the Markdown/HTML sources under `posts/` and writes files into `html/yyyy/mm/dd/slug/index.html`, copying any attachments listed in front matter into the same directory. Static assets under `skel/` are mirrored into `html/`. If no flags are provided, both posts and static assets are refreshed; `--posts` or `--static` can be used to run individual portions of the pipeline. `--changed` reuses cached digests so only modified posts are rebuilt, while `--force` discards the cache and renders everything. Add `-v/--verbose` to see per-step progress and which posts were rendered or skipped.
+`render` processes the Markdown/HTML sources under `posts/` and writes files into `html/yyyy/mm/dd/slug/index.html`, copying any attachments listed in front matter into the same directory. Static assets under `skel/` are mirrored into `html/`. If no flags are provided, both posts and static assets are refreshed; `--posts` or `--static` limit the run to that portion of the pipeline. `--changed` reuses cached digests so only modified posts are rebuilt, while `--force` discards the cache and renders everything. Add `-v/--verbose` to see per-step progress and which posts were rendered or skipped.
+
+```
+bucket3 clean
+```
+
+`clean` removes the current `html/` directory along with the incremental build cache stored in `.bucket3/`, then recreates `html/` as an empty folder so the next render starts from a pristine state. The subcommand is also available as `bucket3 clear` for parity with the project goals document.
 
 ```
 bucket3 dev [--host <host>] [--port <port>] [--changed] [--verbose]
 ```
 
 `dev` starts a tiny HTTP server rooted at `html/`, recompiling the site when files in `posts/`, `templates/`, `skel/`, or `bucket3.yaml` change. Served HTML is augmented with a small polling script so connected browsers reload automatically after each rebuild. Use `--host` and `--port` to bind to a different interface, `--changed` to prefer incremental rebuilds, and `--verbose` for detailed render logs.
+
+Each command now ships with expanded `--help` output; run `bucket3 <command> --help` to see descriptions of every flag and workflow.
 
 ### Configuration
 
