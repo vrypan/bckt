@@ -118,7 +118,7 @@ fn directory_has_contents(path: &Path) -> Result<bool> {
 }
 
 fn apply_theme(theme_root: &Path, project_root: &Path) -> Result<()> {
-    let copies = ["templates", "skel"];
+    let copies = ["templates", "skel", "pages"];
 
     for name in copies {
         let source_path = theme_root.join(name);
