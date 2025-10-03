@@ -1,53 +1,57 @@
 # bckt
 
-`bckt` (pronounced "bucket") is an opinionated but flexible static site generator for blogs.
+`bckt` (pronounced "bucket") is an opinionated static site generator designed for personal blogs. It favors readable defaults, fast rebuilds, and simple customization so you can focus on writing instead of wiring.
 
-## Development
+## Download Pre-built Binaries
 
-```
-cargo fmt
-cargo clippy -- -D warnings
-cargo test
-```
+1. Go to the [Releases](https://github.com/vrypan/microblog-ssg/releases).
+2. Pick the archive that matches your platform (macOS, Linux, or Windows) and download it.
+3. Unpack the archive and place the `bckt` (or `bckt.exe`) binary somewhere on your `PATH`.
+4. Run `bckt --help` to confirm it works.
 
-## Usage
+If you prefer building the binary yourself, `cargo install --path .` inside this repository works too.
 
-```
+## Quick Start
+
+```bash
+# 1. Create a new site (run inside an empty directory)
 bckt init
+
+# 2. Render the site once to produce html/
+bckt render
+
+# 3. Start a local preview server with live reload
+bckt dev --verbose --changed
 ```
 
-The `init` command creates the starter structure: `html/`, `posts/`, `templates/`, `skel/`, and a `bckt.yaml` configuration file. The command is idempotent and prints `Initialized` when the workspace is ready.
+After running these commands you will have:
 
-```
-bckt render [--posts] [--static] [--changed|--force] [-v|--verbose]
-```
+- `posts/` – starter content you can edit or replace.
+- `templates/` & `skel/` – HTML templates and static assets copied from the default theme (`bckt3`).
+- `html/` – the generated site.
+- `bckt.yaml` – configuration file with sensible defaults.
 
-`render` processes the Markdown/HTML sources under `posts/` and writes files into `html/yyyy/mm/dd/slug/index.html`, copying any attachments listed in front matter into the same directory. Static assets under `skel/` are mirrored into `html/`. If no flags are provided, both posts and static assets are refreshed; `--posts` or `--static` limit the run to that portion of the pipeline. `--changed` reuses cached digests so only modified posts are rebuilt, while `--force` discards the cache and renders everything. Add `-v/--verbose` to see per-step progress and which posts were rendered or skipped.
+Publish by serving the `html/` directory with any static host (GitHub Pages, Netlify, S3, etc.).
 
-```
-bckt clean
-```
+## Customize the Theme
 
-`clean` removes the current `html/` directory along with the incremental build cache stored in `.bckt/`, then recreates `html/` as an empty folder so the next render starts from a pristine state. The subcommand is also available as `bckt clear` for parity with the project goals document.
+The default theme lives in [`themes/bckt3/`](themes/bckt3). Its README explains the file layout, how `templates/` and `skel/` work together, and how to adapt them into your own theme. Start there if you want to tweak typography, navigation, or ship a completely custom look.
 
-```
-bckt dev [--host <host>] [--port <port>] [--changed] [--verbose]
-```
+## Command Overview
 
-`dev` starts a tiny HTTP server rooted at `html/`, recompiling the site when files in `posts/`, `templates/`, `skel/`, or `bckt.yaml` change. Served HTML is augmented with a small polling script so connected browsers reload automatically after each rebuild. Use `--host` and `--port` to bind to a different interface, `--changed` to prefer incremental rebuilds, and `--verbose` for detailed render logs.
+| Command | Purpose |
+|---------|---------|
+| `bckt init` | Create the starter structure (`html/`, `posts/`, `templates/`, `skel/`, `bckt.yaml`). Idempotent and safe to rerun. |
+| `bckt render [--posts] [--static] [--changed|--force] [-v]` | Render posts, copy static assets, and write output into `html/`. Flags let you limit the rebuild or force a clean sweep. |
+| `bckt clean` | Remove `html/` and the `.bckt/` build cache, then recreate an empty `html/` directory. Also available as `bckt clear`. |
+| `bckt dev [--host] [--port] [--changed] [--verbose]` | Run a local preview server with live reload. |
+| `bckt themes list` / `bckt themes use <name>` | Inspect bundled themes and copy one into your project, updating `bckt.yaml`. |
 
-```
-bckt themes list
-bckt themes use <name>
-```
+Run `bckt <command> --help` for full flag descriptions.
 
-`themes` inspects the `themes/` directory bundled with the project. `list` highlights the active theme, while `use` copies the selected theme’s templates, static assets, and standalone pages into the project and updates `bckt.yaml`. You’ll be prompted before existing `templates/`, `skel/`, or `pages/` content is overwritten; pass `--force` to skip the confirmation.
+## Configuration
 
-Each command now ships with expanded `--help` output; run `bckt <command> --help` to see descriptions of every flag and workflow.
-
-### Configuration
-
-`bckt.yaml` drives site-wide settings. All fields are optional; missing values fall back to:
+`bckt.yaml` drives site-wide settings. Every field is optional and defaults to:
 
 ```
 base_url: "https://example.com"
@@ -57,11 +61,11 @@ paginate_tags: true
 default_timezone: "+00:00"
 ```
 
-`base_url` must be an absolute `http` or `https` URL, `homepage_posts` must be positive, `paginate_tags` toggles cursor-based tag archives, `default_timezone` provides the offset (e.g. `+02:00`) used when posts omit a timezone, and `date_format` accepts either a custom [`time` format description`](https://docs.rs/time/latest/time/format_description/) or the keyword `RFC3339`. The configuration is injected into templates as `config`, and templates can call `{{ now() }}` (or `{{ now('RFC3339') }}`) to render the current timestamp.
+`base_url` must be an absolute `http`/`https` URL, `homepage_posts` controls the number of entries on the landing page, `paginate_tags` toggles cursor-based tag archives, `default_timezone` is used when posts omit a timezone, and `date_format` accepts either a custom [`time` format description`](https://docs.rs/time/latest/time/format_description/) or `RFC3339`. Templates receive the configuration as `config`, and `{{ now() }}` (or `{{ now('RFC3339') }}`) renders the current timestamp.
 
-### Posts
+## Posts
 
-Store posts under `posts/` in any directory layout. Each directory that contains exactly one Markdown or HTML file (with a `.md` or `.html` extension) is considered a post; all other files in that directory are treated as assets. Markdown sources are rendered with GitHub-flavored options (tables, task lists, strikethrough, autolinks, and footnotes), and the first paragraph becomes the post excerpt (truncated to ~280 characters). Every post file must start with YAML front matter:
+Store posts under `posts/` — each directory with exactly one `.md` or `.html` file becomes a post and the rest of the files in that directory are copied as attachments. Markdown is rendered with GitHub-flavored extensions and the first paragraph becomes the excerpt (trimmed to about 280 characters). Every post starts with YAML front matter:
 
 ```
 ---
@@ -80,8 +84,18 @@ video_url: "https://example.com/video.mp4"
 Body goes here...
 ```
 
-`slug` falls back to the directory name (kebab-cased) when omitted. Dates may use RFC 3339 or a naive `YYYY-MM-DD HH:MM:SS` timestamp (which will be interpreted with the configured `default_timezone`), and the permalink for a post is `/yyyy/mm/dd/slug/`. The `attached` and `images` lists stay relative to the post directory so later build steps can copy them alongside the rendered HTML. The homepage shows the most recent `homepage_posts` entries and writes immutable archive pages keyed by a cursor (`/page/<timestamp-slug>/`), so new posts only regenerate the head page. Tags render under `/tags/<tag>/` (with optional cursor pagination when `paginate_tags` is enabled) and yearly/monthly archives render under `/yyyy/` and `/yyyy/mm/`.
+`slug` falls back to the directory name (kebab-cased) when omitted. Dates may use RFC 3339 or a naive `YYYY-MM-DD HH:MM:SS` timestamp (interpreted using `default_timezone`). The permalink format is `/yyyy/mm/dd/slug/`. The homepage lists the most recent `homepage_posts`, tag pages live under `/tags/<tag>/`, and monthly/yearly archives are written automatically.
 
-### Pages
+## Pages
 
-Drop standalone HTML files under `pages/` to render them as Minijinja templates. The directory structure is mirrored inside `html/`, so `pages/404.html` becomes `html/404.html`, while `pages/about/index.html` becomes `html/about/index.html`. Pages have access to the same globals as posts (e.g. `config`, `feed_url`, `now()`).
+Drop standalone HTML files in `pages/` to render them as Minijinja templates. The directory structure is mirrored in `html/`, so `pages/404.html` becomes `html/404.html` and `pages/about/index.html` becomes `html/about/index.html`. Pages share the same globals as posts (`config`, `feed_url`, `now()`, etc.).
+
+## Development
+
+To work on bckt itself:
+
+```
+cargo fmt
+cargo clippy -- -D warnings
+cargo test
+```
