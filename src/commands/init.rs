@@ -9,6 +9,12 @@ const DIRECTORIES: &[&str] = &["html", "posts", "templates", "skel", "themes"];
 const CONFIG_FILE: &str = "bucket3.yaml";
 const THEME_NAME: &str = "bckt3";
 
+mod embedded_theme {
+    include!(concat!(env!("OUT_DIR"), "/theme_bckt3.rs"));
+}
+
+use embedded_theme::{EmbeddedFile, THEME_BCKT3_FILES};
+
 const DEFAULT_CONFIG: &str = r#"title: "My Bucket3 Site"
 base_url: "https://example.com"
 homepage_posts: 5
@@ -17,21 +23,6 @@ paginate_tags: true
 default_timezone: "+00:00"
 theme: bckt3
 "#;
-
-const THEME_MANIFEST: &str = include_str!("../../themes/bckt3/theme.yaml");
-const THEME_TAILWIND_CONFIG: &str = include_str!("../../themes/bckt3/tailwind.config.js");
-const THEME_STYLE_SOURCE: &str = include_str!("../../themes/bckt3/style.tailwind.css");
-
-const THEME_BASE_TEMPLATE: &str = include_str!("../../themes/bckt3/templates/base.html");
-const THEME_POST_TEMPLATE: &str = include_str!("../../themes/bckt3/templates/post.html");
-const THEME_INDEX_TEMPLATE: &str = include_str!("../../themes/bckt3/templates/index.html");
-const THEME_TAG_TEMPLATE: &str = include_str!("../../themes/bckt3/templates/tag.html");
-const THEME_ARCHIVE_YEAR_TEMPLATE: &str =
-    include_str!("../../themes/bckt3/templates/archive_year.html");
-const THEME_ARCHIVE_MONTH_TEMPLATE: &str =
-    include_str!("../../themes/bckt3/templates/archive_month.html");
-const THEME_RSS_TEMPLATE: &str = include_str!("../../themes/bckt3/templates/rss.xml");
-const THEME_STYLE_CSS: &str = include_str!("../../themes/bckt3/skel/style.css");
 
 const SAMPLE_POST: &str = r#"---
 title: "Hello From bucket3rs"
@@ -55,7 +46,6 @@ pub fn run_init_command() -> Result<()> {
     seed_theme(&root)?;
     seed_templates(&root)?;
     seed_static_assets(&root)?;
-    seed_theme_metadata(&root)?;
     seed_sample_post(&root)?;
 
     println!("Initialized");
@@ -82,67 +72,12 @@ fn seed_configuration(root: &Path) -> Result<()> {
 
 fn seed_theme(root: &Path) -> Result<()> {
     let theme_root = root.join("themes").join(THEME_NAME);
-    fs::create_dir_all(theme_root.join("templates")).with_context(|| {
-        format!(
-            "failed to create theme templates directory at {}",
-            theme_root.join("templates").display()
-        )
-    })?;
-    fs::create_dir_all(theme_root.join("skel")).with_context(|| {
-        format!(
-            "failed to create theme skel directory at {}",
-            theme_root.join("skel").display()
-        )
-    })?;
-    Ok(())
-}
-
-fn seed_theme_metadata(root: &Path) -> Result<()> {
-    let theme_root = root.join("themes").join(THEME_NAME);
-    write_if_missing(&theme_root.join("theme.yaml"), THEME_MANIFEST)
-        .context("failed to write theme manifest")?;
-    write_if_missing(&theme_root.join("style.tailwind.css"), THEME_STYLE_SOURCE)
-        .context("failed to write theme CSS source")?;
-    write_if_missing(
-        &theme_root.join("tailwind.config.js"),
-        THEME_TAILWIND_CONFIG,
-    )
-    .context("failed to write theme Tailwind config")?;
-
-    write_if_missing(&root.join("style.tailwind.css"), THEME_STYLE_SOURCE)
-        .context("failed to write style.tailwind.css")?;
-    write_if_missing(&root.join("tailwind.config.js"), THEME_TAILWIND_CONFIG)
-        .context("failed to write tailwind.config.js")?;
-
-    Ok(())
+    copy_theme_contents(&theme_root)
 }
 
 fn seed_templates(root: &Path) -> Result<()> {
-    let template_pairs = [
-        ("base.html", THEME_BASE_TEMPLATE),
-        ("post.html", THEME_POST_TEMPLATE),
-        ("index.html", THEME_INDEX_TEMPLATE),
-        ("tag.html", THEME_TAG_TEMPLATE),
-        ("archive_year.html", THEME_ARCHIVE_YEAR_TEMPLATE),
-        ("archive_month.html", THEME_ARCHIVE_MONTH_TEMPLATE),
-        ("rss.xml", THEME_RSS_TEMPLATE),
-    ];
-
-    for (name, contents) in template_pairs {
-        let theme_dest = root
-            .join("themes")
-            .join(THEME_NAME)
-            .join("templates")
-            .join(name);
-        write_if_missing(&theme_dest, contents)
-            .with_context(|| format!("failed to write theme template {name}"))?;
-
-        let project_dest = root.join("templates").join(name);
-        write_if_missing(&project_dest, contents)
-            .with_context(|| format!("failed to write templates/{name}"))?;
-    }
-
-    Ok(())
+    copy_theme_subset("templates/", &root.join("templates"))?;
+    copy_theme_subset("pages/", &root.join("pages"))
 }
 
 fn seed_sample_post(root: &Path) -> Result<()> {
@@ -160,29 +95,49 @@ fn seed_sample_post(root: &Path) -> Result<()> {
 }
 
 fn seed_static_assets(root: &Path) -> Result<()> {
-    let asset_pairs = [
-        (PathBuf::from("style.css"), THEME_STYLE_CSS),
-        (PathBuf::from("style.tailwind.css"), THEME_STYLE_SOURCE),
-    ];
+    copy_theme_subset("skel/", &root.join("skel"))
+}
 
-    for (relative, contents) in asset_pairs {
-        let theme_dest = root
-            .join("themes")
-            .join(THEME_NAME)
-            .join("skel")
-            .join(&relative);
-        write_if_missing(&theme_dest, contents)
-            .with_context(|| format!("failed to write theme asset {}", relative.display()))?;
+fn write_if_missing(path: &Path, contents: &str) -> Result<()> {
+    write_bytes_if_missing(path, contents.as_bytes())
+}
 
-        let project_dest = root.join("skel").join(&relative);
-        write_if_missing(&project_dest, contents)
-            .with_context(|| format!("failed to write skel/{}", relative.display()))?;
+fn copy_theme_contents(theme_root: &Path) -> Result<()> {
+    if !theme_root.exists() {
+        fs::create_dir_all(theme_root)
+            .with_context(|| format!("failed to create {}", theme_root.display()))?;
+    }
+
+    for file in THEME_BCKT3_FILES {
+        let destination = theme_root.join(file.path);
+        copy_embedded_file(&destination, file)?;
     }
 
     Ok(())
 }
 
-fn write_if_missing(path: &Path, contents: &str) -> Result<()> {
+fn copy_theme_subset(prefix: &str, destination_root: &Path) -> Result<()> {
+    let normalized = normalize_prefix(prefix);
+    for file in THEME_BCKT3_FILES
+        .iter()
+        .filter(|file| file.path.starts_with(&normalized))
+    {
+        let relative = &file.path[normalized.len()..];
+        if relative.is_empty() {
+            continue;
+        }
+        let destination = destination_root.join(relative);
+        copy_embedded_file(&destination, file)?;
+    }
+
+    Ok(())
+}
+
+fn copy_embedded_file(destination: &Path, file: &EmbeddedFile) -> Result<()> {
+    write_bytes_if_missing(destination, file.contents)
+}
+
+fn write_bytes_if_missing(path: &Path, contents: &[u8]) -> Result<()> {
     if path.exists() {
         return Ok(());
     }
@@ -194,7 +149,19 @@ fn write_if_missing(path: &Path, contents: &str) -> Result<()> {
     }
     let mut file =
         fs::File::create(path).with_context(|| format!("failed to create {}", path.display()))?;
-    file.write_all(contents.as_bytes())
+    file.write_all(contents)
         .with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
+}
+
+fn normalize_prefix(prefix: &str) -> String {
+    let trimmed = prefix.trim_start_matches('/');
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed.ends_with('/') {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}/")
+    }
 }
