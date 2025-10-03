@@ -1,6 +1,6 @@
 # TASKS
 
-This file tracks the work plan for **bucket3**. Tasks are grouped into milestones with crisp acceptance criteria so each can land as a clean PR.
+This file tracks the work plan for **bckt**. Tasks are grouped into milestones with crisp acceptance criteria so each can land as a clean PR.
 
 ---
 
@@ -14,19 +14,19 @@ This file tracks the work plan for **bucket3**. Tasks are grouped into milestone
 ---
 
 ## Milestone 0 — Repo Bootstrap (PR: `feat:init`)
-**Goal:** Compile, run `bucket3 init`, and create the skeleton.
+**Goal:** Compile, run `bckt init`, and create the skeleton.
 
 - [x] Cargo setup with deps: `clap`, `anyhow`, `serde`, `serde_yaml`, `minijinja`, `comrak`, `sled`, `walkdir`, `time`.
-- [x] Binary `bucket3`.
-- [x] Command: `bucket3 init` creates `html/`, `posts/`, `templates/`, `skel/`, `bucket3.yaml` (idempotent; won’t overwrite).
+- [x] Binary `bckt`.
+- [x] Command: `bckt init` creates `html/`, `posts/`, `templates/`, `skel/`, `bckt.yaml` (idempotent; won’t overwrite).
 - [x] Seed minimal templates (`base.html`, `post.html`, `index.html`) and sample post.
 - [x] CI: GitHub Actions workflow (fmt, clippy, test).
-**DoD:** Running `bucket3 init` on an empty repo completes without error and prints “Initialized”.
+**DoD:** Running `bckt init` on an empty repo completes without error and prints “Initialized”.
 
 ---
 
 ## Milestone 1 — Config & Template Context (PR: `feat:config`)
-**Goal:** Load `bucket3.yaml` and expose to templates.
+**Goal:** Load `bckt.yaml` and expose to templates.
 
 - [x] `Config` struct + `serde_yaml` loader with defaults (`homepage_posts`, `date_format`, `base_url`).
 - [x] Validate base URL and numeric ranges; nice error messages.
@@ -69,9 +69,9 @@ This file tracks the work plan for **bucket3**. Tasks are grouped into milestone
 - [x] Render post pages to `/yyyy/mm/dd/slug/index.html`.
 - [x] Copy `attached` assets (verify existence; error if missing).
 - [x] Copy `skel/` to `html/` (static assets) preserving structure.
-- [x] Command: `bucket3 render --posts --static` (both by default).
+- [x] Command: `bckt render --posts --static` (both by default).
 - [x] Tests: post output pathing; attached files present; missing asset error surfaced.
-**DoD:** `bucket3 render` produces working HTML for the sample post + assets.
+**DoD:** `bckt render` produces working HTML for the sample post + assets.
 
 ---
 
@@ -114,7 +114,7 @@ This file tracks the work plan for **bucket3**. Tasks are grouped into milestone
 
 - [x] Store content hashes (front-matter + body + asset mtimes) per post.
 - [x] Skip rendering/copy when unchanged; detect template or config changes → invalidate all.
-- [x] Command: `bucket3 render --changed` and `--force`.
+- [x] Command: `bckt render --changed` and `--force`.
 - [x] Tests: changing a single post only rebuilds its outputs; changing base.html triggers full rebuild.
 **DoD:** Re-running `render` on unchanged repo performs near-no work.
 
@@ -134,8 +134,8 @@ This file tracks the work plan for **bucket3**. Tasks are grouped into milestone
 ## Milestone 10 — CLI UX & Selective Builds (PR: `feat:cli-ux`)
 **Goal:** Sharper developer experience.
 
-- [ ] `bucket3 render --post <slug>` for a single post.
-- [ ] `bucket3 clear` removes only `html/`.
+- [ ] `bckt render --post <slug>` for a single post.
+- [ ] `bckt clear` removes only `html/`.
 - [ ] Verbose flag `-v` with timing; quiet mode `-q`.
 - [ ] Exit codes consistent (nonzero on errors).
 **DoD:** Selective build works; commands show useful progress.
@@ -155,7 +155,7 @@ This file tracks the work plan for **bucket3**. Tasks are grouped into milestone
 ## Future / Stretch (not required for v1)
 - [ ] **Stable pagination strategy** that minimizes regen churn (e.g., reverse-chron buckets by month, or “cursor” pages) to avoid rebuilding all pages on new posts.
 - [ ] **Image pipeline**: thumb generation, responsive `srcset`.
-- [x] **Dev server**: `bucket3 dev` with file-watch and live reload.
+- [x] **Dev server**: `bckt dev` with file-watch and live reload.
 - [ ] **Theme packs** and a theme registry.
 - [ ] **Importers** (Micro.blog export, RSS/JSON feed import).
 - [ ] **Search**: client-side JSON index or external search integration.
@@ -175,8 +175,8 @@ This file tracks the work plan for **bucket3**. Tasks are grouped into milestone
 
 | Area          | Test                                  | Expectation                                  |
 |---------------|----------------------------------------|----------------------------------------------|
-| Init          | Run `bucket3 init` twice               | Second run no-ops; no overwrites              |
-| Config        | Missing `bucket3.yaml`                 | Defaults applied; warning, not crash          |
+| Init          | Run `bckt init` twice               | Second run no-ops; no overwrites              |
+| Config        | Missing `bckt.yaml`                 | Defaults applied; warning, not crash          |
 | Front-matter  | Invalid date format                    | Clear error with file path + hint             |
 | Markdown      | GFM table/task list/footnote           | Correct HTML output                           |
 | Paths         | Permalink `/yyyy/mm/dd/slug/`          | `index.html` exactly there                    |

@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 
 {% block page_title %}
-{% if post.title %}{{ post.title }} · {{ config.title | default("bucket3") }}{% else %}{{ config.title | default("bucket3") }}{% endif %}
+{% if post.title %}{{ post.title }} · {{ config.title | default("bckt") }}{% else %}{{ config.title | default("bckt") }}{% endif %}
 {% endblock page_title %}
 
 {% block page_meta %}
 {% set canonical = (config.base_url | default("")) ~ post.permalink %}
 <meta name="description" content="{{ post.abstract | default(post.excerpt) }}">
-<meta property="og:site_name" content="{{ config.title | default("bucket3") }}">
+<meta property="og:site_name" content="{{ config.title | default("bckt") }}">
 <meta property="og:type" content="article">
-<meta property="og:title" content="{{ post.title | default(config.title | default("bucket3")) }}">
+<meta property="og:title" content="{{ post.title | default(config.title | default("bckt")) }}">
 <meta property="og:url" content="{{ canonical }}">
 <meta property="og:description" content="{{ post.abstract | default(post.excerpt) }}">
 <link rel="canonical" href="{{ canonical }}">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="{{ post.title | default(config.title | default("bucket3")) }}">
+<meta name="twitter:title" content="{{ post.title | default(config.title | default("bckt")) }}">
 <meta name="twitter:description" content="{{ post.abstract | default(post.excerpt) }}">
 {% endblock page_meta %}
 

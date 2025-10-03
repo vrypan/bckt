@@ -1,10 +1,10 @@
 [package]
-name = "bucket3"
+name = "bckt"
 version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "bucket3"
+name = "bckt"
 path = "src/main.rs"
 
 [dependencies]

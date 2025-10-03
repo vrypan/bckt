@@ -1,8 +1,8 @@
 .env
-.bucket3
+.bckt
 target/
 html/
-bucket3.yaml
+bckt.yaml
 posts/
 skel/
 templates/

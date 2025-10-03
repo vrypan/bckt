@@ -1,7 +1,7 @@
 # Static Assets (`skel/`)
 
 The `skel/` directory holds files that should be copied verbatim into the rendered
-`html/` tree. During `bucket3 render` every file and sub-directory under `skel/`
+`html/` tree. During `bckt render` every file and sub-directory under `skel/`
 is mirrored into the build output, preserving paths and timestamps where possible.
 Use this area for CSS, JavaScript, fonts, favicons, and any other assets that do
 not need template processing.

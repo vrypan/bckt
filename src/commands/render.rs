@@ -2,10 +2,12 @@ use anyhow::Result;
 use std::env;
 
 use crate::cli::RenderArgs;
+use crate::config;
 use crate::render::{BuildMode, RenderPlan, render_site};
 
 pub fn run_render_command(args: RenderArgs) -> Result<()> {
-    let root = env::current_dir()?;
+    let cwd = env::current_dir()?;
+    let root = config::find_project_root(&cwd)?;
     let plan = determine_plan(args);
     render_site(&root, plan)
 }

@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,24 @@ impl Config {
 
     pub fn default_offset(&self) -> Result<UtcOffset> {
         parse_timezone(&self.default_timezone)
+    }
+}
+
+pub fn find_project_root(start: impl AsRef<Path>) -> Result<PathBuf> {
+    let mut current = start.as_ref().to_path_buf();
+
+    loop {
+        let candidate = current.join("bckt.yaml");
+        if candidate.exists() {
+            return Ok(current);
+        }
+
+        if !current.pop() {
+            bail!(
+                "could not locate bckt.yaml starting from {}",
+                start.as_ref().display()
+            );
+        }
     }
 }
 
@@ -180,7 +198,7 @@ mod tests {
     #[test]
     fn default_when_file_missing() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("bucket3.yaml");
+        let path = dir.path().join("bckt.yaml");
         let config = Config::load(&path).unwrap();
         assert_eq!(config, Config::default());
     }
@@ -188,7 +206,7 @@ mod tests {
     #[test]
     fn load_valid_config() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("bucket3.yaml");
+        let path = dir.path().join("bckt.yaml");
         fs::write(
             &path,
             r#"title: "Bucket"
@@ -213,7 +231,7 @@ default_timezone: "+05:30"
     #[test]
     fn save_round_trips_config() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("bucket3.yaml");
+        let path = dir.path().join("bckt.yaml");
         let mut config = Config::default();
         config.title = Some("Saved".into());
         config.theme = Some("bckt3".into());
@@ -225,9 +243,28 @@ default_timezone: "+05:30"
     }
 
     #[test]
+    fn find_project_root_walks_upwards() {
+        let dir = TempDir::new().unwrap();
+        let project = dir.path();
+        let nested = project.join("posts/example");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(project.join("bckt.yaml"), "title: test\n").unwrap();
+
+        let discovered = find_project_root(&nested).unwrap();
+        assert_eq!(discovered, project);
+    }
+
+    #[test]
+    fn find_project_root_errors_when_missing() {
+        let dir = TempDir::new().unwrap();
+        let error = find_project_root(dir.path()).unwrap_err();
+        assert!(error.to_string().contains("could not locate bckt.yaml"));
+    }
+
+    #[test]
     fn reject_invalid_url() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("bucket3.yaml");
+        let path = dir.path().join("bckt.yaml");
         fs::write(
             &path,
             r#"title: "Bucket"
@@ -245,7 +282,7 @@ homepage_posts: 3
     #[test]
     fn reject_zero_homepage_posts() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("bucket3.yaml");
+        let path = dir.path().join("bckt.yaml");
         fs::write(
             &path,
             r#"base_url: "https://example.com"
@@ -261,7 +298,7 @@ homepage_posts: 0
     #[test]
     fn reject_invalid_date_format() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("bucket3.yaml");
+        let path = dir.path().join("bckt.yaml");
         fs::write(
             &path,
             r#"base_url: "https://example.com"
@@ -277,7 +314,7 @@ date_format: "???"
     #[test]
     fn accept_rfc3339_keyword() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("bucket3.yaml");
+        let path = dir.path().join("bckt.yaml");
         fs::write(
             &path,
             r#"base_url: "https://example.com"
@@ -293,7 +330,7 @@ date_format: "RFC3339"
     #[test]
     fn reject_invalid_timezone() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("bucket3.yaml");
+        let path = dir.path().join("bckt.yaml");
         fs::write(
             &path,
             r#"base_url: "https://example.com"

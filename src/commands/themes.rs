@@ -19,7 +19,7 @@ pub fn run_themes_command(args: ThemesArgs) -> Result<()> {
 }
 
 fn list_themes(root: &Path) -> Result<()> {
-    let config_path = root.join("bucket3.yaml");
+    let config_path = root.join("bckt.yaml");
     let config = Config::load(&config_path)?;
     let active = config.theme.as_deref();
 
@@ -64,7 +64,7 @@ fn use_theme(root: &Path, name: &str, force: bool) -> Result<()> {
     confirm_overwrite(root, force)?;
     apply_theme(&theme_root, root)?;
 
-    let config_path = root.join("bucket3.yaml");
+    let config_path = root.join("bckt.yaml");
     let mut config = Config::load(&config_path)?;
     config.theme = Some(name.to_string());
     config.save(&config_path)?;

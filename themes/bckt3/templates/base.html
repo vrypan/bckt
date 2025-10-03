@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>{% block page_title %}{{ config.title | default("bucket3") }}{% endblock page_title %}</title>
+    <title>{% block page_title %}{{ config.title | default("bckt") }}{% endblock page_title %}</title>
     <link rel="alternate" type="application/rss+xml" title="RSS" href="{{ feed_url }}">
     <link rel="icon" href="/img/favicon.ico">
     <link rel="stylesheet" href="/style.css">
@@ -17,7 +17,7 @@
     <header class="site-header">
       <div class="site-header__inner">
         <h1 class="site-title">
-          <a href="{{ base }}">{{ config.title | default("bucket3") }}</a>
+          <a href="{{ base }}">{{ config.title | default("bckt") }}</a>
         </h1>
         <nav class="site-nav">
           <a href="{{ base }}">Home</a>
@@ -34,7 +34,7 @@
     </main>
     <footer class="site-footer">
       <div class="site-main__inner">
-        <p>Powered by <a href="https://bucket3.com">bucket3</a>.</p>
+        <p>Powered by <a href="https://bckt.dev">bckt</a>.</p>
       </div>
     </footer>
   </body>

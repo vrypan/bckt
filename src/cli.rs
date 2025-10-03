@@ -1,10 +1,10 @@
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "bucket3", version)]
+#[command(name = "bckt", version)]
 #[command(
     about = "Build and preview microblog-friendly static sites",
-    long_about = "Bucket3 is a static-site toolbox tailored for microblogging. \n\
+    long_about = "Bckt is a static-site toolbox tailored for microblogging. \n\
 Use the bundled commands to scaffold a workspace, render posts, preview locally, \n\
 or clean out generated artifacts before a fresh build."
 )]
@@ -23,7 +23,7 @@ impl Cli {
 pub enum Command {
     #[command(
         about = "Create the starter directories, templates, and config",
-        long_about = "Initialise a new bucket3 workspace in the current directory.\n\
+        long_about = "Initialise a new bckt workspace in the current directory.\n\
 The command is idempotent: existing files are left untouched, so you can rerun it\n\
 to ensure required folders and templates are present without overwriting customisations."
     )]
@@ -43,7 +43,7 @@ The development server recompiles on edits so you can preview posts live while i
     Dev(DevArgs),
     #[command(
         about = "Remove generated files from html/",
-        long_about = "Delete the previously rendered html/ directory and the incremental cache (stored in .bucket3).\n\
+        long_about = "Delete the previously rendered html/ directory and the incremental cache (stored in .bckt).\n\
 The command recreates html/ so the next render starts from a clean slate.",
         alias = "clear"
     )]
@@ -51,7 +51,7 @@ The command recreates html/ so the next render starts from a clean slate.",
     #[command(
         about = "Inspect and switch between installed themes",
         long_about = "List the themes stored in themes/ or apply a different one to the current project.\n\
-Applying a theme copies its templates and assets into place and updates bucket3.yaml."
+Applying a theme copies its templates and assets into place and updates bckt.yaml."
     )]
     Themes(ThemesArgs),
 }
@@ -137,7 +137,7 @@ pub enum ThemesSubcommand {
     List,
     #[command(
         about = "Apply a theme by copying its templates and assets",
-        long_about = "Copy templates and static assets from the selected theme into the project directories and update bucket3.yaml to reference it."
+        long_about = "Copy templates and static assets from the selected theme into the project directories and update bckt.yaml to reference it."
     )]
     Use {
         #[arg(help = "Name of the theme directory inside themes/")]

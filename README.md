@@ -1,6 +1,6 @@
-# bucket3
+# bckt
 
-`bucket3` is a static site generator that builds a microblog-friendly HTML tree.
+`bckt` is a static site generator that builds a microblog-friendly HTML tree.
 
 ## Development
 
@@ -13,41 +13,41 @@ cargo test
 ## Usage
 
 ```
-bucket3 init
+bckt init
 ```
 
-The `init` command creates the starter structure: `html/`, `posts/`, `templates/`, `skel/`, and a `bucket3.yaml` configuration file. The command is idempotent and prints `Initialized` when the workspace is ready.
+The `init` command creates the starter structure: `html/`, `posts/`, `templates/`, `skel/`, and a `bckt.yaml` configuration file. The command is idempotent and prints `Initialized` when the workspace is ready.
 
 ```
-bucket3 render [--posts] [--static] [--changed|--force] [-v|--verbose]
+bckt render [--posts] [--static] [--changed|--force] [-v|--verbose]
 ```
 
 `render` processes the Markdown/HTML sources under `posts/` and writes files into `html/yyyy/mm/dd/slug/index.html`, copying any attachments listed in front matter into the same directory. Static assets under `skel/` are mirrored into `html/`. If no flags are provided, both posts and static assets are refreshed; `--posts` or `--static` limit the run to that portion of the pipeline. `--changed` reuses cached digests so only modified posts are rebuilt, while `--force` discards the cache and renders everything. Add `-v/--verbose` to see per-step progress and which posts were rendered or skipped.
 
 ```
-bucket3 clean
+bckt clean
 ```
 
-`clean` removes the current `html/` directory along with the incremental build cache stored in `.bucket3/`, then recreates `html/` as an empty folder so the next render starts from a pristine state. The subcommand is also available as `bucket3 clear` for parity with the project goals document.
+`clean` removes the current `html/` directory along with the incremental build cache stored in `.bckt/`, then recreates `html/` as an empty folder so the next render starts from a pristine state. The subcommand is also available as `bckt clear` for parity with the project goals document.
 
 ```
-bucket3 dev [--host <host>] [--port <port>] [--changed] [--verbose]
+bckt dev [--host <host>] [--port <port>] [--changed] [--verbose]
 ```
 
-`dev` starts a tiny HTTP server rooted at `html/`, recompiling the site when files in `posts/`, `templates/`, `skel/`, or `bucket3.yaml` change. Served HTML is augmented with a small polling script so connected browsers reload automatically after each rebuild. Use `--host` and `--port` to bind to a different interface, `--changed` to prefer incremental rebuilds, and `--verbose` for detailed render logs.
+`dev` starts a tiny HTTP server rooted at `html/`, recompiling the site when files in `posts/`, `templates/`, `skel/`, or `bckt.yaml` change. Served HTML is augmented with a small polling script so connected browsers reload automatically after each rebuild. Use `--host` and `--port` to bind to a different interface, `--changed` to prefer incremental rebuilds, and `--verbose` for detailed render logs.
 
 ```
-bucket3 themes list
-bucket3 themes use <name>
+bckt themes list
+bckt themes use <name>
 ```
 
-`themes` inspects the `themes/` directory bundled with the project. `list` highlights the active theme, while `use` copies the selected theme’s templates, static assets, and standalone pages into the project and updates `bucket3.yaml`. You’ll be prompted before existing `templates/`, `skel/`, or `pages/` content is overwritten; pass `--force` to skip the confirmation.
+`themes` inspects the `themes/` directory bundled with the project. `list` highlights the active theme, while `use` copies the selected theme’s templates, static assets, and standalone pages into the project and updates `bckt.yaml`. You’ll be prompted before existing `templates/`, `skel/`, or `pages/` content is overwritten; pass `--force` to skip the confirmation.
 
-Each command now ships with expanded `--help` output; run `bucket3 <command> --help` to see descriptions of every flag and workflow.
+Each command now ships with expanded `--help` output; run `bckt <command> --help` to see descriptions of every flag and workflow.
 
 ### Configuration
 
-`bucket3.yaml` drives site-wide settings. All fields are optional; missing values fall back to:
+`bckt.yaml` drives site-wide settings. All fields are optional; missing values fall back to:
 
 ```
 base_url: "https://example.com"

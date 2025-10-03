@@ -13,13 +13,15 @@ use percent_encoding::percent_decode_str;
 use tiny_http::{Header, Response, Server};
 
 use crate::cli::DevArgs;
+use crate::config;
 use crate::render::{BuildMode, RenderPlan, render_site};
 
-const LIVE_RELOAD_ID: &str = "__bucket3_live_reload__";
-const LIVE_RELOAD_SNIPPET: &str = r#"<script id=\"__bucket3_live_reload__\">(function(){if(window.__bucket3LiveReload){return;}window.__bucket3LiveReload=true;let last=0;async function poll(){try{const res=await fetch('/__bucket3__/poll?since='+last+'&_='+(Date.now()),{cache:'no-store'});if(res.ok){const data=await res.json();if(typeof data.timestamp==='number'){last=data.timestamp;}if(data.reload){window.location.reload();return;}}}catch(e){}setTimeout(poll,1000);}poll();})();</script>"#;
+const LIVE_RELOAD_ID: &str = "__bckt_live_reload__";
+const LIVE_RELOAD_SNIPPET: &str = r#"<script id=\"__bckt_live_reload__\">(function(){if(window.__bcktLiveReload){return;}window.__bcktLiveReload=true;let last=0;async function poll(){try{const res=await fetch('/__bckt__/poll?since='+last+'&_='+(Date.now()),{cache:'no-store'});if(res.ok){const data=await res.json();if(typeof data.timestamp==='number'){last=data.timestamp;}if(data.reload){window.location.reload();return;}}}catch(e){}setTimeout(poll,1000);}poll();})();</script>"#;
 
 pub fn run_dev_command(args: DevArgs) -> Result<()> {
-    let root = env::current_dir().context("failed to determine current directory")?;
+    let cwd = env::current_dir().context("failed to determine current directory")?;
+    let root = config::find_project_root(&cwd)?;
     let html_root = root.join("html");
     fs::create_dir_all(&html_root).context("failed to create html directory")?;
 
@@ -44,14 +46,14 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
             let _ = watcher_tx.send(());
         }
         Err(err) => {
-            eprintln!("[bucket3::dev] watcher error: {err}");
+            eprintln!("[bckt::dev] watcher error: {err}");
         }
     })?;
 
     register_watch(&mut watcher, root.join("posts"))?;
     register_watch(&mut watcher, root.join("templates"))?;
     register_watch(&mut watcher, root.join("skel"))?;
-    register_watch_file(&mut watcher, root.join("bucket3.yaml"))?;
+    register_watch_file(&mut watcher, root.join("bckt.yaml"))?;
 
     let rebuild_root = root.clone();
     let rebuild_verbose = args.verbose;
@@ -72,7 +74,7 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
                 verbose: rebuild_verbose,
             };
             if let Err(error) = render_site(&rebuild_root, plan) {
-                eprintln!("[bucket3::dev] render error: {error}");
+                eprintln!("[bckt::dev] render error: {error}");
                 continue;
             }
             rebuild_latest.store(now_timestamp(), Ordering::SeqCst);
@@ -86,7 +88,7 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
         .next()
         .context("failed to resolve dev server address")?;
     println!(
-        "bucket3 dev server running at http://{}:{}",
+        "bckt dev server running at http://{}:{}",
         listener_addr.ip(),
         listener_addr.port()
     );
@@ -97,17 +99,17 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
     for request in server.incoming_requests() {
         let url = request.url().to_string();
         let (path, query) = split_url(&url);
-        if path == "/__bucket3__/poll" {
+        if path == "/__bckt__/poll" {
             let response = handle_poll(query, &latest_change);
             if let Err(err) = request.respond(response) {
-                eprintln!("[bucket3::dev] respond error: {err}");
+                eprintln!("[bckt::dev] respond error: {err}");
             }
             continue;
         }
 
         let response = serve_path(&html_root, path, &latest_change);
         if let Err(err) = request.respond(response) {
-            eprintln!("[bucket3::dev] respond error: {err}");
+            eprintln!("[bckt::dev] respond error: {err}");
         }
     }
 
@@ -170,7 +172,7 @@ fn serve_path(
             }
         }
         Err(err) => {
-            eprintln!("[bucket3::dev] path resolution error: {err}");
+            eprintln!("[bckt::dev] path resolution error: {err}");
             forbidden()
         }
     }

@@ -33,7 +33,7 @@ pub enum BuildMode {
     Changed,
 }
 
-const CACHE_DIR: &str = ".bucket3/cache";
+const CACHE_DIR: &str = ".bckt/cache";
 const HOME_PAGES_KEY: &str = "home_pages";
 const TAG_PAGES_KEY: &str = "tag_pages";
 const POST_HASH_PREFIX: &str = "post:";
@@ -190,7 +190,7 @@ fn store_cached_string(db: &sled::Db, key: &str, value: &str) -> Result<()> {
 }
 
 pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
-    let config_path = root.join("bucket3.yaml");
+    let config_path = root.join("bckt.yaml");
     let config_raw = if config_path.exists() {
         fs::read_to_string(&config_path)
             .with_context(|| format!("failed to read config file {}", config_path.display()))?
@@ -1466,10 +1466,7 @@ fn render_feeds(
             .filter(|post| post.tags.iter().any(|t| t.eq(&tag)))
             .collect();
         let output_path = html_root.join(format!("rss-{}.xml", slug));
-        let title = config
-            .title
-            .clone()
-            .unwrap_or_else(|| "bucket3".to_string());
+        let title = config.title.clone().unwrap_or_else(|| "bckt".to_string());
         let feed_title = format!("{} · {}", tag, title);
         let site_path = format!("/tags/{}/", slug);
         let feed_path = format!("/rss-{}.xml", slug);
@@ -1513,12 +1510,8 @@ fn render_feed(
 
     let site_url = absolute_url(&config.base_url, site_path);
     let feed_url = absolute_url(&config.base_url, feed_path);
-    let resolved_title = title.unwrap_or_else(|| {
-        config
-            .title
-            .clone()
-            .unwrap_or_else(|| "bucket3".to_string())
-    });
+    let resolved_title =
+        title.unwrap_or_else(|| config.title.clone().unwrap_or_else(|| "bckt".to_string()));
     let build_date = posts
         .first()
         .map(|post| post.date)
@@ -1833,7 +1826,7 @@ mod tests {
         write_template(
             root,
             "rss.xml",
-            "{% autoescape false %}\n<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<rss version=\"2.0\" xmlns:content=\"http://purl.org/rss/1.0/modules/content/\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n  <channel>\n    <title>{{ feed.title }}</title>\n    <link>{{ feed.site_url }}</link>\n    <description>{{ feed.description }}</description>\n    <lastBuildDate>{{ feed.updated }}</lastBuildDate>\n    <generator>bucket3</generator>\n    <atom:link href=\"{{ feed.feed_url }}\" rel=\"self\" type=\"application/rss+xml\"/>\n    {% for item in feed.items %}\n    <item>\n      <title>{{ item.title }}</title>\n      <link>{{ item.link }}</link>\n      <guid isPermaLink=\"true\">{{ item.guid }}</guid>\n      <pubDate>{{ item.pub_date }}</pubDate>\n      <description>{{ item.description }}</description>\n      <content:encoded><![CDATA[{{ item.content | safe }}]]></content:encoded>\n    </item>\n    {% endfor %}\n  </channel>\n</rss>\n{% endautoescape %}\n",
+            "{% autoescape false %}\n<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<rss version=\"2.0\" xmlns:content=\"http://purl.org/rss/1.0/modules/content/\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n  <channel>\n    <title>{{ feed.title }}</title>\n    <link>{{ feed.site_url }}</link>\n    <description>{{ feed.description }}</description>\n    <lastBuildDate>{{ feed.updated }}</lastBuildDate>\n    <generator>bckt</generator>\n    <atom:link href=\"{{ feed.feed_url }}\" rel=\"self\" type=\"application/rss+xml\"/>\n    {% for item in feed.items %}\n    <item>\n      <title>{{ item.title }}</title>\n      <link>{{ item.link }}</link>\n      <guid isPermaLink=\"true\">{{ item.guid }}</guid>\n      <pubDate>{{ item.pub_date }}</pubDate>\n      <description>{{ item.description }}</description>\n      <content:encoded><![CDATA[{{ item.content | safe }}]]></content:encoded>\n    </item>\n    {% endfor %}\n  </channel>\n</rss>\n{% endautoescape %}\n",
         );
     }
 
@@ -2054,7 +2047,7 @@ mod tests {
         let root = temp.path();
         fs::create_dir_all(root.join("posts")).unwrap();
         setup_markdown_templates(root);
-        fs::write(root.join("bucket3.yaml"), "homepage_posts: 1\n").unwrap();
+        fs::write(root.join("bckt.yaml"), "homepage_posts: 1\n").unwrap();
 
         write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "A");
         write_dated_post(root, "beta", "2024-02-01T00:00:00Z", "B");
@@ -2126,7 +2119,7 @@ mod tests {
         fs::create_dir_all(root.join("posts")).unwrap();
         setup_markdown_templates(root);
         fs::write(
-            root.join("bucket3.yaml"),
+            root.join("bckt.yaml"),
             "homepage_posts: 5\npaginate_tags: false\n",
         )
         .unwrap();
@@ -2157,7 +2150,7 @@ mod tests {
         fs::create_dir_all(root.join("posts")).unwrap();
         setup_markdown_templates(root);
         fs::write(
-            root.join("bucket3.yaml"),
+            root.join("bckt.yaml"),
             "homepage_posts: 1\npaginate_tags: true\n",
         )
         .unwrap();
@@ -2209,7 +2202,7 @@ mod tests {
         fs::create_dir_all(root.join("posts")).unwrap();
         setup_markdown_templates(root);
         fs::write(
-            root.join("bucket3.yaml"),
+            root.join("bckt.yaml"),
             "base_url: \"https://example.com/blog\"\n",
         )
         .unwrap();
@@ -2243,7 +2236,7 @@ mod tests {
         fs::create_dir_all(root.join("posts")).unwrap();
         setup_markdown_templates(root);
         fs::write(
-            root.join("bucket3.yaml"),
+            root.join("bckt.yaml"),
             "title: Demo Site\nbase_url: \"https://example.com\"\nrss_tags:\n  - shared\n",
         )
         .unwrap();
@@ -2311,7 +2304,7 @@ mod tests {
         fs::create_dir_all(root.join("posts")).unwrap();
         setup_markdown_templates(root);
         fs::write(
-            root.join("bucket3.yaml"),
+            root.join("bckt.yaml"),
             "base_url: \"https://example.com/blog\"\nhomepage_posts: 1\npaginate_tags: true\n",
         )
         .unwrap();

@@ -1,12 +1,12 @@
-# bucket3 – Project Goals
+# bckt – Project Goals
 
-`bucket3` is a static site generator written in Rust.
+`bckt` is a static site generator written in Rust.
 
 The generated site will have the following characteristics:
 
 ## Configuration
-- A root-level file `bucket3.yaml` defines site-wide settings (title, base URL, number of posts on the homepage, etc.).
-- All values in `bucket3.yaml` are injected into the templating engine.
+- A root-level file `bckt.yaml` defines site-wide settings (title, base URL, number of posts on the homepage, etc.).
+- All values in `bckt.yaml` are injected into the templating engine.
 
 ## Source Layout
 - All posts live under `posts/`, in an arbitrary directory structure.
@@ -26,24 +26,24 @@ The generated site will have the following characteristics:
 - Posts are written to `/yyyy/mm/dd/slug/index.html`.
 - Files listed in `attached` are copied into the corresponding output folder.
 - Each tag generates a page: `/tags/<tag>/index.html`.
-- The homepage lists the body of the last `N` posts (`N` from `bucket3.yaml`).
+- The homepage lists the body of the last `N` posts (`N` from `bckt.yaml`).
 - Additional outputs: `/rss.xml` and `/sitemap.xml`.
 - Pagination uses cursor-based, immutable pagination 
 
 ## Commands
 
-### `bucket3 init`
+### `bckt init`
 Creates initial structure if missing:
 html/       → generated site
 posts/      → source posts
 templates/  → HTML templates
 skel/       → static assets (JS, CSS, etc.)
-bucket3.yaml
+bckt.yaml
 
-### `bucket3 clear`
+### `bckt clear`
 Deletes everything under `html/` (previously generated pages).
 
-### `bucket3 render [--posts] [--static] [--rss] [--sitemap]`
+### `bckt render [--posts] [--static] [--rss] [--sitemap]`
 Generates the static site. With no flags, all outputs are regenerated.
 
 - File status under posts/ is stored in a kv-store, that allows the engine to identify new/modified files.

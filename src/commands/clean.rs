@@ -31,7 +31,7 @@ fn remove_path(path: &Path) -> Result<bool> {
 pub fn run_clean_command() -> Result<()> {
     let root = env::current_dir().context("failed to resolve current directory")?;
     let html = root.join("html");
-    let cache = root.join(".bucket3");
+    let cache = root.join(".bckt");
 
     let removed_html = remove_path(&html)?;
     ensure_directory(&html)?;

@@ -1,7 +1,7 @@
 # Templates (`templates/`)
 
 Files in this directory are rendered with [MiniJinja](https://github.com/mitsuhiko/minijinja)
-when `bucket3 render` runs. They define the layout for posts, list pages, tag
+when `bckt render` runs. They define the layout for posts, list pages, tag
 indexes, archives, and any custom pages you add.
 
 ## Key Files
@@ -21,14 +21,14 @@ Create new templates by extending `base.html` and overriding the blocks you need
 {% block content %}
   <article class="page">
     <h1>About</h1>
-    <p>This site runs on bucket3 and uses the bckt3 theme.</p>
+    <p>This site runs on bckt and uses the bckt3 theme.</p>
   </article>
 {% endblock %}
 ```
 
 ### Available Context
 Most templates receive:
-- `config` — the active `bucket3.yaml` values.
+- `config` — the active `bckt.yaml` values.
 - `feed_url` — absolute URL to the generated RSS feed.
 - `posts`, `pagination`, `tag`, or `archive` objects depending on the view.
 

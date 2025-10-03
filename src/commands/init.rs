@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 const DIRECTORIES: &[&str] = &["html", "posts", "templates", "skel", "themes"];
-const CONFIG_FILE: &str = "bucket3.yaml";
+const CONFIG_FILE: &str = "bckt.yaml";
 const THEME_NAME: &str = "bckt3";
 
 mod embedded_theme {
@@ -15,7 +15,7 @@ mod embedded_theme {
 
 use embedded_theme::{EmbeddedFile, THEME_BCKT3_FILES};
 
-const DEFAULT_CONFIG: &str = r#"title: "My Bucket3 Site"
+const DEFAULT_CONFIG: &str = r#"title: "My bckt Site"
 base_url: "https://example.com"
 homepage_posts: 5
 date_format: "[year]-[month]-[day]"
@@ -25,8 +25,8 @@ theme: bckt3
 "#;
 
 const SAMPLE_POST: &str = r#"---
-title: "Hello From bucket3"
-slug: "hello-from-bucket3"
+title: "Hello From bckt"
+slug: "hello-from-bckt"
 date: "2024-01-01T00:00:00Z"
 tags:
   - welcome
@@ -82,7 +82,7 @@ fn seed_templates(root: &Path) -> Result<()> {
 
 fn seed_sample_post(root: &Path) -> Result<()> {
     let sample_dir = root.join(
-        ["posts", "hello-from-bucket3"]
+        ["posts", "hello-from-bckt"]
             .into_iter()
             .collect::<PathBuf>(),
     );
