@@ -4,21 +4,18 @@
   <h1 class="page-title">Tag: {{ tag }}</h1>
   {% for post in posts %}
   <article class="post-card">
-    <header class="post-card__header">
-      <p class="post-card__meta">
-        <time datetime="{{ post.date_iso }}">{{ post.date }}</time>
-      </p>
-      <h2 class="post-card__title">
-        <a href="{{ post.permalink }}" rel="bookmark">
-          {% if post.title %}{{ post.title }}{% else %}{{ post.slug }}{% endif %}
-        </a>
-      </h2>
+    <p class="post-card__line">
+      <time class="post-card__time" datetime="{{ post.date_iso }}">{{ post.date }}</time>
+      <span class="post-card__sep">·</span>
+      <a class="post-card__title" href="{{ post.permalink }}" rel="bookmark">
+        {% if post.title %}{{ post.title }}{% else %}{{ post.slug }}{% endif %}
+      </a>
       {% if post.abstract or post.excerpt %}
-      <p class="post-card__summary">{{ post.abstract | default(post.excerpt) }}</p>
+      <span class="post-card__sep">—</span>
+      <span class="post-card__abstract">{{ post.abstract | default(post.excerpt) }}</span>
       {% endif %}
-    </header>
-    <p class="post-card__action">
-      <a href="{{ post.permalink }}" aria-label="Read full post">Continue reading →</a>
+      <span class="post-card__sep post-card__sep--spacer">·</span>
+      <a class="post-card__continue" href="{{ post.permalink }}" aria-label="Read full post">Continue reading →</a>
     </p>
   </article>
   {% else %}
