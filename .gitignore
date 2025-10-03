@@ -1,3 +1,5 @@
+.env
+.bucket3
 target/
 html/
 bucket3.yaml
