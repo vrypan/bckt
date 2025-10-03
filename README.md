@@ -1,6 +1,6 @@
-# bucket3rs
+# bucket3
 
-`bucket3rs` is a static site generator that builds a microblog-friendly HTML tree.
+`bucket3` is a static site generator that builds a microblog-friendly HTML tree.
 
 ## Development
 

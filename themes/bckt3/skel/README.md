@@ -27,3 +27,6 @@ Refer to these files from templates using root-relative paths:
 <link rel="stylesheet" href="/style.css">
 <img src="/img/avatar.jpg" alt="Avatar">
 ```
+
+> **Heads-up:** delete this README from production builds so it isn’t copied into
+> your published `html/` output.

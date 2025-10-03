@@ -25,8 +25,8 @@ theme: bckt3
 "#;
 
 const SAMPLE_POST: &str = r#"---
-title: "Hello From bucket3rs"
-slug: "hello-from-bucket3rs"
+title: "Hello From bucket3"
+slug: "hello-from-bucket3"
 date: "2024-01-01T00:00:00Z"
 tags:
   - welcome
@@ -82,7 +82,7 @@ fn seed_templates(root: &Path) -> Result<()> {
 
 fn seed_sample_post(root: &Path) -> Result<()> {
     let sample_dir = root.join(
-        ["posts", "hello-from-bucket3rs"]
+        ["posts", "hello-from-bucket3"]
             .into_iter()
             .collect::<PathBuf>(),
     );

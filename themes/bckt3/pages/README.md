@@ -29,3 +29,6 @@ Create `pages/about/index.html` with:
 
 After running `bucket3 render`, the resulting page is available at
 `/about/index.html` and automatically picks up the theme styling.
+
+> **Heads-up:** remove this README before deploying so it doesn’t ship as part
+> of your generated site.

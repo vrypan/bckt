@@ -4,7 +4,7 @@ use clap::{Args, Parser, Subcommand};
 #[command(name = "bucket3", version)]
 #[command(
     about = "Build and preview microblog-friendly static sites",
-    long_about = "Bucket3rs is a static-site toolbox tailored for microblogging. \n\
+    long_about = "Bucket3 is a static-site toolbox tailored for microblogging. \n\
 Use the bundled commands to scaffold a workspace, render posts, preview locally, \n\
 or clean out generated artifacts before a fresh build."
 )]
@@ -23,7 +23,7 @@ impl Cli {
 pub enum Command {
     #[command(
         about = "Create the starter directories, templates, and config",
-        long_about = "Initialise a new bucket3rs workspace in the current directory.\n\
+        long_about = "Initialise a new bucket3 workspace in the current directory.\n\
 The command is idempotent: existing files are left untouched, so you can rerun it\n\
 to ensure required folders and templates are present without overwriting customisations."
     )]

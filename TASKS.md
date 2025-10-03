@@ -1,6 +1,6 @@
 # TASKS
 
-This file tracks the work plan for **bucket3rs**. Tasks are grouped into milestones with crisp acceptance criteria so each can land as a clean PR.
+This file tracks the work plan for **bucket3**. Tasks are grouped into milestones with crisp acceptance criteria so each can land as a clean PR.
 
 ---
 

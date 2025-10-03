@@ -6,7 +6,7 @@
     <link>{{ feed.site_url }}</link>
     <description>{{ feed.description }}</description>
     <lastBuildDate>{{ feed.updated }}</lastBuildDate>
-    <generator>bucket3rs</generator>
+    <generator>bucket3</generator>
     <atom:link href="{{ feed.feed_url }}" rel="self" type="application/rss+xml"/>
     {% for item in feed.items %}
     <item>

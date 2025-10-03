@@ -1,6 +1,6 @@
-# bucket3rs – Project Goals
+# bucket3 – Project Goals
 
-`bucket3rs` is a static site generator written in Rust.
+`bucket3` is a static site generator written in Rust.
 
 The generated site will have the following characteristics:
 
