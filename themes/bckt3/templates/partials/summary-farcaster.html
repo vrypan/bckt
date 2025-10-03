@@ -1,0 +1,65 @@
+<header class="post-card__meta">
+  <time class="post-card__time" datetime="{{ post.date_iso }}">{{ post.date }}</time>
+  {% if post.tags %}
+  <span class="post-card__sep">//</span>
+  <span class="post-card__tags">
+    {% for tag in post.tags %}
+    <a href="/tags/{{ tag | replace(' ', '-') | lower }}/" class="post-card__tag">#{{ tag }}</a>{% if not loop.last %}<span class="post-card__tag-sep">,</span>{% endif %}
+    {% endfor %}
+  </span>
+  {% endif %}
+</header>
+<div class="post-card__body reading-flow">
+  {{ post.body | safe }}
+</div>
+{% set images = post.images | default([]) %}
+{% if images %}
+<div class="post-card__media post-card__media--images">
+  {% for image in images %}
+    {% if image is string %}
+      {% set src = image %}
+      {% if not src.startswith('http://') and not src.startswith('https://') and not src.startswith('/') %}
+        {% set src = post.permalink ~ src %}
+      {% endif %}
+      <figure class="post-card__media-item">
+        <img src="{{ src }}" alt="">
+      </figure>
+    {% elif image.url is defined %}
+      {% set src = image.url %}
+      {% if not src.startswith('http://') and not src.startswith('https://') and not src.startswith('/') %}
+        {% set src = post.permalink ~ src %}
+      {% endif %}
+      <figure class="post-card__media-item">
+        <img src="{{ src }}" alt="{{ image.alt | default("") }}">
+      </figure>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+{% set videos = post.videos | default([]) %}
+{% if videos %}
+<div class="post-card__media post-card__media--videos">
+  {% for video in videos %}
+    {% if video is string %}
+      {% set src = video %}
+      {% if not src.startswith('http://') and not src.startswith('https://') and not src.startswith('/') %}
+        {% set src = post.permalink ~ src %}
+      {% endif %}
+      <div class="post-card__media-video">
+        <video controls preload="metadata" src="{{ src }}"></video>
+      </div>
+    {% elif video.url is defined %}
+      {% set src = video.url %}
+      {% if not src.startswith('http://') and not src.startswith('https://') and not src.startswith('/') %}
+        {% set src = post.permalink ~ src %}
+      {% endif %}
+      <div class="post-card__media-video">
+        <video controls preload="metadata" src="{{ src }}"></video>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+<p class="post-card__actions">
+  <a class="post-card__continue" href="{{ post.permalink }}" aria-label="Read full post">Continue reading →</a>
+</p>

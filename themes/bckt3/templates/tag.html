@@ -3,20 +3,14 @@
 <section class="page-section">
   <h1 class="page-title">Tag: {{ tag }}</h1>
   {% for post in posts %}
-  <article class="post-card">
-    <p class="post-card__line">
-      <time class="post-card__time" datetime="{{ post.date_iso }}">{{ post.date }}</time>
-      <span class="post-card__sep">·</span>
-      <a class="post-card__title" href="{{ post.permalink }}" rel="bookmark">
-        {% if post.title %}{{ post.title }}{% else %}{{ post.slug }}{% endif %}
-      </a>
-      {% if post.abstract or post.excerpt %}
-      <span class="post-card__sep">—</span>
-      <span class="post-card__abstract">{{ post.abstract | default(post.excerpt) }}</span>
-      {% endif %}
-      <span class="post-card__sep post-card__sep--spacer">·</span>
-      <a class="post-card__continue" href="{{ post.permalink }}" aria-label="Read full post">Continue reading →</a>
-    </p>
+  <article class="post-card{% if post.type == 'farcaster' %} post-card--farcaster{% endif %}">
+    {% if post.type == 'farcaster' %}
+      {% include "partials/summary-farcaster.html" %}
+    {% else %}
+      <p class="post-card__line">
+        {% include "partials/summary-default.html" %}
+      </p>
+    {% endif %}
   </article>
   {% else %}
   <p class="empty-state">No posts for this tag.</p>

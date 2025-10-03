@@ -356,7 +356,7 @@ fn render_posts(
 
     posts.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.slug.cmp(&b.slug)));
 
-    let post_template = env
+    let default_post_template = env
         .get_template("post.html")
         .context("post.html template missing")?;
 
@@ -388,9 +388,31 @@ fn render_posts(
             }
 
             let context = build_post_context(config, post)?;
-            let rendered = post_template
-                .render(minijinja::context! { post => context })
-                .with_context(|| format!("failed to render template for {}", post.slug))?;
+            let template_name = post
+                .post_type
+                .as_deref()
+                .map(|value| format!("post-{value}.html"))
+                .unwrap_or_else(|| "post.html".to_string());
+
+            let rendered = if template_name == "post.html" {
+                default_post_template.render(minijinja::context! { post => &context })
+            } else {
+                match env.get_template(&template_name) {
+                    Ok(tpl) => tpl.render(minijinja::context! { post => &context }),
+                    Err(err) => {
+                        log_status(
+                            verbose,
+                            "WARN",
+                            format!(
+                                "{}: missing {} ({}); using post.html",
+                                post.slug, template_name, err
+                            ),
+                        );
+                        default_post_template.render(minijinja::context! { post => &context })
+                    }
+                }
+            }
+            .with_context(|| format!("failed to render template for {}", post.slug))?;
 
             fs::write(&output_path, rendered)
                 .with_context(|| format!("failed to write {}", output_path.display()))?;
@@ -1035,6 +1057,7 @@ fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
         date: display_date,
         date_iso: iso_date,
         tags: post.tags.clone(),
+        post_type: post.post_type.clone(),
         abstract_text: post.abstract_text.clone(),
         attached,
         body,
@@ -1064,6 +1087,7 @@ fn build_post_summary(config: &Config, post: &Post) -> Result<PostSummary> {
         date,
         date_iso,
         tags: post.tags.clone(),
+        post_type: post.post_type.clone(),
         abstract_text: post.abstract_text.clone(),
         body,
         excerpt: post.excerpt.clone(),
@@ -1734,6 +1758,8 @@ struct PostTemplate {
     date: String,
     date_iso: String,
     tags: Vec<String>,
+    #[serde(rename = "type")]
+    post_type: Option<String>,
     #[serde(rename = "abstract")]
     abstract_text: Option<String>,
     attached: Vec<String>,
@@ -1751,6 +1777,8 @@ struct PostSummary {
     date: String,
     date_iso: String,
     tags: Vec<String>,
+    #[serde(rename = "type")]
+    post_type: Option<String>,
     #[serde(rename = "abstract")]
     abstract_text: Option<String>,
     body: String,

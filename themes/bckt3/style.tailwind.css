@@ -212,11 +212,25 @@
     border-bottom: none;
   }
 
+  .post-card--farcaster {
+    padding-bottom: 3rem;
+  }
+
   .post-card__line {
     margin: 0;
     font-size: 1rem;
     line-height: 1.75;
     color: #1f1d1a;
+  }
+
+  .post-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0 0.75rem;
+    font-size: 0.95rem;
+    color: #5e5b57;
   }
 
   .post-card__time {
@@ -238,6 +252,11 @@
   .post-card__abstract {
     color: #4d4a46;
     font-size: 1rem;
+  }
+
+  .post-card__body {
+    font-size: 1rem;
+    color: #2f2b28;
   }
 
   .post-card__tags {
@@ -264,6 +283,44 @@
   .post-card__sep {
     color: rgba(31, 29, 26, 0.45);
     margin: 0 0.2rem;
+  }
+
+  .post-card__actions {
+    margin: 1rem 0 0;
+    font-size: 0.9rem;
+  }
+
+  .post-card__media {
+    margin: 1rem 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .post-card__media-item {
+    margin: 0;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background: #f8f8f6;
+    border: 1px solid rgba(31, 29, 26, 0.08);
+  }
+
+  .post-card__media-item img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .post-card__media-video {
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background: #000;
+  }
+
+  .post-card__media-video video {
+    display: block;
+    width: 100%;
+    height: auto;
   }
 
   .pager {
@@ -359,6 +416,38 @@
     height: auto;
     margin: 0 auto;
     border-radius: 0.5rem;
+  }
+
+  .post-media {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .post-media__item {
+    margin: 0;
+    border-radius: 1rem;
+    overflow: hidden;
+    background: #f8f8f6;
+    border: 1px solid rgba(31, 29, 26, 0.08);
+  }
+
+  .post-media__item img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .post-media__video {
+    border-radius: 1rem;
+    overflow: hidden;
+    background: #000000;
+  }
+
+  .post-media__video video {
+    display: block;
+    width: 100%;
+    height: auto;
   }
 
   .reading-flow,

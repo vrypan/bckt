@@ -20,6 +20,7 @@ pub struct Post {
     pub slug: String,
     pub date: OffsetDateTime,
     pub tags: Vec<String>,
+    pub post_type: Option<String>,
     pub abstract_text: Option<String>,
     pub attached: Vec<PathBuf>,
     pub body_html: String,
@@ -44,6 +45,8 @@ struct FrontMatter {
     pub date: Option<String>,
     #[serde(deserialize_with = "deserialize_string_or_list")]
     pub tags: Vec<String>,
+    #[serde(rename = "type")]
+    pub post_type: Option<String>,
     #[serde(rename = "abstract")]
     pub abstract_text: Option<String>,
     #[serde(deserialize_with = "deserialize_path_list")]
@@ -122,6 +125,8 @@ fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
 
     let (body_html, excerpt) = render_body(&content_path, &body)?;
 
+    let post_type = normalize_post_type(front.post_type.as_deref(), &content_path)?;
+
     let extras = mapping_to_json_map(&front.extra).with_context(|| {
         format!(
             "{}: front matter keys must be strings",
@@ -134,6 +139,7 @@ fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
         slug,
         date,
         tags: front.tags,
+        post_type,
         abstract_text: front.abstract_text,
         attached: front.attached,
         body_html,
@@ -145,6 +151,31 @@ fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
     };
 
     Ok(Some(post))
+}
+
+fn normalize_post_type(value: Option<&str>, origin: &Path) -> Result<Option<String>> {
+    let Some(raw) = value else {
+        return Ok(None);
+    };
+
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    let normalized = trimmed.to_ascii_lowercase();
+    let valid = normalized
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_'));
+
+    if !valid {
+        bail!(
+            "{}: type may only contain lowercase letters, digits, '-' or '_'",
+            origin.display()
+        );
+    }
+
+    Ok(Some(normalized))
 }
 
 fn parse_post_date(date_str: &str, config: &Config, origin: &Path) -> Result<OffsetDateTime> {
