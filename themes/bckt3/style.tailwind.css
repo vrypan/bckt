@@ -240,11 +240,25 @@
     font-size: 1rem;
   }
 
-  .post-card__continue {
-    color: #1f1d1a;
+  .post-card__tags {
+    color: #5e5b57;
+    font-size: 0.9rem;
+  }
+
+  .post-card__tag {
+    color: inherit;
     font-weight: 400;
-    text-decoration: underline;
-    font-size: 1rem;
+  }
+
+  .post-card__tag-sep {
+    color: rgba(31, 29, 26, 0.45);
+    margin: 0 0.15rem;
+  }
+
+  .post-card__continue {
+    color: #5e5b57;
+    font-weight: 400;
+    font-size: 0.9rem;
   }
 
   .post-card__sep {
