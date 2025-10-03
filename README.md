@@ -1,6 +1,6 @@
 # bckt
 
-`bckt` is a static site generator that builds a microblog-friendly HTML tree.
+`bckt` is an opinionated but flexible static site generator for blogs.
 
 ## Development
 

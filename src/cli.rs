@@ -3,8 +3,8 @@ use clap::{Args, Parser, Subcommand};
 #[derive(Parser)]
 #[command(name = "bckt", version)]
 #[command(
-    about = "Build and preview microblog-friendly static sites",
-    long_about = "Bckt is a static-site toolbox tailored for microblogging. \n\
+    about = "Build and preview statically generated blogs",
+    long_about = "bckt is an opinionated but flexible static site generator for blogs. \n\
 Use the bundled commands to scaffold a workspace, render posts, preview locally, \n\
 or clean out generated artifacts before a fresh build."
 )]
