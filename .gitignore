@@ -2,3 +2,9 @@ target/
 html/
 bucket3.yaml
 posts/
+skel/
+templates/
+pages/
+themes/*
+!themes/bckt3/
+!themes/bckt3/**
