@@ -166,12 +166,11 @@ fn parse_post_date(date_str: &str, config: &Config, origin: &Path) -> Result<Off
         return Ok(datetime.assume_offset(offset));
     }
 
-    if let Some((main, offset_part)) = date_str.rsplit_once(' ') {
-        if let Ok(datetime) = PrimitiveDateTime::parse(main, &naive_format) {
-            if let Ok(offset) = parse_offset_str(offset_part) {
-                return Ok(datetime.assume_offset(offset));
-            }
-        }
+    if let Some((main, offset_part)) = date_str.rsplit_once(' ')
+        && let Ok(datetime) = PrimitiveDateTime::parse(main, &naive_format)
+        && let Ok(offset) = parse_offset_str(offset_part)
+    {
+        return Ok(datetime.assume_offset(offset));
     }
 
     bail!(

@@ -61,14 +61,11 @@ fn config_tag_feeds(config: &Config) -> Vec<String> {
             JsonValue::String(s) => tags.extend(split_list(s)),
             JsonValue::Array(items) => {
                 for item in items {
-                    match item {
-                        JsonValue::String(s) => {
-                            let trimmed = s.trim();
-                            if !trimmed.is_empty() {
-                                tags.push(trimmed.to_string());
-                            }
+                    if let JsonValue::String(s) = item {
+                        let trimmed = s.trim();
+                        if !trimmed.is_empty() {
+                            tags.push(trimmed.to_string());
                         }
-                        _ => {}
                     }
                 }
             }
@@ -443,7 +440,7 @@ fn render_pages(
             if path
                 .extension()
                 .and_then(|ext| ext.to_str())
-                .map_or(false, |ext| ext.eq_ignore_ascii_case("html"))
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
             {
                 files.push(path);
             }
@@ -490,7 +487,7 @@ fn compute_post_digest(post: &Post) -> Result<String> {
     })?;
     hasher.update(&content);
 
-    let mut assets: Vec<PathBuf> = post.attached.iter().cloned().collect();
+    let mut assets: Vec<PathBuf> = post.attached.clone();
     assets.sort();
 
     for relative in assets {
@@ -1262,7 +1259,7 @@ fn rewrite_if_attached(
         return None;
     }
 
-    let (path_part, suffix) = match relative.find(|c| c == '?' || c == '#') {
+    let (path_part, suffix) = match relative.find(['?', '#']) {
         Some(idx) => relative.split_at(idx),
         None => (relative, ""),
     };

@@ -248,12 +248,12 @@ fn handle_poll(
 
 fn parse_since(query: &str) -> Result<u64> {
     for pair in query.split('&') {
-        if let Some((key, value)) = pair.split_once('=') {
-            if key == "since" {
-                let decoded = percent_decode_str(value).decode_utf8()?;
-                let parsed = decoded.parse::<u64>()?;
-                return Ok(parsed);
-            }
+        if let Some((key, value)) = pair.split_once('=')
+            && key == "since"
+        {
+            let decoded = percent_decode_str(value).decode_utf8()?;
+            let parsed = decoded.parse::<u64>()?;
+            return Ok(parsed);
         }
     }
     bail!("since not found")
