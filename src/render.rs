@@ -1063,6 +1063,7 @@ fn build_post_summary(config: &Config, post: &Post) -> Result<PostSummary> {
         slug: post.slug.clone(),
         date,
         date_iso,
+        tags: post.tags.clone(),
         abstract_text: post.abstract_text.clone(),
         body,
         excerpt: post.excerpt.clone(),
@@ -1749,6 +1750,7 @@ struct PostSummary {
     slug: String,
     date: String,
     date_iso: String,
+    tags: Vec<String>,
     #[serde(rename = "abstract")]
     abstract_text: Option<String>,
     body: String,
