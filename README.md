@@ -1,6 +1,6 @@
 # bckt
 
-`bckt` is an opinionated but flexible static site generator for blogs.
+`bckt` (pronounced "bucket") is an opinionated but flexible static site generator for blogs.
 
 ## Development
 
