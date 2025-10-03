@@ -1,3 +1,5 @@
+![social preview card](assets/bckt-social-preview-card.png)
+
 # bckt
 
 `bckt` (pronounced "bucket") is an opinionated static site generator designed for personal blogs. It favors readable defaults, fast rebuilds, and simple customization so you can focus on writing instead of wiring.
