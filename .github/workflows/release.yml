@@ -59,26 +59,35 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.platform.target }}
 
-      - name: Package artifact
+      - name: Package artifact (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME}"
           TARGET="${{ matrix.platform.target }}"
           BIN="bckt"
-          case "${{ runner.os }}" in
-            Windows)
-              BIN="${BIN}.exe"
-              OUT="target/${TARGET}/release/${BIN}"
-              ARCHIVE="bckt-${VERSION}-${{ matrix.platform.name }}.zip"
-              powershell -Command "Compress-Archive -Path $env:OUT -DestinationPath $env:ARCHIVE"
-              ;;
-            *)
-              OUT="target/${TARGET}/release/${BIN}"
-              ARCHIVE="bckt-${VERSION}-${{ matrix.platform.name }}.tar.gz"
-              tar -C "$(dirname "${OUT}")" -czf "${ARCHIVE}" "${BIN}"
-              ;;
-          esac
+          OUT="target/${TARGET}/release/${BIN}"
+          ARCHIVE="bckt-${VERSION}-${{ matrix.platform.name }}.tar.gz"
+          tar -C "$(dirname "${OUT}")" -czf "${ARCHIVE}" "${BIN}"
           echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
+
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $VERSION = $env:GITHUB_REF_NAME
+          $TARGET = "${{ matrix.platform.target }}"
+          $BIN = "bckt.exe"
+          $OUT = "target/$TARGET/release/$BIN"
+          $ARCHIVE = "bckt-$VERSION-${{ matrix.platform.name }}.zip"
+          $root = (Get-Location).Path
+          $dir = Split-Path -Path $OUT
+          $file = Split-Path -Path $OUT -Leaf
+          Push-Location $dir
+          Compress-Archive -Path $file -DestinationPath (Join-Path $root $ARCHIVE)
+          Pop-Location
+          Add-Content -Path $env:GITHUB_ENV -Value "ARCHIVE=$ARCHIVE"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
