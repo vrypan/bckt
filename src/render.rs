@@ -1,12 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::error::Error as StdError;
 use std::fmt::Write;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{anyhow, Context, Result, bail};
 use blake3::Hasher;
-use minijinja::{Environment, context};
+use minijinja::value::Value as TemplateValue;
+use minijinja::{Environment, Error as TemplateError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use time::OffsetDateTime;
@@ -47,6 +49,53 @@ fn log_status(enabled: bool, label: &str, message: impl AsRef<str>) {
     if enabled {
         println!("[{}] {}", label, message.as_ref());
     }
+}
+
+fn render_template_with_scope(
+    template: &minijinja::Template<'_, '_>,
+    context: TemplateValue,
+    scope: &str,
+) -> Result<String> {
+    let template_name = template.name().to_string();
+    template
+        .render(context)
+        .map_err(|err| describe_template_error(scope, &template_name, err))
+}
+
+fn describe_template_error(scope: &str, template_name: &str, err: TemplateError) -> anyhow::Error {
+    let actual_template = err.name().unwrap_or(template_name).to_string();
+    let line = err.line();
+    let kind = err.kind();
+    let detail = err.detail().map(str::to_string);
+    let summary = err.to_string();
+    let nested = StdError::source(&err).map(|source| source.to_string());
+
+    let mut message = String::new();
+    let _ = write!(
+        &mut message,
+        "{}: template '{}'",
+        scope,
+        actual_template
+    );
+
+    if actual_template != template_name {
+        let _ = write!(&mut message, " (inherited from '{}')", template_name);
+    }
+
+    if let Some(line_no) = line {
+        let _ = write!(&mut message, " at line {}", line_no);
+    }
+
+    let _ = write!(&mut message, "\nkind: {:?}", kind);
+
+    let payload = detail.unwrap_or(summary);
+    let _ = write!(&mut message, "\nmessage: {}", payload);
+
+    if let Some(source) = nested {
+        let _ = write!(&mut message, "\ncaused by: {}", source);
+    }
+
+    anyhow!(message)
 }
 
 fn config_tag_feeds(config: &Config) -> Vec<String> {
@@ -455,11 +504,20 @@ fn render_posts(
                 .map(|value| format!("post-{value}.html"))
                 .unwrap_or_else(|| "post.html".to_string());
 
+            let scope = format!("rendering post {}", post.slug);
             let rendered = if template_name == "post.html" {
-                default_post_template.render(minijinja::context! { post => &context })
+                render_template_with_scope(
+                    &default_post_template,
+                    minijinja::context! { post => &context },
+                    &scope,
+                )
             } else {
                 match env.get_template(&template_name) {
-                    Ok(tpl) => tpl.render(minijinja::context! { post => &context }),
+                    Ok(tpl) => render_template_with_scope(
+                        &tpl,
+                        minijinja::context! { post => &context },
+                        &scope,
+                    ),
                     Err(err) => {
                         log_status(
                             verbose,
@@ -469,11 +527,14 @@ fn render_posts(
                                 post.slug, template_name, err
                             ),
                         );
-                        default_post_template.render(minijinja::context! { post => &context })
+                        render_template_with_scope(
+                            &default_post_template,
+                            minijinja::context! { post => &context },
+                            &scope,
+                        )
                     }
                 }
-            }
-            .with_context(|| format!("failed to render template for {}", post.slug))?;
+            }?;
 
             fs::write(&output_path, rendered)
                 .with_context(|| format!("failed to write {}", output_path.display()))?;
@@ -543,9 +604,14 @@ fn render_pages(
         let source = fs::read_to_string(&path)
             .with_context(|| format!("failed to read page template {}", path.display()))?;
 
+        let scope = format!(
+            "rendering standalone page {}",
+            normalize_path(relative)
+        );
+        let template_name = normalize_path(relative);
         let rendered = env
-            .render_str(&source, context! {})
-            .with_context(|| format!("failed to render page {}", path.display()))?;
+            .render_str(&source, minijinja::context! {})
+            .map_err(|err| describe_template_error(&scope, &template_name, err))?;
 
         fs::write(&output_path, rendered)
             .with_context(|| format!("failed to write page {}", output_path.display()))?;
@@ -807,9 +873,12 @@ fn render_archives(
                 .map(|post| build_post_summary(config, post))
                 .collect::<Result<Vec<_>>>()?;
 
-            let rendered = year_template
-                .render(minijinja::context! { year => year, posts => summaries })
-                .context("failed to render year archive")?;
+            let scope = format!("rendering year archive {}", year);
+            let rendered = render_template_with_scope(
+                &year_template,
+                minijinja::context! { year => year, posts => summaries },
+                &scope,
+            )?;
 
             let output = archive_year_path(html_root, year);
             if let Some(parent) = output.parent() {
@@ -831,9 +900,12 @@ fn render_archives(
                 .map(|post| build_post_summary(config, post))
                 .collect::<Result<Vec<_>>>()?;
 
-            let rendered = month_template
-                .render(minijinja::context! { year => year, month => month, posts => summaries })
-                .context("failed to render month archive")?;
+            let scope = format!("rendering month archive {:04}-{:02}", year, month);
+            let rendered = render_template_with_scope(
+                &month_template,
+                minijinja::context! { year => year, month => month, posts => summaries },
+                &scope,
+            )?;
 
             let output = archive_month_path(html_root, year, month);
             if let Some(parent) = output.parent() {
@@ -1063,9 +1135,12 @@ fn render_tag_archives(
 }
 
 fn render_tag_page(template: &minijinja::Template<'_, '_>, plan: TagPagePlan) -> Result<()> {
-    let rendered = template
-        .render(minijinja::context! { tag => plan.tag, posts => plan.summaries, pagination => plan.pagination })
-        .context("failed to render tag page")?;
+    let scope = format!("rendering tag page for '{}', page {}", plan.tag, plan.pagination.current);
+    let rendered = render_template_with_scope(
+        template,
+        minijinja::context! { tag => plan.tag, posts => plan.summaries, pagination => plan.pagination },
+        &scope,
+    )?;
 
     for output in plan.outputs {
         if let Some(parent) = output.parent() {
@@ -1080,9 +1155,15 @@ fn render_tag_page(template: &minijinja::Template<'_, '_>, plan: TagPagePlan) ->
 }
 
 fn render_page(template: &minijinja::Template<'_, '_>, plan: PagePlan) -> Result<()> {
-    let rendered = template
-        .render(minijinja::context! { posts => plan.summaries, pagination => plan.pagination })
-        .context("failed to render homepage")?;
+    let scope = format!(
+        "rendering homepage page {} of {}",
+        plan.pagination.current, plan.pagination.total
+    );
+    let rendered = render_template_with_scope(
+        template,
+        minijinja::context! { posts => plan.summaries, pagination => plan.pagination },
+        &scope,
+    )?;
 
     for output in plan.outputs {
         if let Some(parent) = output.parent() {
@@ -1733,9 +1814,12 @@ fn render_feed(
         items,
     };
 
-    let rendered = template
-        .render(minijinja::context! { feed => context })
-        .context("failed to render rss.xml")?;
+    let scope = format!("rendering feed {}", feed_path);
+    let rendered = render_template_with_scope(
+        &template,
+        minijinja::context! { feed => context },
+        &scope,
+    )?;
 
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)
