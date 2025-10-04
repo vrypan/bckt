@@ -271,27 +271,6 @@ fn sanitize_language(value: &str) -> String {
     value.trim().replace('_', "-").to_ascii_lowercase()
 }
 
-fn format_date(config: &Config, date: &OffsetDateTime) -> Result<String> {
-    if config.date_format.eq_ignore_ascii_case("RFC3339") {
-        return date
-            .format(&Rfc3339)
-            .context("failed to format RFC3339 date");
-    }
-
-    let description = format_description::parse(&config.date_format).with_context(|| {
-        format!(
-            "invalid date_format '{}' while building search index",
-            config.date_format
-        )
-    })?;
-    date.format(&description).with_context(|| {
-        format!(
-            "failed to format date with pattern '{}' while building search index",
-            config.date_format
-        )
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
