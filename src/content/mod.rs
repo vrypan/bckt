@@ -224,16 +224,16 @@ fn parse_post_date(date_str: &str, config: &Config, origin: &Path) -> Result<Off
 fn determine_language(value: Option<&str>, body_text: &str, config: &Config) -> String {
     let languages = language_lookup(config);
 
-    if let Some(explicit) = value {
-        if let Some(tag) = canonical_language(explicit, &languages) {
-            return tag;
-        }
+    if let Some(explicit) = value
+        && let Some(tag) = canonical_language(explicit, &languages)
+    {
+        return tag;
     }
 
-    if let Some(guessed) = guess_language(body_text) {
-        if let Some(tag) = canonical_language(&guessed, &languages) {
-            return tag;
-        }
+    if let Some(guessed) = guess_language(body_text)
+        && let Some(tag) = canonical_language(&guessed, &languages)
+    {
+        return tag;
     }
 
     canonical_language(&config.search.default_language, &languages)
@@ -286,10 +286,10 @@ fn canonical_language(value: &str, map: &BTreeMap<String, String>) -> Option<Str
         return Some(found.clone());
     }
 
-    if let Some((primary, _rest)) = sanitized.split_once('-') {
-        if let Some(found) = map.get(primary) {
-            return Some(found.clone());
-        }
+    if let Some((primary, _rest)) = sanitized.split_once('-')
+        && let Some(found) = map.get(primary)
+    {
+        return Some(found.clone());
     }
 
     Some(sanitized)

@@ -88,10 +88,8 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
             }
         }
 
-        if let Some(kind) = &post.post_type {
-            if !kind.trim().is_empty() {
-                types.insert(kind.clone());
-            }
+        if let Some(kind) = &post.post_type && !kind.trim().is_empty() {
+            types.insert(kind.clone());
         }
 
         years.insert(post.date.year());
@@ -227,10 +225,10 @@ fn canonical_language(value: &str, map: &BTreeMap<String, String>) -> Option<Str
         return Some(found.clone());
     }
 
-    if let Some((primary, _rest)) = sanitized.split_once('-') {
-        if let Some(found) = map.get(primary) {
-            return Some(found.clone());
-        }
+    if let Some((primary, _rest)) = sanitized.split_once('-')
+        && let Some(found) = map.get(primary)
+    {
+        return Some(found.clone());
     }
 
     Some(sanitized)
