@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
 
-use anyhow::{anyhow, Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use blake3::Hasher;
 use minijinja::value::Value as TemplateValue;
 use minijinja::{Environment, Error as TemplateError};
@@ -71,12 +71,7 @@ fn describe_template_error(scope: &str, template_name: &str, err: TemplateError)
     let nested = StdError::source(&err).map(|source| source.to_string());
 
     let mut message = String::new();
-    let _ = write!(
-        &mut message,
-        "{}: template '{}'",
-        scope,
-        actual_template
-    );
+    let _ = write!(&mut message, "{}: template '{}'", scope, actual_template);
 
     if actual_template != template_name {
         let _ = write!(&mut message, " (inherited from '{}')", template_name);
@@ -604,10 +599,7 @@ fn render_pages(
         let source = fs::read_to_string(&path)
             .with_context(|| format!("failed to read page template {}", path.display()))?;
 
-        let scope = format!(
-            "rendering standalone page {}",
-            normalize_path(relative)
-        );
+        let scope = format!("rendering standalone page {}", normalize_path(relative));
         let template_name = normalize_path(relative);
         let rendered = env
             .render_str(&source, minijinja::context! {})
@@ -1135,7 +1127,10 @@ fn render_tag_archives(
 }
 
 fn render_tag_page(template: &minijinja::Template<'_, '_>, plan: TagPagePlan) -> Result<()> {
-    let scope = format!("rendering tag page for '{}', page {}", plan.tag, plan.pagination.current);
+    let scope = format!(
+        "rendering tag page for '{}', page {}",
+        plan.tag, plan.pagination.current
+    );
     let rendered = render_template_with_scope(
         template,
         minijinja::context! { tag => plan.tag, posts => plan.summaries, pagination => plan.pagination },
@@ -1815,11 +1810,8 @@ fn render_feed(
     };
 
     let scope = format!("rendering feed {}", feed_path);
-    let rendered = render_template_with_scope(
-        &template,
-        minijinja::context! { feed => context },
-        &scope,
-    )?;
+    let rendered =
+        render_template_with_scope(&template, minijinja::context! { feed => context }, &scope)?;
 
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)

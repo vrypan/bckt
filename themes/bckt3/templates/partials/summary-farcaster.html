@@ -25,7 +25,7 @@
 {% endif %}
 <div class="post-meta post-meta--inline">
     <span class="meta-divider">◉</span>
-    <time class="post-meta__time" datetime="{{ post.date_iso }}">{{ post.date }}</time>
+    <time class="post-meta__time" datetime="{{ post.date_iso }}">{{ post.date_iso | format_date("%a, %d %B %Y %H:%M") }}</time>
     <span class="meta-divider">//</span>
     <span><a href="https://farcaster.xyz/{{ post.castid }}">on farcaster →</a></span>
   </div>
