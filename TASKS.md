@@ -134,10 +134,10 @@ This file tracks the work plan for **bckt**. Tasks are grouped into milestones w
 ## Milestone 10 — CLI UX & Selective Builds (PR: `feat:cli-ux`)
 **Goal:** Sharper developer experience.
 
-- [ ] `bckt render --post <slug>` for a single post.
-- [ ] `bckt clear` removes only `html/`.
-- [ ] Verbose flag `-v` with timing; quiet mode `-q`.
-- [ ] Exit codes consistent (nonzero on errors).
+- [x] `bckt render --post <slug>` for a single post.
+- [x] `bckt clear` removes only `html/`.
+- [x] Verbose flag `-v` with timing; quiet mode `-q`.
+- [x] Exit codes consistent (nonzero on errors).
 **DoD:** Selective build works; commands show useful progress.
 
 ---
@@ -145,11 +145,21 @@ This file tracks the work plan for **bckt**. Tasks are grouped into milestones w
 ## Milestone 11 — Docs & Examples (PR: `docs:usage`)
 **Goal:** Make it easy to adopt.
 
-- [ ] README: quick start, config fields, front-matter schema, URL structure.
+- [x] README: quick start, config fields, front-matter schema, URL structure.
 - [ ] `examples/` with multiple posts (no-title, multi-image, video).
 - [ ] `CONTRIBUTING.md` with dev loop, test commands.
 **DoD:** A new user can install, init, add a post, render, and deploy in <10 min.
 
+## Feature 1: Search
+**Goal:** Provide client-side full-text search rails
+- [ ] Generate a full-text JSON index for all posts at `/assets/search/search-index.json` during render.
+- [ ] Drive analyzers/normalization and stopword lists from config; English and Greek shipped by default.
+- [ ] Ensure incremental renders rebuild the search index whenever post content changes.
+- [ ] Add a `/search/` page with filters in the `bckt3` theme and link it from the global navigation.
+- [ ] Ship MiniSearch as an unbundled vendor script in `themes/bckt3/assets/js/` plus a client hook that loads/queries the index.
+- [ ] Include theme documentation at `docs/search.md` explaining configuration and template integration.
+
+Acceptance: Line present.
 ---
 
 ## Future / Stretch (not required for v1)
