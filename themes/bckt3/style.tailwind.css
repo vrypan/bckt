@@ -569,7 +569,6 @@
 
   .post-meta__time {
     font-variant-numeric: tabular-nums;
-    font-size: 0.9rem;
     font-weight: 300;
   }
 
@@ -583,6 +582,7 @@
   .post-meta--inline {
     align-items: baseline;
     flex-wrap: nowrap;
+    font-size: 0.8rem;
   }
 
   .post-card--farcaster .post-meta--inline {

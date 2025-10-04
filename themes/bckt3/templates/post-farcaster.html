@@ -40,23 +40,9 @@
   {% if images %}
   <div class="post-media post-media--images">
     {% for image in images %}
-      {% if image is string %}
-        {% set src = image %}
-        {% if not src.startswith('http://') and not src.startswith('https://') and not src.startswith('/') %}
-          {% set src = post.permalink ~ src %}
-        {% endif %}
         <figure class="post-media__item">
-          <img src="{{ src }}" alt="">
+          <img src="{{ post.permalink }}{{ image }}" alt="">
         </figure>
-      {% elif image.url is defined %}
-        {% set src = image.url %}
-        {% if not src.startswith('http://') and not src.startswith('https://') and not src.startswith('/') %}
-          {% set src = post.permalink ~ src %}
-        {% endif %}
-        <figure class="post-media__item">
-          <img src="{{ src }}" alt="{{ image.alt | default("") }}">
-        </figure>
-      {% endif %}
     {% endfor %}
   </div>
   {% endif %}
@@ -64,24 +50,10 @@
   {% if videos %}
   <div class="post-media post-media--videos">
     {% for video in videos %}
-      {% if video is string %}
-        {% set src = video %}
-        {% if not src.startswith('http://') and not src.startswith('https://') and not src.startswith('/') %}
-          {% set src = post.permalink ~ src %}
-        {% endif %}
-        <div class="post-media__video">
-          <video controls preload="metadata" src="{{ src }}"></video>
-        </div>
-      {% elif video.url is defined %}
-        {% set src = video.url %}
-        {% if not src.startswith('http://') and not src.startswith('https://') and not src.startswith('/') %}
-          {% set src = post.permalink ~ src %}
-        {% endif %}
-        <div class="post-media__video">
-          <video controls preload="metadata" src="{{ src }}"></video>
-        </div>
-      {% endif %}
-    {% endfor %}
+      <div class="post-card__media-video">
+        <video controls preload="metadata" src="{{ post.permalink }}{{ video }}"></video>
+      </div>
+  {% endfor %}
   </div>
   {% endif %}
 </article>

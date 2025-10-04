@@ -1,9 +1,4 @@
 <div class="post-card__body">
-  <div class="post-meta post-meta--inline">
-    <time class="post-meta__time" datetime="{{ post.date_iso }}">{{ post.date }}</time>
-    <span class="meta-divider">·</span>
-    <span>on farcaster</span>
-  </div>
   <div class="post-card__content reading-flow">
     {{ post.body | safe }}
   </div>
@@ -12,47 +7,25 @@
 {% if images %}
 <div class="post-card__media post-card__media--images">
   {% for image in images %}
-    {% if image is string %}
-      {% set src = image %}
-      {% if not src.startswith('http://') and not src.startswith('https://') and not src.startswith('/') %}
-        {% set src = post.permalink ~ src %}
-      {% endif %}
-      <figure class="post-card__media-item">
-        <img src="{{ src }}" alt="">
-      </figure>
-    {% elif image.url is defined %}
-      {% set src = image.url %}
-      {% if not src.startswith('http://') and not src.startswith('https://') and not src.startswith('/') %}
-        {% set src = post.permalink ~ src %}
-      {% endif %}
-      <figure class="post-card__media-item">
-        <img src="{{ src }}" alt="{{ image.alt | default("") }}">
-      </figure>
-    {% endif %}
-  {% endfor %}
+        <figure class="post-media__item">
+          <img src="{{ post.permalink }}{{ image }}" alt="">
+        </figure>
+    {% endfor %}
 </div>
 {% endif %}
 {% set videos = post.videos | default([]) %}
 {% if videos %}
 <div class="post-card__media post-card__media--videos">
   {% for video in videos %}
-    {% if video is string %}
-      {% set src = video %}
-      {% if not src.startswith('http://') and not src.startswith('https://') and not src.startswith('/') %}
-        {% set src = post.permalink ~ src %}
-      {% endif %}
       <div class="post-card__media-video">
-        <video controls preload="metadata" src="{{ src }}"></video>
+        <video controls preload="metadata" src="{{ post.permalink }}{{ video }}"></video>
       </div>
-    {% elif video.url is defined %}
-      {% set src = video.url %}
-      {% if not src.startswith('http://') and not src.startswith('https://') and not src.startswith('/') %}
-        {% set src = post.permalink ~ src %}
-      {% endif %}
-      <div class="post-card__media-video">
-        <video controls preload="metadata" src="{{ src }}"></video>
-      </div>
-    {% endif %}
   {% endfor %}
 </div>
 {% endif %}
+<div class="post-meta post-meta--inline">
+    <span class="meta-divider">◉</span>
+    <time class="post-meta__time" datetime="{{ post.date_iso }}">{{ post.date }}</time>
+    <span class="meta-divider">//</span>
+    <span><a href="https://farcaster.xyz/{{ post.castid }}">on farcaster →</a></span>
+  </div>
