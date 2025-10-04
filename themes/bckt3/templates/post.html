@@ -26,20 +26,6 @@
     {% endif %}
     <div class="post-meta">
       <time class="post-meta__time" datetime="{{ post.date_iso }}">{{ post.date }}</time>
-      {% if post.weather %}
-        <span class="meta-divider">&mdash;</span>
-        {% if post.weather.icon %}
-          <i class="wi wi-forecast-io-{{ post.weather.icon|lower }}"></i>
-        {% endif %}
-        {% if post.weather.icon2 %}
-          <i class="wi {{ post.weather.icon2|lower }}"></i>
-        {% endif %}
-        <span>{{ post.weather.description|capitalize }} {{ post.weather.C|round|int }}&deg;C</span>
-      {% endif %}
-      {% if post.location %}
-        <span class="meta-divider">&mdash;</span>
-        <span>{{ post.location.locality }}, {{ post.location.country }}</span>
-      {% endif %}
       {% if post.tags %}
         <span class="meta-divider">•</span>
         <ul class="post-tags">
