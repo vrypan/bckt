@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result, bail};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use percent_encoding::percent_decode_str;
-use tiny_http::{Header, Response, Server};
+use tiny_http::{Header, Response, Server, StatusCode};
 
 use crate::cli::DevArgs;
 use crate::config;
@@ -107,7 +107,13 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
             continue;
         }
 
-        let response = serve_path(&html_root, path, &latest_change);
+        let range = request
+            .headers()
+            .iter()
+            .find(|header| header.field.equiv("Range"))
+            .map(|header| header.value.as_str().to_string());
+
+        let response = serve_path(&html_root, path, range.as_deref(), &latest_change);
         if let Err(err) = request.respond(response) {
             eprintln!("[bckt::dev] respond error: {err}");
         }
@@ -137,6 +143,7 @@ fn register_watch_file(watcher: &mut RecommendedWatcher, path: PathBuf) -> Resul
 fn serve_path(
     html_root: &Path,
     raw_path: &str,
+    range_header: Option<&str>,
     latest_change: &Arc<AtomicU64>,
 ) -> Response<std::io::Cursor<Vec<u8>>> {
     match resolve_path(html_root, raw_path) {
@@ -161,11 +168,62 @@ fn serve_path(
             } else {
                 match fs::read(&resolved) {
                     Ok(bytes) => {
-                        let mut response = Response::from_data(bytes);
                         let mime = mime_guess::from_path(&resolved).first_or_octet_stream();
-                        add_header(&mut response, "Content-Type", mime.essence_str());
-                        add_header(&mut response, "Cache-Control", "no-store, max-age=0");
-                        response
+                        let total_len = bytes.len() as u64;
+                        if let Some(range) = range_header {
+                            match parse_byte_range(range, total_len) {
+                                Ok((start, end)) => {
+                                    let slice = bytes[start as usize..=end as usize].to_vec();
+                                    let mut response = Response::from_data(slice);
+                                    response = response.with_status_code(StatusCode(206));
+                                    add_header(&mut response, "Content-Type", mime.essence_str());
+                                    add_header(
+                                        &mut response,
+                                        "Cache-Control",
+                                        "no-store, max-age=0",
+                                    );
+                                    add_header(&mut response, "Accept-Ranges", "bytes");
+                                    add_header(
+                                        &mut response,
+                                        "Content-Range",
+                                        &format!("bytes {}-{}/{}", start, end, total_len),
+                                    );
+                                    response
+                                }
+                                Err(RangeParseError::Unsatisfiable) => {
+                                    let mut response = Response::from_data(Vec::new());
+                                    response = response.with_status_code(StatusCode(416));
+                                    add_header(
+                                        &mut response,
+                                        "Cache-Control",
+                                        "no-store, max-age=0",
+                                    );
+                                    add_header(
+                                        &mut response,
+                                        "Content-Range",
+                                        &format!("bytes */{}", total_len),
+                                    );
+                                    response
+                                }
+                                Err(RangeParseError::Invalid) => {
+                                    let mut response = Response::from_data(bytes);
+                                    add_header(&mut response, "Content-Type", mime.essence_str());
+                                    add_header(
+                                        &mut response,
+                                        "Cache-Control",
+                                        "no-store, max-age=0",
+                                    );
+                                    add_header(&mut response, "Accept-Ranges", "bytes");
+                                    response
+                                }
+                            }
+                        } else {
+                            let mut response = Response::from_data(bytes);
+                            add_header(&mut response, "Content-Type", mime.essence_str());
+                            add_header(&mut response, "Cache-Control", "no-store, max-age=0");
+                            add_header(&mut response, "Accept-Ranges", "bytes");
+                            response
+                        }
                     }
                     Err(err) => internal_error(err.to_string()),
                 }
@@ -279,6 +337,65 @@ fn forbidden() -> Response<std::io::Cursor<Vec<u8>>> {
 
 fn internal_error(message: String) -> Response<std::io::Cursor<Vec<u8>>> {
     Response::from_string(message).with_status_code(500)
+}
+
+#[derive(Debug)]
+enum RangeParseError {
+    Invalid,
+    Unsatisfiable,
+}
+
+fn parse_byte_range(header: &str, size: u64) -> Result<(u64, u64), RangeParseError> {
+    if size == 0 {
+        return Err(RangeParseError::Unsatisfiable);
+    }
+
+    let trimmed = header.trim();
+    let without_prefix = trimmed
+        .strip_prefix("bytes=")
+        .ok_or(RangeParseError::Invalid)?;
+
+    // Only support a single range definition
+    let range_spec = without_prefix.split(',').next().unwrap().trim();
+    let (start_part, end_part) = range_spec.split_once('-').ok_or(RangeParseError::Invalid)?;
+
+    if start_part.is_empty() {
+        // suffix-byte-range-spec (e.g. bytes=-500)
+        let length = end_part
+            .parse::<u64>()
+            .map_err(|_| RangeParseError::Invalid)?;
+        if length == 0 {
+            return Err(RangeParseError::Invalid);
+        }
+
+        if length >= size {
+            Ok((0, size - 1))
+        } else {
+            let start = size - length;
+            Ok((start, size - 1))
+        }
+    } else {
+        let start = start_part
+            .parse::<u64>()
+            .map_err(|_| RangeParseError::Invalid)?;
+        if start >= size {
+            return Err(RangeParseError::Unsatisfiable);
+        }
+
+        let end = if end_part.is_empty() {
+            size - 1
+        } else {
+            let parsed_end = end_part
+                .parse::<u64>()
+                .map_err(|_| RangeParseError::Invalid)?;
+            if parsed_end < start {
+                return Err(RangeParseError::Unsatisfiable);
+            }
+            parsed_end.min(size - 1)
+        };
+
+        Ok((start, end))
+    }
 }
 
 fn add_header(response: &mut Response<std::io::Cursor<Vec<u8>>>, key: &str, value: &str) {
