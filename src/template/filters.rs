@@ -80,9 +80,8 @@ fn translate_strftime_uncached(format: &str) -> Result<Vec<OwnedFormatItem>, Err
 
     let flush_literal = |items: &mut Vec<Item>, buf: &mut Vec<u8>| {
         if !buf.is_empty() {
-            items.push(Item::Literal(
-                buf.drain(..).collect::<Vec<_>>().into_boxed_slice(),
-            ));
+            let data = std::mem::take(buf).into_boxed_slice();
+            items.push(Item::Literal(data));
         }
     };
 

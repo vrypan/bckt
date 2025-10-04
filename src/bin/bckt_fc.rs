@@ -293,12 +293,11 @@ fn fetch_cast(hub: &Url, fid: u64, hash: &str) -> Result<Value> {
 
 fn extract_string<'a>(value: &'a Value, paths: &[&[&str]]) -> Option<&'a str> {
     for path in paths {
-        if let Some(result) = get_nested(value, path) {
-            if let Some(text) = result.as_str() {
-                if !text.is_empty() {
-                    return Some(text);
-                }
-            }
+        if let Some(result) = get_nested(value, path)
+            && let Some(text) = result.as_str()
+            && !text.is_empty()
+        {
+            return Some(text);
         }
     }
     None
@@ -382,9 +381,7 @@ fn process_embeds(
             let lower_url = url.to_ascii_lowercase();
             let content_type = fetch_content_type(url);
             let is_video = looks_like_video_url(&lower_url)
-                || content_type
-                    .as_deref()
-                    .is_some_and(|mime| is_video_mime(mime));
+                || content_type.as_deref().is_some_and(is_video_mime);
 
             if download_videos && is_video {
                 let prefix = format!("video{:02}", video_index);
@@ -568,12 +565,12 @@ fn apply_mentions(
         result.push_str(&handle);
 
         let mut next_byte = byte_pos;
-        if next_byte < text_len {
-            if let Some(next_char) = text[next_byte..].chars().next() {
-                let should_skip = next_char == '@' || matches!(next_char as u32, 0x01 | 0x1f);
-                if should_skip {
-                    next_byte += next_char.len_utf8();
-                }
+        if next_byte < text_len
+            && let Some(next_char) = text[next_byte..].chars().next()
+        {
+            let should_skip = next_char == '@' || matches!(next_char as u32, 0x01 | 0x1f);
+            if should_skip {
+                next_byte += next_char.len_utf8();
             }
         }
 
@@ -621,17 +618,18 @@ fn fetch_fname_handle(hub: &Url, fid: u64) -> Result<String> {
         }
     }
 
-    if proofs.is_empty() && is_fname_proof(&json) {
-        if let Some(name) = extract_proof_name(&json) {
-            return Ok(name);
-        }
+    if proofs.is_empty()
+        && is_fname_proof(&json)
+        && let Some(name) = extract_proof_name(&json)
+    {
+        return Ok(name);
     }
 
     for proof in proofs {
-        if is_fname_proof(proof) {
-            if let Some(name) = extract_proof_name(proof) {
-                return Ok(name);
-            }
+        if is_fname_proof(proof)
+            && let Some(name) = extract_proof_name(proof)
+        {
+            return Ok(name);
         }
     }
 

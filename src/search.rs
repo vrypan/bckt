@@ -140,7 +140,7 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
                     Some(&post.excerpt)
                 }
             })
-            .map(|s| s.clone())
+            .cloned()
             .unwrap_or_else(|| post.title.as_ref().unwrap_or(&post.slug).clone());
 
         let title = post.title.as_ref().unwrap_or(&post.slug).clone();
