@@ -41,11 +41,11 @@
     border-bottom: 1px solid #dcd9d3;
     background: rgba(244, 243, 239, 0.9);
     backdrop-filter: blur(6px);
-    padding: 2.75rem 0 2rem;
+    padding: 1rem 0 1rem;
   }
 
   .site-header__inner {
-    max-width: 60rem;
+    max-width: 42rem;
     margin: 0 auto;
     padding: 0 1.5rem;
     display: flex;
@@ -74,8 +74,8 @@
   }
 
   .site-brand__avatar {
-    width: 3.25rem;
-    height: 3.25rem;
+    width: 2.25rem;
+    height: 2.25rem;
     border-radius: 999px;
     display: block;
     border: 1px solid #131313;
@@ -90,9 +90,9 @@
 
   .site-title {
     margin: 0;
-    font-size: 1.6rem;
-    font-weight: 800;
-    letter-spacing: 0.12em;
+    font-size: 1.1rem;
+    font-weight: 900;
+    letter-spacing: -0.05em;
     text-transform: uppercase;
   }
 
@@ -114,7 +114,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 1.4rem;
-    font-size: 0.95rem;
+    font-size: 0.8rem;
     text-transform: lowercase;
     font-weight: 600;
     color: #1f1d1a;
@@ -164,7 +164,7 @@
   }
 
   .site-main {
-    padding: 3rem 0 4rem;
+    padding: 2.5rem 0 4rem;
   }
 
   .site-main__inner {
@@ -257,6 +257,48 @@
   .post-card__body {
     font-size: 1rem;
     color: #2f2b28;
+  }
+
+  .post-card__body--farcaster {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    align-items: baseline;
+  }
+
+  .post-card__body--farcaster .post-card__meta-inline--inline {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    margin: 0;
+  }
+
+  .post-card__body--farcaster .post-card__body-content {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .post-card__body--farcaster .post-card__body-content > :first-child {
+    margin-top: 0;
+  }
+
+  .post-card__meta-inline {
+    display: inline;
+    font-size: 0.9rem;
+    color: #7c7a77;
+    font-weight: 500;
+  }
+
+  .post-card__meta-inline--block {
+    display: block;
+    margin: 0.6rem 0 0;
+    font-size: 0.85rem;
+    color: #7c7a77;
+  }
+
+  .post-card__meta-inline--block .post-card__tags {
+    font-size: inherit;
+    color: inherit;
   }
 
   .post-card__tags {

@@ -1,16 +1,9 @@
-<header class="post-card__meta">
-  <time class="post-card__time" datetime="{{ post.date_iso }}">{{ post.date }}</time>
-  {% if post.tags %}
-  <span class="post-card__sep">//</span>
-  <span class="post-card__tags">
-    {% for tag in post.tags %}
-    <a href="/tags/{{ tag | replace(' ', '-') | lower }}/" class="post-card__tag">#{{ tag }}</a>{% if not loop.last %}<span class="post-card__tag-sep">,</span>{% endif %}
-    {% endfor %}
-  </span>
-  {% endif %}
-</header>
-<div class="post-card__body reading-flow">
-  {{ post.body | safe }}
+<div class="post-card__body post-card__body--farcaster">
+  <time class="post-card__time post-card__meta-inline post-card__meta-inline--inline" datetime="{{ post.date_iso }}">{{ post.date }}</time> 
+  <span class="post-card__sep">·</span> on farcaster
+  <div class="post-card__body-content reading-flow">
+    {{ post.body | safe }}
+  </div>
 </div>
 {% set images = post.images | default([]) %}
 {% if images %}
@@ -60,6 +53,3 @@
   {% endfor %}
 </div>
 {% endif %}
-<p class="post-card__actions">
-  <a class="post-card__continue" href="{{ post.permalink }}" aria-label="Read full post">Continue reading →</a>
-</p>
