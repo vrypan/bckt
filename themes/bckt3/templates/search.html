@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block page_title %}Search · {{ config.title | default("bckt") }}{% endblock page_title %}
+
+{% block page_meta %}
+  <meta name="robots" content="noindex">
+{% endblock page_meta %}
+
+{% block content %}
+  {% set base = config.base_url | default('/') %}
+  {% if base[-1] != '/' %}
+    {% set base = base ~ '/' %}
+  {% endif %}
+  <section
+    class="page-section search-page"
+    data-search-root
+    data-search-index="{{ base }}assets/search/search-index.json"
+  >
+    <header class="search-header">
+      <h1 class="page-title">Search</h1>
+      <p class="search-lede">Find posts across the archive using full-text search.</p>
+      <label class="search-field">
+        <span class="search-field__label">Search</span>
+        <input
+          type="search"
+          name="q"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Search posts"
+          class="search-field__input"
+          data-search-input
+        >
+      </label>
+    </header>
+
+    <div class="search-filters" aria-label="Search filters">
+      <div class="search-filter">
+        <label for="search-filter-language" class="search-filter__label">Language</label>
+        <select id="search-filter-language" class="search-filter__select" data-search-filter="language"></select>
+      </div>
+      <div class="search-filter">
+        <label for="search-filter-type" class="search-filter__label">Type</label>
+        <select id="search-filter-type" class="search-filter__select" data-search-filter="type"></select>
+      </div>
+      <div class="search-filter">
+        <label for="search-filter-tag" class="search-filter__label">Tag</label>
+        <select id="search-filter-tag" class="search-filter__select" data-search-filter="tag"></select>
+      </div>
+      <div class="search-filter">
+        <label for="search-filter-year" class="search-filter__label">Year</label>
+        <select id="search-filter-year" class="search-filter__select" data-search-filter="year"></select>
+      </div>
+    </div>
+
+    <p class="search-status" data-search-status></p>
+    <div class="search-results" data-search-results></div>
+  </section>
+{% endblock content %}
+
+{% block page_scripts %}
+  {% set base = config.base_url | default('/') %}
+  {% if base[-1] != '/' %}
+    {% set base = base ~ '/' %}
+  {% endif %}
+  <script defer src="{{ base }}assets/js/minisearch.js"></script>
+  <script defer src="{{ base }}assets/js/search.js"></script>
+{% endblock page_scripts %}

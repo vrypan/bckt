@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -11,6 +12,8 @@ use walkdir::WalkDir;
 
 use crate::config::Config;
 use crate::markdown::{MarkdownRender, render_markdown};
+use isolang::Language;
+use whatlang::detect;
 
 const MAIN_EXTENSIONS: &[&str] = &["md", "html"];
 
@@ -25,6 +28,8 @@ pub struct Post {
     pub attached: Vec<PathBuf>,
     pub body_html: String,
     pub excerpt: String,
+    pub language: String,
+    pub search_text: String,
     pub source_dir: PathBuf,
     pub content_path: PathBuf,
     pub permalink: String,
@@ -49,6 +54,7 @@ struct FrontMatter {
     pub post_type: Option<String>,
     #[serde(rename = "abstract")]
     pub abstract_text: Option<String>,
+    pub language: Option<String>,
     #[serde(deserialize_with = "deserialize_path_list")]
     pub attached: Vec<PathBuf>,
     #[serde(flatten)]
@@ -124,8 +130,11 @@ fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
     let permalink = build_permalink(&date, &slug);
 
     let (body_html, excerpt) = render_body(&content_path, &body)?;
+    let plain_text = to_plain_text(&body_html);
 
     let post_type = normalize_post_type(front.post_type.as_deref(), &content_path)?;
+
+    let language = determine_language(front.language.as_deref(), &plain_text, config);
 
     let extras = mapping_to_json_map(&front.extra).with_context(|| {
         format!(
@@ -144,6 +153,8 @@ fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
         attached: front.attached,
         body_html,
         excerpt,
+        language,
+        search_text: plain_text,
         source_dir: dir.to_path_buf(),
         content_path,
         permalink,
@@ -208,6 +219,143 @@ fn parse_post_date(date_str: &str, config: &Config, origin: &Path) -> Result<Off
         "{}: date must be RFC3339, 'YYYY-MM-DD HH:MM:SS', or 'YYYY-MM-DD HH:MM:SS ±HHMM/±HH:MM'",
         origin.display()
     )
+}
+
+fn determine_language(value: Option<&str>, body_text: &str, config: &Config) -> String {
+    let languages = language_lookup(config);
+
+    if let Some(explicit) = value {
+        if let Some(tag) = canonical_language(explicit, &languages) {
+            return tag;
+        }
+    }
+
+    if let Some(guessed) = guess_language(body_text) {
+        if let Some(tag) = canonical_language(&guessed, &languages) {
+            return tag;
+        }
+    }
+
+    canonical_language(&config.search.default_language, &languages)
+        .unwrap_or_else(|| sanitize_language(&config.search.default_language))
+}
+
+fn language_lookup(config: &Config) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    for entry in &config.search.languages {
+        let canonical = sanitize_language(&entry.id);
+        if canonical.is_empty() {
+            continue;
+        }
+
+        map.insert(canonical.clone(), entry.id.clone());
+        for alias in language_aliases(&canonical) {
+            map.entry(alias).or_insert_with(|| entry.id.clone());
+        }
+    }
+    map
+}
+
+fn language_aliases(id: &str) -> Vec<String> {
+    let mut aliases = Vec::new();
+    let primary = id.split('-').next().unwrap_or(id);
+
+    let language = match primary.len() {
+        2 => Language::from_639_1(primary),
+        3 => Language::from_639_3(primary),
+        _ => None,
+    };
+
+    if let Some(lang) = language {
+        if let Some(code) = lang.to_639_1() {
+            aliases.push(code.to_lowercase());
+        }
+        aliases.push(lang.to_639_3().to_lowercase());
+    }
+
+    aliases
+}
+
+fn canonical_language(value: &str, map: &BTreeMap<String, String>) -> Option<String> {
+    let sanitized = sanitize_language(value);
+    if sanitized.is_empty() {
+        return None;
+    }
+
+    if let Some(found) = map.get(&sanitized) {
+        return Some(found.clone());
+    }
+
+    if let Some((primary, _rest)) = sanitized.split_once('-') {
+        if let Some(found) = map.get(primary) {
+            return Some(found.clone());
+        }
+    }
+
+    Some(sanitized)
+}
+
+fn sanitize_language(value: &str) -> String {
+    value.trim().replace('_', "-").to_ascii_lowercase()
+}
+
+fn guess_language(body_text: &str) -> Option<String> {
+    let trimmed = body_text.trim();
+    if trimmed.chars().count() < 24 {
+        return None;
+    }
+
+    let info = detect(trimmed)?;
+    if !info.is_reliable() {
+        return None;
+    }
+
+    let iso3 = info.lang().code();
+    if let Some(lang) = Language::from_639_3(iso3) {
+        if let Some(code) = lang.to_639_1() {
+            return Some(code.to_lowercase());
+        }
+        return Some(lang.to_639_3().to_lowercase());
+    }
+
+    Some(iso3.to_lowercase())
+}
+
+fn to_plain_text(html: &str) -> String {
+    let mut result = String::with_capacity(html.len());
+    let mut in_tag = false;
+    let mut last_space = false;
+
+    for ch in html.chars() {
+        match ch {
+            '<' => {
+                in_tag = true;
+                continue;
+            }
+            '>' => {
+                in_tag = false;
+                continue;
+            }
+            _ => {}
+        }
+
+        if in_tag {
+            continue;
+        }
+
+        let normalized = if ch.is_whitespace() { ' ' } else { ch };
+        if normalized == ' ' {
+            if !last_space {
+                result.push(' ');
+                last_space = true;
+            }
+        } else {
+            result.push(normalized);
+            last_space = false;
+        }
+    }
+
+    result.trim().to_string()
 }
 
 fn parse_offset_str(value: &str) -> Result<UtcOffset> {
@@ -691,6 +839,55 @@ mod tests {
         assert_eq!(post.date.hour(), 9);
         assert_eq!(post.date.minute(), 30);
         assert_eq!(post.excerpt, "Body");
+    }
+
+    #[test]
+    fn language_from_front_matter_is_normalized() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/lang");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("post.md"),
+            "---\ndate: 2024-01-01T00:00:00Z\nlanguage: EL\n---\nΔοκιμαστικό κείμενο.",
+        )
+        .unwrap();
+
+        let config = Config::default();
+        let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+        assert_eq!(posts[0].language, "el");
+    }
+
+    #[test]
+    fn language_is_detected_when_missing() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/detect");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("post.md"),
+            "---\ndate: 2024-01-01T00:00:00Z\n---\nΑυτό είναι ένα παράδειγμα ελληνικού κειμένου για την ανίχνευση γλώσσας.",
+        )
+        .unwrap();
+
+        let config = Config::default();
+        let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+        assert_eq!(posts[0].language, "el");
+    }
+
+    #[test]
+    fn short_content_falls_back_to_default_language() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("posts/fallback");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("post.md"),
+            "---\ndate: 2024-01-01T00:00:00Z\n---\nHi!",
+        )
+        .unwrap();
+
+        let mut config = Config::default();
+        config.search.default_language = "en".to_string();
+        let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+        assert_eq!(posts[0].language, "en");
     }
 
     #[test]

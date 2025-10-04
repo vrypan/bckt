@@ -24,6 +24,8 @@ tiny_http = "0.12"
 notify = "6.1"
 mime_guess = "2.0"
 percent-encoding = "2.3"
+isolang = "2.3"
+whatlang = "0.16"
 
 [dev-dependencies]
 tempfile = "3.12"

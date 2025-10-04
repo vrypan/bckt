@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
@@ -16,6 +16,7 @@ use walkdir::WalkDir;
 
 use crate::config::Config;
 use crate::content::{Post, discover_posts};
+use crate::search;
 use crate::template;
 use crate::utils::absolute_url;
 
@@ -39,6 +40,8 @@ const TAG_PAGES_KEY: &str = "tag_pages";
 const POST_HASH_PREFIX: &str = "post:";
 const SITE_INPUTS_KEY: &str = "site_inputs_hash";
 const STATIC_HASH_KEY: &str = "static_hash";
+const SEARCH_INDEX_KEY: &str = "search_index_hash";
+const THEME_ASSET_HASH_KEY: &str = "theme_asset_hash";
 
 fn log_status(enabled: bool, label: &str, message: impl AsRef<str>) {
     if enabled {
@@ -271,6 +274,34 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
         render_tag_archives(&posts, &html_root, &config, &env, &tag_cache)?;
         render_archives(&posts, &html_root, &config, &env)?;
         render_feeds(&posts, &html_root, &config, &env)?;
+
+        let artifact = search::build_index(&config, &posts)?;
+        let search_path = search::resolve_asset_path(&html_root, &config.search.asset_path);
+        let cached_search_hash = read_cached_string(&cache_db, SEARCH_INDEX_KEY)?;
+        let needs_search = cached_search_hash.as_deref() != Some(artifact.digest.as_str())
+            || !search_path.exists();
+
+        if needs_search {
+            if let Some(parent) = search_path.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+            fs::write(&search_path, &artifact.bytes).with_context(|| {
+                format!("failed to write search index to {}", search_path.display())
+            })?;
+            log_status(
+                plan.verbose,
+                "SEARCH",
+                format!(
+                    "Updated search index ({} documents)",
+                    artifact.document_count
+                ),
+            );
+        } else {
+            log_status(plan.verbose, "SEARCH", "Search index unchanged");
+        }
+
+        store_cached_string(&cache_db, SEARCH_INDEX_KEY, &artifact.digest)?;
         store_cached_string(&cache_db, SITE_INPUTS_KEY, &site_inputs_hash)?;
     }
 
@@ -288,6 +319,36 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
             log_status(plan.verbose, "STATIC", "Static assets unchanged");
         }
         store_cached_string(&cache_db, STATIC_HASH_KEY, &static_hash)?;
+
+        if let Some(theme_name) = config.theme.as_deref() {
+            let theme_hash = compute_theme_asset_digest(root, theme_name)?;
+            let stored_theme_hash = read_cached_string(&cache_db, THEME_ASSET_HASH_KEY)?;
+            let theme_changed = stored_theme_hash.as_deref() != Some(theme_hash.as_str());
+            let should_copy_theme = matches!(effective_mode, BuildMode::Full) || theme_changed;
+
+            if should_copy_theme {
+                match copy_theme_assets(root, &html_root, theme_name)? {
+                    ThemeAssetCopy::Copied(count) => {
+                        log_status(
+                            plan.verbose,
+                            "THEME",
+                            format!("Copied {count} theme asset(s) for {theme_name}"),
+                        );
+                    }
+                    ThemeAssetCopy::SkippedMissing => {
+                        log_status(
+                            plan.verbose,
+                            "THEME",
+                            format!("Theme {theme_name} has no assets directory"),
+                        );
+                    }
+                }
+            } else {
+                log_status(plan.verbose, "THEME", "Theme assets unchanged");
+            }
+
+            store_cached_string(&cache_db, THEME_ASSET_HASH_KEY, &theme_hash)?;
+        }
     } else {
         log_status(plan.verbose, "STATIC", "Skipping static assets");
     }
@@ -1056,6 +1117,7 @@ fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
         slug: post.slug.clone(),
         date: display_date,
         date_iso: iso_date,
+        language: post.language.clone(),
         tags: post.tags.clone(),
         post_type: post.post_type.clone(),
         abstract_text: post.abstract_text.clone(),
@@ -1086,6 +1148,7 @@ fn build_post_summary(config: &Config, post: &Post) -> Result<PostSummary> {
         slug: post.slug.clone(),
         date,
         date_iso,
+        language: post.language.clone(),
         tags: post.tags.clone(),
         post_type: post.post_type.clone(),
         abstract_text: post.abstract_text.clone(),
@@ -1477,6 +1540,117 @@ fn copy_static_assets(root: &Path, html_root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn compute_theme_asset_digest(root: &Path, theme: &str) -> Result<String> {
+    let Some(assets_dir) = theme_assets_directory(root, theme)? else {
+        let mut hasher = Hasher::new();
+        hasher.update(theme.as_bytes());
+        return Ok(hasher.finalize().to_hex().to_string());
+    };
+
+    let mut files = Vec::new();
+    for entry in WalkDir::new(&assets_dir) {
+        let entry = entry?;
+        if entry.file_type().is_file() {
+            files.push(entry.into_path());
+        }
+    }
+    files.sort();
+
+    let mut hasher = Hasher::new();
+    hasher.update(theme.as_bytes());
+
+    for path in files {
+        let relative = path.strip_prefix(&assets_dir).unwrap();
+        let normalized = normalize_path(relative);
+        hasher.update(normalized.as_bytes());
+        let data = fs::read(&path)
+            .with_context(|| format!("failed to read theme asset {}", path.display()))?;
+        hasher.update(&data);
+        let metadata = fs::metadata(&path)
+            .with_context(|| format!("failed to inspect theme asset {}", path.display()))?;
+        hasher.update(&metadata.len().to_le_bytes());
+        let modified = metadata.modified().with_context(|| {
+            format!(
+                "failed to read modification time for theme asset {}",
+                path.display()
+            )
+        })?;
+        let duration = modified
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::new(0, 0));
+        hasher.update(&duration.as_secs().to_le_bytes());
+        hasher.update(&duration.subsec_nanos().to_le_bytes());
+    }
+
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
+enum ThemeAssetCopy {
+    Copied(usize),
+    SkippedMissing,
+}
+
+fn copy_theme_assets(root: &Path, html_root: &Path, theme: &str) -> Result<ThemeAssetCopy> {
+    let Some(assets_dir) = theme_assets_directory(root, theme)? else {
+        return Ok(ThemeAssetCopy::SkippedMissing);
+    };
+
+    let destination_root = html_root.join("assets");
+    let mut copied = 0usize;
+
+    for entry in WalkDir::new(&assets_dir) {
+        let entry = entry?;
+        if entry.file_type().is_dir() {
+            continue;
+        }
+        let relative = entry.path().strip_prefix(&assets_dir).unwrap();
+        let destination = destination_root.join(relative);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+        fs::copy(entry.path(), &destination).with_context(|| {
+            format!(
+                "failed to copy theme asset from {} to {}",
+                entry.path().display(),
+                destination.display()
+            )
+        })?;
+        copied += 1;
+    }
+
+    Ok(ThemeAssetCopy::Copied(copied))
+}
+
+fn theme_assets_directory(root: &Path, theme: &str) -> Result<Option<PathBuf>> {
+    let mut components = Path::new(theme).components();
+    let first = components.next();
+    if first.is_none() || components.next().is_some() {
+        bail!("invalid theme name '{}'", theme);
+    }
+
+    match first.unwrap() {
+        Component::Normal(segment) => {
+            if segment.is_empty() {
+                bail!("invalid theme name '{}'", theme);
+            }
+        }
+        _ => bail!("invalid theme name '{}'", theme),
+    }
+
+    let theme_dir = root.join("themes").join(theme);
+    if !theme_dir.exists() {
+        return Ok(None);
+    }
+
+    let assets_dir = theme_dir.join("assets");
+    if !assets_dir.exists() {
+        return Ok(None);
+    }
+
+    Ok(Some(assets_dir))
+}
+
 fn render_feeds(
     posts: &[Post],
     html_root: &Path,
@@ -1757,6 +1931,7 @@ struct PostTemplate {
     slug: String,
     date: String,
     date_iso: String,
+    language: String,
     tags: Vec<String>,
     #[serde(rename = "type")]
     post_type: Option<String>,
@@ -1776,6 +1951,7 @@ struct PostSummary {
     slug: String,
     date: String,
     date_iso: String,
+    language: String,
     tags: Vec<String>,
     #[serde(rename = "type")]
     post_type: Option<String>,
@@ -2013,6 +2189,74 @@ mod tests {
 
         let about = fs::read_to_string(root.join("html/about/index.html")).unwrap();
         assert!(about.contains("About"));
+    }
+
+    #[test]
+    fn writes_search_index_with_posts() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        setup_markdown_templates(root);
+        write_markdown_post(
+            root,
+            "This example body contains enough English text to exercise the search index.",
+        );
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let index_path = root.join("html/assets/search/search-index.json");
+        assert!(index_path.exists());
+        let data = fs::read_to_string(index_path).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&data).unwrap();
+        assert_eq!(payload["documents"].as_array().unwrap().len(), 1);
+        assert_eq!(payload["documents"][0]["language"], "en");
+    }
+
+    #[test]
+    fn search_index_updates_when_post_changes() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        setup_markdown_templates(root);
+        write_markdown_post(
+            root,
+            "Initial body content with enough characters for indexing.",
+        );
+
+        let full_plan = RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        };
+        render_site(root, full_plan).unwrap();
+
+        let index_path = root.join("html/assets/search/search-index.json");
+        let original = fs::read_to_string(&index_path).unwrap();
+
+        fs::write(
+            root.join("posts/hello-world/post.md"),
+            "---\ntitle: Example\ndate: 2024-01-02T03:04:05Z\ntags: [test]\n---\nChanged body text that modifies the search index.",
+        )
+        .unwrap();
+
+        let changed_plan = RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Changed,
+            verbose: false,
+        };
+        render_site(root, changed_plan).unwrap();
+
+        let updated = fs::read_to_string(&index_path).unwrap();
+        assert_ne!(original, updated);
     }
 
     #[test]
