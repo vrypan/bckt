@@ -18,41 +18,60 @@
   >
     <header class="search-header">
       <h1 class="page-title">Search</h1>
-      <p class="search-lede">Find posts across the archive using full-text search.</p>
-      <label class="search-field">
-        <span class="search-field__label">Search</span>
-        <input
-          type="search"
-          name="q"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="Search posts"
-          class="search-field__input"
-          data-search-input
-        >
-      </label>
     </header>
 
-    <div class="search-filters" aria-label="Search filters">
-      <div class="search-filter">
-        <label for="search-filter-language" class="search-filter__label">Language</label>
-        <select id="search-filter-language" class="search-filter__select" data-search-filter="language"></select>
+    <div class="search-panel">
+      <div class="search-panel__row">
+        <label class="search-field">
+          <span class="search-field__label">Search for</span>
+          <div class="search-field__control">
+            <span class="search-field__icon" aria-hidden="true">⌕</span>
+            <input
+              type="search"
+              name="q"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Type keywords…"
+              class="search-field__input"
+              data-search-input
+            >
+          </div>
+        </label>
+        <div class="search-sort">
+          <label for="search-sort" class="search-filter__label">Sort by</label>
+          <select id="search-sort" class="search-filter__select search-sort__select" data-search-sort>
+            <option value="relevance" selected>Relevance</option>
+            <option value="newest">Newest</option>
+          </select>
+        </div>
       </div>
-      <div class="search-filter">
-        <label for="search-filter-type" class="search-filter__label">Type</label>
-        <select id="search-filter-type" class="search-filter__select" data-search-filter="type"></select>
+
+      <div class="search-panel__actions">
+        <button type="button" class="search-options__toggle" data-search-toggle aria-expanded="false">More options</button>
       </div>
-      <div class="search-filter">
-        <label for="search-filter-tag" class="search-filter__label">Tag</label>
-        <select id="search-filter-tag" class="search-filter__select" data-search-filter="tag"></select>
+
+      <div class="search-filters" aria-label="Search filters" data-search-filters hidden>
+        <div class="search-filter">
+          <label for="search-filter-language" class="search-filter__label">Language</label>
+          <select id="search-filter-language" class="search-filter__select" data-search-filter="language"></select>
+        </div>
+        <div class="search-filter">
+          <label for="search-filter-type" class="search-filter__label">Type</label>
+          <select id="search-filter-type" class="search-filter__select" data-search-filter="type"></select>
+        </div>
+        <div class="search-filter">
+          <label for="search-filter-tag" class="search-filter__label">Tag</label>
+          <select id="search-filter-tag" class="search-filter__select" data-search-filter="tag"></select>
+        </div>
+        <div class="search-filter">
+          <label for="search-filter-year" class="search-filter__label">Year</label>
+          <select id="search-filter-year" class="search-filter__select" data-search-filter="year"></select>
+        </div>
       </div>
-      <div class="search-filter">
-        <label for="search-filter-year" class="search-filter__label">Year</label>
-        <select id="search-filter-year" class="search-filter__select" data-search-filter="year"></select>
-      </div>
+
+      <p class="search-status" data-search-status></p>
     </div>
 
-    <p class="search-status" data-search-status></p>
     <div class="search-results" data-search-results></div>
   </section>
 {% endblock content %}

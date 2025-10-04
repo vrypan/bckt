@@ -9,6 +9,9 @@
   const input = root.querySelector('[data-search-input]');
   const status = root.querySelector('[data-search-status]');
   const resultsContainer = root.querySelector('[data-search-results]');
+  const filtersContainer = root.querySelector('[data-search-filters]');
+  const toggleButton = root.querySelector('[data-search-toggle]');
+  const sortSelect = root.querySelector('[data-search-sort]');
   const filterElements = {
     language: root.querySelector('[data-search-filter="language"]'),
     type: root.querySelector('[data-search-filter="type"]'),
@@ -19,6 +22,9 @@
   const indexUrl = root.getAttribute('data-search-index') || '/assets/search/search-index.json';
   let miniSearch = null;
   let documents = [];
+  let lastBaseResults = [];
+  let lastTokens = [];
+  let lastQuery = '';
 
   updateStatus('Loading search index…');
 
@@ -43,8 +49,8 @@
       });
       miniSearch.addAll(documents);
       buildFilters(payload);
-      updateStatus('Type to search the site.');
-      renderResults(miniSearch.collectAll(filterDocument));
+      renderResults([], [], '');
+      updateStatus('Type a keyword to start searching.');
     })
     .catch((error) => {
       console.error(error);
@@ -56,18 +62,57 @@
       return;
     }
     const query = (input.value || '').trim();
-    const results = miniSearch.search(query, {
+    if (!query) {
+      lastBaseResults = [];
+      lastTokens = [];
+      lastQuery = '';
+      renderResults([], [], '');
+      updateStatus('Type a keyword to start searching.');
+      return;
+    }
+
+    const tokens = dedupe(miniSearch.tokenize(query).filter(Boolean));
+    const baseResults = miniSearch.search(query, {
       prefix: true,
       filter: filterDocument,
     });
-    renderResults(results, query);
-  }, 80);
+    lastBaseResults = baseResults;
+    lastTokens = tokens;
+    lastQuery = query;
+    const sorted = applySort(baseResults.slice());
+    renderResults(sorted, tokens, query);
+  }, 120);
 
   input.addEventListener('input', debouncedSearch);
   for (const element of Object.values(filterElements)) {
     if (element) {
       element.addEventListener('change', debouncedSearch);
     }
+  }
+
+  if (sortSelect) {
+    sortSelect.addEventListener('change', () => {
+      if (!miniSearch || !lastQuery) {
+        return;
+      }
+      const sorted = applySort(lastBaseResults.slice());
+      renderResults(sorted, lastTokens, lastQuery);
+    });
+  }
+
+  if (toggleButton && filtersContainer) {
+    toggleButton.addEventListener('click', () => {
+      const expanded = toggleButton.getAttribute('aria-expanded') === 'true';
+      const next = !expanded;
+      toggleButton.setAttribute('aria-expanded', String(next));
+      if (next) {
+        filtersContainer.removeAttribute('hidden');
+        toggleButton.textContent = 'Hide options';
+      } else {
+        filtersContainer.setAttribute('hidden', '');
+        toggleButton.textContent = 'More options';
+      }
+    });
   }
 
   function buildFilters(payload) {
@@ -150,67 +195,145 @@
     return true;
   }
 
-  function renderResults(results, query) {
+  function renderResults(results, tokens, query) {
     resultsContainer.innerHTML = '';
     if (!results || results.length === 0) {
-      updateStatus(query ? 'No matches found.' : 'No posts to show.');
+      if (query && query.length) {
+        updateStatus(`No matches found for “${query}”.`);
+      }
       return;
     }
-    updateStatus(`${results.length} result${results.length === 1 ? '' : 's'}${query ? ` for “${query}”` : ''}.`);
+    updateStatus(`${results.length} result${results.length === 1 ? '' : 's'} for “${query}”.`);
 
     const fragment = document.createDocumentFragment();
     for (const result of results) {
-      fragment.appendChild(renderResultCard(result));
+      fragment.appendChild(renderResultCard(result, tokens));
     }
     resultsContainer.appendChild(fragment);
   }
 
-  function renderResultCard(result) {
+  function applySort(results) {
+    if (!sortSelect) {
+      return results;
+    }
+    const mode = sortSelect.value;
+    if (mode === 'newest') {
+      results.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    }
+    return results;
+  }
+
+  function renderResultCard(result, tokens) {
+    const isFarcaster = (result.type || '').toLowerCase() === 'farcaster';
     const article = document.createElement('article');
-    article.className = 'search-card';
+    article.className = 'post-card';
+    if (isFarcaster) {
+      article.classList.add('post-card--farcaster');
+      renderFarcasterSummary(article, result, tokens);
+    } else {
+      renderDefaultSummary(article, result, tokens);
+    }
+    return article;
+  }
 
+  function renderDefaultSummary(container, result, tokens) {
     const header = document.createElement('header');
-    header.className = 'search-card__header';
+    const meta = document.createElement('div');
+    meta.className = 'post-meta post-meta--compact';
 
-    const meta = document.createElement('p');
-    meta.className = 'search-card__meta';
-    meta.innerHTML = [formatDate(result.date_display || result.date_iso), result.type, result.language]
-      .filter(Boolean)
-      .map((value) => `<span>${escapeHtml(value)}</span>`)
-      .join(' <span class="meta-divider">•</span> ');
-    header.appendChild(meta);
+    const time = document.createElement('time');
+    time.className = 'post-meta__time';
+    time.dateTime = result.date_iso || '';
+    time.textContent = formatDate(result.date_display || result.date_iso);
+    meta.appendChild(time);
 
-    const heading = document.createElement('h2');
-    heading.className = 'search-card__title';
-    const link = document.createElement('a');
-    link.href = result.url || result.id;
-    link.textContent = result.title || result.id;
-    heading.appendChild(link);
-    header.appendChild(heading);
-    article.appendChild(header);
-
-    const body = document.createElement('div');
-    body.className = 'search-card__body';
-    body.textContent = result.excerpt || result.content.slice(0, 160);
-    article.appendChild(body);
-
-    if (Array.isArray(result.tags) && result.tags.length > 0) {
-      const footer = document.createElement('footer');
-      footer.className = 'search-card__tags';
-      for (const tag of result.tags) {
-        const badge = document.createElement('span');
-        badge.className = 'search-tag';
-        badge.textContent = tag;
-        footer.appendChild(badge);
-      }
-      article.appendChild(footer);
+    if (result.title) {
+      meta.appendChild(createDivider('·'));
+      const titleLink = document.createElement('a');
+      titleLink.className = 'post-card__title';
+      titleLink.href = result.url || result.id;
+      titleLink.innerHTML = highlightText(result.title, tokens);
+      titleLink.rel = 'bookmark';
+      meta.appendChild(titleLink);
     }
 
-    return article;
+    if (Array.isArray(result.tags) && result.tags.length > 0) {
+      meta.appendChild(createDivider('•'));
+      const list = document.createElement('ul');
+      list.className = 'post-tags post-tags--compact';
+      for (const tag of result.tags) {
+        const item = document.createElement('li');
+        const link = document.createElement('a');
+        link.href = `/tags/${tagSlug(tag)}/`;
+        link.textContent = `#${tag}`;
+        item.appendChild(link);
+        list.appendChild(item);
+      }
+      meta.appendChild(list);
+    }
+
+    const summarySource = result.excerpt || result.content || '';
+    if (summarySource.trim().length > 0) {
+      meta.appendChild(createDivider('·'));
+      const summary = document.createElement('span');
+      summary.className = 'post-card__abstract';
+      summary.innerHTML = highlightText(summarySource, tokens);
+      summary.appendChild(document.createTextNode(' '));
+      summary.appendChild(document.createTextNode('['));
+      const continueLink = document.createElement('a');
+      continueLink.className = 'post-card__continue';
+      continueLink.href = result.url || result.id;
+      continueLink.setAttribute('aria-label', 'Read full post');
+      continueLink.textContent = 'Read→';
+      summary.appendChild(continueLink);
+      summary.appendChild(document.createTextNode(']'));
+      meta.appendChild(summary);
+    }
+
+    header.appendChild(meta);
+    container.appendChild(header);
+  }
+
+  function renderFarcasterSummary(container, result, tokens) {
+    const body = document.createElement('div');
+    body.className = 'post-card__body';
+
+    const meta = document.createElement('div');
+    meta.className = 'post-meta post-meta--inline';
+    const time = document.createElement('time');
+    time.className = 'post-meta__time';
+    time.dateTime = result.date_iso || '';
+    time.textContent = formatDate(result.date_display || result.date_iso);
+    meta.appendChild(time);
+    meta.appendChild(createDivider('·'));
+    const origin = document.createElement('span');
+    origin.textContent = 'on farcaster';
+    meta.appendChild(origin);
+    body.appendChild(meta);
+
+    const content = document.createElement('div');
+    content.className = 'post-card__content reading-flow';
+    const highlighted = highlightText(result.excerpt || result.content || '', tokens);
+    if (highlighted.length > 0) {
+      const segments = highlighted.split(/\n{2,}/).map((segment) => segment.replace(/\n/g, '<br>'));
+      content.innerHTML = segments
+        .filter((segment) => segment.trim().length > 0)
+        .map((segment) => `<p>${segment}</p>`)
+        .join('');
+    }
+    body.appendChild(content);
+    container.appendChild(body);
   }
 
   function formatDate(value) {
     return value || '';
+  }
+
+  function createDivider(symbol) {
+    const divider = document.createElement('span');
+    divider.className = 'meta-divider';
+    divider.textContent = symbol;
+    return divider;
   }
 
   function escapeHtml(value) {
@@ -251,5 +374,46 @@
       return;
     }
     status.textContent = message;
+  }
+
+  function highlightText(text, tokens) {
+    const source = text || '';
+    if (!source.trim() || !tokens || tokens.length === 0) {
+      return escapeHtml(source);
+    }
+    const sorted = tokens
+      .slice()
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length);
+    let highlighted = escapeHtml(source);
+    for (const token of sorted) {
+      const pattern = new RegExp(`(${escapeRegex(token)})`, 'gi');
+      highlighted = highlighted.replace(pattern, '<mark>$1</mark>');
+    }
+    return highlighted;
+  }
+
+  function escapeRegex(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function tagSlug(tag) {
+    return String(tag || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '-');
+  }
+
+  function dedupe(list) {
+    const seen = new Set();
+    const result = [];
+    for (const item of list) {
+      const lower = String(item).toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        result.push(lower);
+      }
+    }
+    return result;
   }
 })();
