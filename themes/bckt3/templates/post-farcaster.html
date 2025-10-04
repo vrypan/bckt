@@ -51,9 +51,10 @@
   <div class="post-media post-media--videos">
     {% for video in videos %}
       <div class="post-card__media-video">
-        <video controls preload="metadata" src="{{ post.permalink }}{{ video }}"></video>
+        <video controls preload="metadata" playsinline src="{{ post.permalink }}{{ video }}"></video>
+        <p class="post-media__download"><a href="{{ post.permalink }}{{ video }}">Download video</a></p>
       </div>
-  {% endfor %}
+    {% endfor %}
   </div>
   {% endif %}
 </article>
