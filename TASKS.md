@@ -152,12 +152,12 @@ This file tracks the work plan for **bckt**. Tasks are grouped into milestones w
 
 ## Feature 1: Search
 **Goal:** Provide client-side full-text search rails
-- [ ] Generate a full-text JSON index for all posts at `/assets/search/search-index.json` during render.
-- [ ] Drive analyzers/normalization and stopword lists from config; English and Greek shipped by default.
-- [ ] Ensure incremental renders rebuild the search index whenever post content changes.
-- [ ] Add a `/search/` page with filters in the `bckt3` theme and link it from the global navigation.
-- [ ] Ship MiniSearch as an unbundled vendor script in `themes/bckt3/assets/js/` plus a client hook that loads/queries the index.
-- [ ] Include theme documentation at `docs/search.md` explaining configuration and template integration.
+- [x] Generate a full-text JSON index for all posts at `/assets/search/search-index.json` during render.
+- [x] Drive analyzers/normalization and stopword lists from config; English and Greek shipped by default.
+- [x] Ensure incremental renders rebuild the search index whenever post content changes.
+- [x] Add a `/search/` page with filters in the `bckt3` theme and link it from the global navigation.
+- [x] Ship MiniSearch as an unbundled vendor script in `themes/bckt3/assets/js/` plus a client hook that loads/queries the index.
+- [x] Include theme documentation at `docs/search.md` explaining configuration and template integration.
 
 Acceptance: Line present.
 ---
