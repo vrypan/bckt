@@ -25,7 +25,7 @@
     <h1 class="post-title">{{ post.title }}</h1>
     {% endif %}
     <div class="post-meta">
-      <time datetime="{{ post.date_iso }}">{{ post.date }}</time>
+      <time class="post-meta__time" datetime="{{ post.date_iso }}">{{ post.date }}</time>
       {% if post.weather %}
         <span class="meta-divider">&mdash;</span>
         {% if post.weather.icon %}

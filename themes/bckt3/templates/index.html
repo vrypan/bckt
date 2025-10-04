@@ -6,9 +6,7 @@
     {% if post.type == 'farcaster' %}
       {% include "partials/summary-farcaster.html" %}
     {% else %}
-      <p class="post-card__line">
-        {% include "partials/summary-default.html" %}
-      </p>
+      {% include "partials/summary-default.html" %}
     {% endif %}
   </article>
   {% else %}

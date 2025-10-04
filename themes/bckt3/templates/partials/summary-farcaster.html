@@ -1,7 +1,10 @@
-<div class="post-card__body post-card__body--farcaster">
-  <time class="post-card__time post-card__meta-inline post-card__meta-inline--inline" datetime="{{ post.date_iso }}">{{ post.date }}</time> 
-  <span class="post-card__sep">·</span> on farcaster
-  <div class="post-card__body-content reading-flow">
+<div class="post-card__body">
+  <div class="post-meta post-meta--inline">
+    <time class="post-meta__time" datetime="{{ post.date_iso }}">{{ post.date }}</time>
+    <span class="meta-divider">·</span>
+    <span>on farcaster</span>
+  </div>
+  <div class="post-card__content reading-flow">
     {{ post.body | safe }}
   </div>
 </div>
