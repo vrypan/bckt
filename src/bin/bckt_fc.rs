@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
@@ -26,6 +28,9 @@ struct Cli {
     /// Destination directory for the generated post
     #[arg(long)]
     destination: Option<PathBuf>,
+    /// Do not download video embeds locally
+    #[arg(long)]
+    no_local_video: bool,
 }
 
 // Pre-compiled static format descriptions for date formatting
@@ -99,6 +104,8 @@ static PROOF_PATHS: &[&[&str]] = &[&["proofs"], &["data", "proofs"], &["result",
 
 static PROOF_NAME_FIELDS: &[&str] = &["name", "username", "value"];
 
+static YT_DLP_CHECK: OnceLock<Result<(), String>> = OnceLock::new();
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("Error: {err:?}");
@@ -147,7 +154,14 @@ fn run() -> Result<()> {
     fs::create_dir_all(&post_dir)
         .with_context(|| format!("failed to create directory {}", post_dir.display()))?;
 
-    let embed_assets = process_embeds(&hub, &cast, &post_dir, &mut body, &mut mention_cache)?;
+    let embed_assets = process_embeds(
+        &hub,
+        &cast,
+        &post_dir,
+        &mut body,
+        &mut mention_cache,
+        !cli.no_local_video,
+    )?;
 
     let front_matter_date = parsed_timestamp
         .format(FRONT_MATTER_FORMAT)
@@ -171,6 +185,10 @@ fn run() -> Result<()> {
         contents_capacity += embed_assets.images.iter().map(|s| s.len()).sum::<usize>()
             + embed_assets.images.len() * 4;
     }
+    if !embed_assets.videos.is_empty() {
+        contents_capacity += embed_assets.videos.iter().map(|s| s.len()).sum::<usize>()
+            + embed_assets.videos.len() * 6;
+    }
 
     let mut contents = String::with_capacity(contents_capacity);
     contents.push_str("---\n");
@@ -190,6 +208,14 @@ fn run() -> Result<()> {
     if !embed_assets.images.is_empty() {
         contents.push_str("images:\n");
         for name in &embed_assets.images {
+            contents.push_str("  - ");
+            contents.push_str(name);
+            contents.push('\n');
+        }
+    }
+    if !embed_assets.videos.is_empty() {
+        contents.push_str("videos:\n");
+        for name in &embed_assets.videos {
             contents.push_str("  - ");
             contents.push_str(name);
             contents.push('\n');
@@ -321,6 +347,7 @@ fn convert_epoch(value: i64) -> Option<OffsetDateTime> {
 struct EmbedAssets {
     attachments: Vec<String>,
     images: Vec<String>,
+    videos: Vec<String>,
 }
 
 fn process_embeds(
@@ -329,18 +356,21 @@ fn process_embeds(
     post_dir: &Path,
     body: &mut String,
     cache: &mut HashMap<u64, String>,
+    download_videos: bool,
 ) -> Result<EmbedAssets> {
     let mut attachments = Vec::new();
     let mut images = Vec::new();
-    let mut links = Vec::new();
+    let mut videos = Vec::new();
+    let mut links: Vec<String> = Vec::new();
     let mut seen = HashSet::new();
     let mut image_index = 1usize;
+    let mut video_index = 1usize;
 
     for embed in collect_embeds(value) {
         if let Some(url) = embed.get("url").and_then(Value::as_str) {
             if !(url.starts_with("http://") || url.starts_with("https://")) {
                 if !body.contains(url) {
-                    links.push(url);
+                    links.push(url.to_string());
                 }
                 continue;
             }
@@ -349,7 +379,28 @@ fn process_embeds(
                 continue;
             }
 
+            let lower_url = url.to_ascii_lowercase();
             let content_type = fetch_content_type(url);
+            let is_video = looks_like_video_url(&lower_url)
+                || content_type
+                    .as_deref()
+                    .is_some_and(|mime| is_video_mime(mime));
+
+            if download_videos && is_video {
+                let prefix = format!("video{:02}", video_index);
+                let files = download_video_with_yt_dlp(url, post_dir, &prefix)?;
+                for file in files {
+                    if !attachments.contains(&file) {
+                        attachments.push(file.clone());
+                    }
+                    if !videos.contains(&file) {
+                        videos.push(file);
+                    }
+                }
+                video_index += 1;
+                continue;
+            }
+
             if let Some(ext) = content_type.as_deref().and_then(image_extension_from_mime) {
                 let filename = format!("image{:02}.{}", image_index, ext);
                 image_index += 1;
@@ -367,7 +418,7 @@ fn process_embeds(
             }
 
             if !body.contains(url) {
-                links.push(url);
+                links.push(url.to_string());
             }
             continue;
         }
@@ -421,7 +472,7 @@ fn process_embeds(
         }
         body.push('\n');
         for link in links {
-            body.push_str(link);
+            body.push_str(&link);
             body.push('\n');
         }
     }
@@ -429,6 +480,7 @@ fn process_embeds(
     Ok(EmbedAssets {
         attachments,
         images,
+        videos,
     })
 }
 
@@ -688,6 +740,113 @@ fn download_image(url: &str, destination: &Path) -> Result<()> {
     fs::write(destination, &buffer)
         .with_context(|| format!("failed to write {}", destination.display()))?;
     Ok(())
+}
+
+fn looks_like_video_url(url: &str) -> bool {
+    const VIDEO_EXTENSIONS: &[&str] = &[
+        ".m3u8", ".m3u", ".mp4", ".mov", ".webm", ".mkv", ".avi", ".mpg", ".mpeg", ".ogv",
+    ];
+    let without_query = url.split('?').next().unwrap_or(url);
+    VIDEO_EXTENSIONS
+        .iter()
+        .any(|ext| without_query.ends_with(ext))
+}
+
+fn is_video_mime(mime: &str) -> bool {
+    let normalized = mime
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    normalized.starts_with("video/")
+        || matches!(
+            normalized.as_str(),
+            "application/vnd.apple.mpegurl"
+                | "application/x-mpegurl"
+                | "application/dash+xml"
+                | "application/mp2t"
+        )
+}
+
+fn download_video_with_yt_dlp(url: &str, post_dir: &Path, prefix: &str) -> Result<Vec<String>> {
+    ensure_yt_dlp_available()?;
+
+    let output_template = post_dir.join(format!("{}.%(ext)s", prefix));
+
+    let status = Command::new("yt-dlp")
+        .arg("--no-playlist")
+        .arg("--no-progress")
+        .arg("--quiet")
+        .arg("--no-warnings")
+        .arg("--no-cache-dir")
+        .arg("--restrict-filenames")
+        .arg("-o")
+        .arg(output_template.to_string_lossy().as_ref())
+        .arg(url)
+        .status()
+        .with_context(|| format!("failed to execute yt-dlp for {url}"))?;
+
+    if !status.success() {
+        return Err(anyhow!(
+            "yt-dlp exited with status {} while processing {url}",
+            status
+        ));
+    }
+
+    let mut files = Vec::new();
+    let prefix_with_dot = format!("{}.", prefix);
+
+    for entry in fs::read_dir(post_dir)
+        .with_context(|| format!("failed to read directory {}", post_dir.display()))?
+    {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+        if !metadata.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with(&prefix_with_dot) {
+            continue;
+        }
+        if name.ends_with(".part") || name.contains(".part.") || name.ends_with(".ytdl") {
+            continue;
+        }
+        files.push(name.into_owned());
+    }
+
+    files.sort();
+    files.dedup();
+
+    if files.is_empty() {
+        return Err(anyhow!("yt-dlp did not produce an output file for {url}"));
+    }
+
+    Ok(files)
+}
+
+fn ensure_yt_dlp_available() -> Result<()> {
+    let result = YT_DLP_CHECK.get_or_init(|| {
+        match Command::new("yt-dlp")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+        {
+            Ok(status) if status.success() => Ok(()),
+            Ok(status) => Err(format!("yt-dlp --version exited with status {}", status)),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                Err("yt-dlp not found in PATH".to_string())
+            }
+            Err(err) => Err(format!("failed to execute yt-dlp: {err}")),
+        }
+    });
+
+    match result {
+        Ok(()) => Ok(()),
+        Err(message) => Err(anyhow!(message.clone())),
+    }
 }
 
 #[cfg(test)]
