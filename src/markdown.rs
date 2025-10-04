@@ -31,7 +31,7 @@ fn options() -> ComrakOptions {
     options.extension.footnotes = true;
     options.render.hardbreaks = false;
     options.render.github_pre_lang = true;
-    options.render.unsafe_ = false;
+    options.render.unsafe_ = true;
     options.render.width = 0;
     options
 }
