@@ -88,7 +88,9 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
             }
         }
 
-        if let Some(kind) = &post.post_type && !kind.trim().is_empty() {
+        if let Some(kind) = &post.post_type
+            && !kind.trim().is_empty()
+        {
             types.insert(kind.clone());
         }
 
