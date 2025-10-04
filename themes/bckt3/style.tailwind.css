@@ -763,7 +763,7 @@
     text-decoration: none;
   }
 
-  .post-content blockquote {
+  blockquote, .post-content blockquote {
     margin: 1.9rem 0;
     padding: 1rem 1.5rem;
     border-left: 3px solid rgba(68, 68, 68, 0.2);
