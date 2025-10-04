@@ -143,11 +143,12 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<()> {
     }
     fs::create_dir_all(dest).with_context(|| format!("failed to create {}", dest.display()))?;
 
-    for entry in WalkDir::new(src)
-        .into_iter()
-        .filter_entry(|e| !e.file_type().is_dir())
-    {
+    for entry in WalkDir::new(src) {
         let entry = entry?;
+        if entry.file_type().is_dir() {
+            continue;
+        }
+
         let relative = entry
             .path()
             .strip_prefix(src)
