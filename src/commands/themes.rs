@@ -19,36 +19,43 @@ pub fn run_themes_command(args: ThemesArgs) -> Result<()> {
 }
 
 fn list_themes(root: &Path) -> Result<()> {
-    let config_path = root.join("bckt.yaml");
-    let config = Config::load(&config_path)?;
-    let active = config.theme.as_deref();
-
     let themes_dir = root.join("themes");
     if !themes_dir.exists() {
         println!("No themes installed.");
         return Ok(());
     }
 
-    let mut names = Vec::new();
-    for entry in fs::read_dir(&themes_dir)
-        .with_context(|| format!("failed to read themes directory {}", themes_dir.display()))?
-    {
-        let entry = entry?;
-        if entry.file_type()?.is_dir() {
-            names.push(entry.file_name().to_string_lossy().into_owned());
-        }
-    }
-    names.sort();
+    let entries = fs::read_dir(&themes_dir)
+        .with_context(|| format!("failed to read themes directory {}", themes_dir.display()))?;
+
+    let mut names: Vec<String> = entries
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            if entry.file_type().ok()?.is_dir() {
+                Some(entry.file_name().to_string_lossy().into_owned())
+            } else {
+                None
+            }
+        })
+        .collect();
 
     if names.is_empty() {
         println!("No themes installed.");
-    } else {
-        for name in names {
-            if Some(name.as_str()) == active {
-                println!("* {}", name);
-            } else {
-                println!("  {}", name);
-            }
+        return Ok(());
+    }
+
+    names.sort_unstable();
+
+    let config_path = root.join("bckt.yaml");
+    let active = Config::load(&config_path)
+        .ok()
+        .and_then(|config| config.theme);
+
+    for name in names {
+        if Some(&name) == active.as_ref() {
+            println!("* {}", name);
+        } else {
+            println!("  {}", name);
         }
     }
 
@@ -78,13 +85,13 @@ fn confirm_overwrite(project_root: &Path, force: bool) -> Result<()> {
         return Ok(());
     }
 
-    let mut conflicts = Vec::new();
-    for name in ["templates", "skel"] {
-        let path = project_root.join(name);
-        if directory_has_contents(&path)? {
-            conflicts.push(name);
-        }
-    }
+    let conflicts: Vec<&str> = ["templates", "skel"]
+        .into_iter()
+        .filter(|&name| {
+            let path = project_root.join(name);
+            directory_has_contents(&path).unwrap_or(false)
+        })
+        .collect();
 
     if conflicts.is_empty() {
         return Ok(());
@@ -96,10 +103,12 @@ fn confirm_overwrite(project_root: &Path, force: bool) -> Result<()> {
     );
     print!("Proceed? [y/N]: ");
     io::stdout().flush().context("failed to flush stdout")?;
+
     let mut input = String::new();
     io::stdin()
         .read_line(&mut input)
         .context("failed to read confirmation input")?;
+
     let answer = input.trim().to_lowercase();
     if matches!(answer.as_str(), "y" | "yes") {
         Ok(())
@@ -118,17 +127,13 @@ fn directory_has_contents(path: &Path) -> Result<bool> {
 }
 
 fn apply_theme(theme_root: &Path, project_root: &Path) -> Result<()> {
-    let copies = ["templates", "skel", "pages"];
-
-    for name in copies {
+    for name in ["templates", "skel", "pages"] {
         let source_path = theme_root.join(name);
-        if !source_path.exists() {
-            continue;
+        if source_path.exists() {
+            let destination_path = project_root.join(name);
+            copy_dir(&source_path, &destination_path)?;
         }
-        let destination_path = project_root.join(name);
-        copy_dir(&source_path, &destination_path)?;
     }
-
     Ok(())
 }
 
@@ -138,20 +143,22 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<()> {
     }
     fs::create_dir_all(dest).with_context(|| format!("failed to create {}", dest.display()))?;
 
-    for entry in WalkDir::new(src) {
+    for entry in WalkDir::new(src)
+        .into_iter()
+        .filter_entry(|e| !e.file_type().is_dir())
+    {
         let entry = entry?;
-        if entry.file_type().is_dir() {
-            continue;
-        }
         let relative = entry
             .path()
             .strip_prefix(src)
             .with_context(|| format!("failed to strip prefix for {}", entry.path().display()))?;
         let target = dest.join(relative);
+
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create {}", parent.display()))?;
         }
+
         fs::copy(entry.path(), &target).with_context(|| {
             format!(
                 "failed to copy {} to {}",

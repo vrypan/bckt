@@ -1,5 +1,7 @@
 use minijinja::value::Value;
 use minijinja::{Environment, Error, ErrorKind};
+use std::collections::HashMap;
+use std::sync::LazyLock;
 use time::OffsetDateTime;
 use time::format_description::modifier::{
     Day, Hour, Minute, Month, MonthRepr, OffsetHour, OffsetMinute, Period, Second, Weekday,
@@ -7,6 +9,22 @@ use time::format_description::modifier::{
 };
 use time::format_description::well_known::Rfc3339;
 use time::format_description::{Component, OwnedFormatItem};
+
+// Cache for common format patterns to avoid re-parsing
+static FORMAT_CACHE: LazyLock<HashMap<&'static str, Vec<OwnedFormatItem>>> = LazyLock::new(|| {
+    let mut cache = HashMap::new();
+    // Pre-populate common patterns
+    if let Ok(items) = translate_strftime_uncached("%Y-%m-%d") {
+        cache.insert("%Y-%m-%d", items);
+    }
+    if let Ok(items) = translate_strftime_uncached("%H:%M:%S") {
+        cache.insert("%H:%M:%S", items);
+    }
+    if let Ok(items) = translate_strftime_uncached("%H:%M") {
+        cache.insert("%H:%M", items);
+    }
+    cache
+});
 
 pub fn register(env: &mut Environment<'static>) -> Result<(), Error> {
     env.add_filter("format_date", format_date);
@@ -16,7 +34,7 @@ pub fn register(env: &mut Environment<'static>) -> Result<(), Error> {
 fn format_date(value: Value, format: String) -> Result<Value, Error> {
     let raw = match value.as_str() {
         Some(text) if !text.trim().is_empty() => text,
-        Some(_) => return Ok(Value::from(String::new())),
+        Some(_) => return Ok(Value::from("")),
         None => {
             return Err(Error::new(
                 ErrorKind::InvalidOperation,
@@ -46,16 +64,25 @@ fn format_date(value: Value, format: String) -> Result<Value, Error> {
 }
 
 fn translate_strftime(format: &str) -> Result<Vec<OwnedFormatItem>, Error> {
+    // Check cache for common patterns
+    if let Some(cached) = FORMAT_CACHE.get(format) {
+        return Ok(cached.clone());
+    }
+    translate_strftime_uncached(format)
+}
+
+fn translate_strftime_uncached(format: &str) -> Result<Vec<OwnedFormatItem>, Error> {
     use OwnedFormatItem as Item;
 
-    let mut items: Vec<Item> = Vec::new();
-    let mut literal = String::new();
-    let mut chars = format.chars();
+    let mut items = Vec::new();
+    let mut literal = Vec::new();
+    let mut chars = format.chars().peekable();
 
-    let flush_literal = |items: &mut Vec<Item>, buf: &mut String| {
+    let flush_literal = |items: &mut Vec<Item>, buf: &mut Vec<u8>| {
         if !buf.is_empty() {
-            items.push(Item::Literal(buf.clone().into_bytes().into_boxed_slice()));
-            buf.clear();
+            items.push(Item::Literal(
+                buf.drain(..).collect::<Vec<_>>().into_boxed_slice(),
+            ));
         }
     };
 
@@ -71,7 +98,7 @@ fn translate_strftime(format: &str) -> Result<Vec<OwnedFormatItem>, Error> {
             flush_literal(&mut items, &mut literal);
 
             match code {
-                '%' => items.push(Item::Literal("%".as_bytes().into())),
+                '%' => literal.push(b'%'),
                 'Y' => items.push(Component::Year(Year::default()).into()),
                 'y' => {
                     let mut year = Year::default();
@@ -115,13 +142,31 @@ fn translate_strftime(format: &str) -> Result<Vec<OwnedFormatItem>, Error> {
                     items.push(Component::Period(period).into());
                 }
                 'R' => {
-                    items.extend(translate_strftime("%H:%M")?);
+                    // Inline %H:%M to avoid recursion
+                    items.push(Component::Hour(Hour::default()).into());
+                    literal.push(b':');
+                    flush_literal(&mut items, &mut literal);
+                    items.push(Component::Minute(Minute::default()).into());
                 }
                 'T' => {
-                    items.extend(translate_strftime("%H:%M:%S")?);
+                    // Inline %H:%M:%S to avoid recursion
+                    items.push(Component::Hour(Hour::default()).into());
+                    literal.push(b':');
+                    flush_literal(&mut items, &mut literal);
+                    items.push(Component::Minute(Minute::default()).into());
+                    literal.push(b':');
+                    flush_literal(&mut items, &mut literal);
+                    items.push(Component::Second(Second::default()).into());
                 }
                 'F' => {
-                    items.extend(translate_strftime("%Y-%m-%d")?);
+                    // Inline %Y-%m-%d to avoid recursion
+                    items.push(Component::Year(Year::default()).into());
+                    literal.push(b'-');
+                    flush_literal(&mut items, &mut literal);
+                    items.push(Component::Month(Month::default()).into());
+                    literal.push(b'-');
+                    flush_literal(&mut items, &mut literal);
+                    items.push(Component::Day(Day::default()).into());
                 }
                 'z' => {
                     let mut hour = OffsetHour::default();
@@ -143,7 +188,7 @@ fn translate_strftime(format: &str) -> Result<Vec<OwnedFormatItem>, Error> {
                 }
             }
         } else {
-            literal.push(ch);
+            literal.extend(ch.to_string().bytes());
         }
     }
 

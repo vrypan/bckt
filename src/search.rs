@@ -75,23 +75,40 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
     let mut types = BTreeSet::new();
     let mut years = BTreeSet::new();
 
+    // Cache date format parsing to avoid repeated parsing
+    let date_format = if config.date_format.eq_ignore_ascii_case("RFC3339") {
+        None
+    } else {
+        Some(
+            format_description::parse(&config.date_format).with_context(|| {
+                format!(
+                    "invalid date_format '{}' while building search index",
+                    config.date_format
+                )
+            })?,
+        )
+    };
+
     for post in posts {
         let language = canonical_language(&post.language, &language_lookup)
             .unwrap_or_else(|| default_language.clone());
 
-        let mut tag_list = post.tags.clone();
-        tag_list.sort();
-        tag_list.dedup();
-        for tag in &tag_list {
+        // More efficient tag processing - avoid cloning unless necessary
+        let mut tag_list = Vec::with_capacity(post.tags.len());
+        for tag in &post.tags {
             if !tag.is_empty() {
+                tag_list.push(tag.clone());
                 tags.insert(tag.clone());
             }
         }
+        tag_list.sort_unstable();
+        tag_list.dedup();
 
-        if let Some(kind) = &post.post_type
-            && !kind.trim().is_empty()
-        {
-            types.insert(kind.clone());
+        if let Some(kind) = &post.post_type {
+            let trimmed = kind.trim();
+            if !trimmed.is_empty() {
+                types.insert(kind.clone());
+            }
         }
 
         years.insert(post.date.year());
@@ -100,23 +117,37 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
             .date
             .format(&Rfc3339)
             .context("failed to format post date (rfc3339)")?;
-        let date_display = format_date(config, &post.date)?;
 
+        let date_display = match &date_format {
+            None => date_iso.clone(),
+            Some(format) => post.date.format(format).with_context(|| {
+                format!(
+                    "failed to format date with pattern '{}' while building search index",
+                    config.date_format
+                )
+            })?,
+        };
+
+        // More efficient excerpt selection
         let excerpt = post
             .abstract_text
-            .clone()
+            .as_ref()
             .or_else(|| {
-                if post.excerpt.trim().is_empty() {
+                let trimmed = post.excerpt.trim();
+                if trimmed.is_empty() {
                     None
                 } else {
-                    Some(post.excerpt.clone())
+                    Some(&post.excerpt)
                 }
             })
-            .unwrap_or_else(|| post.title.clone().unwrap_or_else(|| post.slug.clone()));
+            .map(|s| s.clone())
+            .unwrap_or_else(|| post.title.as_ref().unwrap_or(&post.slug).clone());
+
+        let title = post.title.as_ref().unwrap_or(&post.slug).clone();
 
         documents.push(SearchDocument {
             id: post.permalink.clone(),
-            title: post.title.clone().unwrap_or_else(|| post.slug.clone()),
+            title,
             url: post.permalink.clone(),
             language,
             tags: tag_list,

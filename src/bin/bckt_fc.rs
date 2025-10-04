@@ -21,12 +21,83 @@ struct Cli {
     #[arg(long)]
     castid: String,
     /// Farcaster hub base URL
-    #[arg(long, default_value = "https://hub.farcaster.xyz")]
+    #[arg(long, default_value = "http://hub.merv.fun:3381")]
     hub: String,
     /// Destination directory for the generated post
     #[arg(long)]
     destination: Option<PathBuf>,
 }
+
+// Pre-compiled static format descriptions for date formatting
+static DATE_FORMAT: &[FormatItem<'static>] =
+    time::macros::format_description!("[year]-[month]-[day]");
+static FRONT_MATTER_FORMAT: &[FormatItem<'static>] = time::macros::format_description!(
+    "[year]-[month]-[day] [hour]:[minute]:[second] [offset_hour sign:mandatory][offset_minute]"
+);
+
+// Static path arrays to avoid repeated allocations
+static CAST_TEXT_PATHS: &[&[&str]] = &[
+    &["data", "castAddBody", "text"],
+    &["cast", "text"],
+    &["cast", "body", "data", "text"],
+    &["result", "cast", "text"],
+    &["message", "data", "text"],
+];
+
+static FID_PATHS: &[&[&str]] = &[
+    &["fid"],
+    &["data", "fid"],
+    &["result", "user", "fid"],
+    &["user", "fid"],
+];
+
+static TIMESTAMP_STRING_PATHS: &[&[&str]] = &[
+    &["data", "publishedAt"],
+    &["data", "timestamp"],
+    &["cast", "timestamp"],
+    &["result", "cast", "timestamp"],
+];
+
+static TIMESTAMP_PATHS: &[&[&str]] = &[
+    &["data", "timestamp"],
+    &["cast", "timestamp"],
+    &["result", "cast", "timestamp"],
+    &["message", "data", "timestamp"],
+];
+
+static EMBED_PATHS: &[&[&str]] = &[
+    &["data", "castAddBody", "embeds"],
+    &["cast", "embeds"],
+    &["result", "cast", "embeds"],
+    &["message", "data", "castAddBody", "embeds"],
+];
+
+static EMBED_TEXT_PATHS: &[&[&str]] = &[
+    &["data", "castAddBody", "text"],
+    &["data", "text"],
+    &["cast", "text"],
+    &["result", "cast", "text"],
+];
+
+static MENTION_PATHS: &[(&[&str], &[&str])] = &[
+    (
+        &["data", "castAddBody", "mentions"],
+        &["data", "castAddBody", "mentionsPositions"],
+    ),
+    (&["cast", "mentions"], &["cast", "mentionsPositions"]),
+    (
+        &["result", "cast", "mentions"],
+        &["result", "cast", "mentionsPositions"],
+    ),
+    (
+        &["message", "data", "castAddBody", "mentions"],
+        &["message", "data", "castAddBody", "mentionsPositions"],
+    ),
+];
+
+static PROOF_PATHS: &[&[&str]] = &[&["proofs"], &["data", "proofs"], &["result", "proofs"]];
+
+static PROOF_NAME_FIELDS: &[&str] = &["name", "username", "value"];
 
 fn main() {
     if let Err(err) = run() {
@@ -46,34 +117,24 @@ fn run() -> Result<()> {
     let parsed_timestamp =
         extract_timestamp(&cast).ok_or_else(|| anyhow!("cast timestamp not found in response"))?;
 
-    let text = extract_string(
-        &cast,
-        &[
-            &["data", "castAddBody", "text"],
-            &["cast", "text"],
-            &["cast", "body", "data", "text"],
-            &["result", "cast", "text"],
-            &["message", "data", "text"],
-        ],
-    )
-    .ok_or_else(|| anyhow!("cast text not found in response"))?
-    .to_string();
+    let text = extract_string(&cast, CAST_TEXT_PATHS)
+        .ok_or_else(|| anyhow!("cast text not found in response"))?
+        .to_string();
 
     let mut mention_cache = HashMap::new();
     let body_with_mentions = apply_mentions(&hub, &cast, &text, &mut mention_cache)?;
     let mut body = body_with_mentions.trim_end().to_string();
 
     let date_part = parsed_timestamp
-        .format(&date_format_custom())
+        .format(DATE_FORMAT)
         .context("failed to format post date")?;
-    let short_hash_len = std::cmp::min(10, hash.len());
+    let short_hash_len = hash.len().min(10);
     let short_hash = &hash[..short_hash_len];
     let slug = format!("fc-{}-{}", date_part, short_hash);
 
-    let dest_root = match cli.destination {
-        Some(path) => path,
-        None => std::env::current_dir().context("failed to determine current directory")?,
-    };
+    let dest_root = cli
+        .destination
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     let post_dir = dest_root.join(&slug);
 
     if post_dir.exists() {
@@ -89,13 +150,29 @@ fn run() -> Result<()> {
     let embed_assets = process_embeds(&hub, &cast, &post_dir, &mut body, &mut mention_cache)?;
 
     let front_matter_date = parsed_timestamp
-        .format(&front_matter_date_format())
+        .format(FRONT_MATTER_FORMAT)
         .context("failed to format front matter date")?;
 
     let filename = format!("{}.md", slug);
     let file_path = post_dir.join(filename);
 
-    let mut contents = String::new();
+    // Pre-calculate capacity for contents string
+    let mut contents_capacity =
+        200 + slug.len() + front_matter_date.len() + cli.castid.len() + body.len();
+    if !embed_assets.attachments.is_empty() {
+        contents_capacity += embed_assets
+            .attachments
+            .iter()
+            .map(|s| s.len())
+            .sum::<usize>()
+            + embed_assets.attachments.len() * 4;
+    }
+    if !embed_assets.images.is_empty() {
+        contents_capacity += embed_assets.images.iter().map(|s| s.len()).sum::<usize>()
+            + embed_assets.images.len() * 4;
+    }
+
+    let mut contents = String::with_capacity(contents_capacity);
     contents.push_str("---\n");
     contents.push_str("title: \"\"\n");
     contents.push_str(&format!("slug: \"{}\"\n", slug));
@@ -150,13 +227,10 @@ fn parse_castid(input: &str) -> Result<(&str, &str)> {
 
 fn resolve_fid(hub: &Url, username: &str) -> Result<u64> {
     let mut url = hub.clone();
-    {
-        let mut segments = url
-            .path_segments_mut()
-            .map_err(|_| anyhow!("hub URL cannot be a base for segments"))?;
-        segments.pop_if_empty();
-        segments.extend(["v1", "userNameProofByName"]);
-    }
+    url.path_segments_mut()
+        .map_err(|_| anyhow!("hub URL cannot be a base for segments"))?
+        .pop_if_empty()
+        .extend(&["v1", "userNameProofByName"]);
     url.query_pairs_mut().append_pair("name", username);
 
     let response = ureq::get(url.as_str())
@@ -167,27 +241,17 @@ fn resolve_fid(hub: &Url, username: &str) -> Result<u64> {
         .into_json()
         .map_err(|err| anyhow!("failed to decode username lookup response: {err}"))?;
 
-    extract_integer(
-        &json,
-        &[
-            &["fid"],
-            &["data", "fid"],
-            &["result", "user", "fid"],
-            &["user", "fid"],
-        ],
-    )
-    .ok_or_else(|| anyhow!("fid not found for username '{username}'"))
+    extract_integer(&json, FID_PATHS)
+        .ok_or_else(|| anyhow!("fid not found for username '{username}'"))
 }
 
 fn fetch_cast(hub: &Url, fid: u64, hash: &str) -> Result<Value> {
     let mut url = hub.clone();
-    {
-        let mut segments = url
-            .path_segments_mut()
-            .map_err(|_| anyhow!("hub URL cannot be a base for segments"))?;
-        segments.pop_if_empty();
-        segments.extend(["v1", "castById"]);
-    }
+    url.path_segments_mut()
+        .map_err(|_| anyhow!("hub URL cannot be a base for segments"))?
+        .pop_if_empty()
+        .extend(&["v1", "castById"]);
+
     url.query_pairs_mut()
         .append_pair("fid", &fid.to_string())
         .append_pair("hash", hash);
@@ -203,12 +267,12 @@ fn fetch_cast(hub: &Url, fid: u64, hash: &str) -> Result<Value> {
 
 fn extract_string<'a>(value: &'a Value, paths: &[&[&str]]) -> Option<&'a str> {
     for path in paths {
-        let mut current = value;
-        for key in *path {
-            current = current.get(*key)?;
-        }
-        if let Some(text) = current.as_str().filter(|text| !text.is_empty()) {
-            return Some(text);
+        if let Some(result) = get_nested(value, path) {
+            if let Some(text) = result.as_str() {
+                if !text.is_empty() {
+                    return Some(text);
+                }
+            }
         }
     }
     None
@@ -216,29 +280,19 @@ fn extract_string<'a>(value: &'a Value, paths: &[&[&str]]) -> Option<&'a str> {
 
 fn extract_integer(value: &Value, paths: &[&[&str]]) -> Option<u64> {
     for path in paths {
-        let mut current = value;
-        for key in *path {
-            current = current.get(*key)?;
-        }
-        match current {
-            Value::Number(num) if num.is_u64() => return num.as_u64(),
-            Value::Number(num) if num.is_i64() => return num.as_i64().map(|n| n as u64),
-            _ => continue,
+        if let Some(current) = get_nested(value, path) {
+            match current {
+                Value::Number(num) if num.is_u64() => return num.as_u64(),
+                Value::Number(num) if num.is_i64() => return num.as_i64().map(|n| n as u64),
+                _ => continue,
+            }
         }
     }
     None
 }
 
 fn extract_timestamp(value: &Value) -> Option<OffsetDateTime> {
-    if let Some(text) = extract_string(
-        value,
-        &[
-            &["data", "publishedAt"],
-            &["data", "timestamp"],
-            &["cast", "timestamp"],
-            &["result", "cast", "timestamp"],
-        ],
-    ) {
+    if let Some(text) = extract_string(value, TIMESTAMP_STRING_PATHS) {
         if let Ok(dt) = OffsetDateTime::parse(text, &Rfc3339) {
             return Some(dt);
         }
@@ -247,16 +301,7 @@ fn extract_timestamp(value: &Value) -> Option<OffsetDateTime> {
         }
     }
 
-    extract_integer(
-        value,
-        &[
-            &["data", "timestamp"],
-            &["cast", "timestamp"],
-            &["result", "cast", "timestamp"],
-            &["message", "data", "timestamp"],
-        ],
-    )
-    .and_then(|num| convert_epoch(num as i64))
+    extract_integer(value, TIMESTAMP_PATHS).and_then(|num| convert_epoch(num as i64))
 }
 
 fn convert_epoch(value: i64) -> Option<OffsetDateTime> {
@@ -295,12 +340,12 @@ fn process_embeds(
         if let Some(url) = embed.get("url").and_then(Value::as_str) {
             if !(url.starts_with("http://") || url.starts_with("https://")) {
                 if !body.contains(url) {
-                    links.push(url.to_string());
+                    links.push(url);
                 }
                 continue;
             }
 
-            if !seen.insert(format!("url:{url}")) {
+            if !seen.insert(url.to_string()) {
                 continue;
             }
 
@@ -322,42 +367,28 @@ fn process_embeds(
             }
 
             if !body.contains(url) {
-                links.push(url.to_string());
+                links.push(url);
             }
             continue;
         }
 
         if let Some(cast_obj) = embed.get("castId") {
-            let fid = cast_obj.get("fid").and_then(Value::as_u64).or_else(|| {
-                cast_obj
-                    .get("fid")
-                    .and_then(Value::as_i64)
-                    .map(|n| n as u64)
-            });
-            let hash = cast_obj.get("hash").and_then(Value::as_str);
+            let fid = value_to_u64(cast_obj.get("fid"));
+            let hash = cast_obj
+                .get("hash")
+                .and_then(Value::as_str)
+                .ok_or_else(|| anyhow!("cast hash not found"))?;
 
-            let (Some(fid), Some(hash)) = (fid, hash) else {
-                continue;
-            };
-
-            let key = format!("cast:{fid}:{hash}");
+            let key = format!("cast:{}:{}", fid, hash);
             if !seen.insert(key) {
                 continue;
             }
 
             match fetch_cast(hub, fid, hash) {
                 Ok(embed_cast) => {
-                    let embed_text_raw = extract_string(
-                        &embed_cast,
-                        &[
-                            &["data", "castAddBody", "text"],
-                            &["data", "text"],
-                            &["cast", "text"],
-                            &["result", "cast", "text"],
-                        ],
-                    )
-                    .unwrap_or("")
-                    .to_string();
+                    let embed_text_raw = extract_string(&embed_cast, EMBED_TEXT_PATHS)
+                        .unwrap_or("")
+                        .to_string();
 
                     let embed_text_processed =
                         apply_mentions(hub, &embed_cast, &embed_text_raw, cache)?;
@@ -390,7 +421,7 @@ fn process_embeds(
         }
         body.push('\n');
         for link in links {
-            body.push_str(&link);
+            body.push_str(link);
             body.push('\n');
         }
     }
@@ -403,14 +434,8 @@ fn process_embeds(
 
 fn collect_embeds(value: &Value) -> Vec<&Value> {
     let mut results = Vec::new();
-    let paths: [&[&str]; 4] = [
-        &["data", "castAddBody", "embeds"],
-        &["cast", "embeds"],
-        &["result", "cast", "embeds"],
-        &["message", "data", "castAddBody", "embeds"],
-    ];
 
-    for path in paths {
+    for path in EMBED_PATHS {
         if let Some(Value::Array(array)) = get_nested(value, path) {
             results.extend(array.iter());
         }
@@ -420,64 +445,26 @@ fn collect_embeds(value: &Value) -> Vec<&Value> {
 }
 
 fn collect_mentions(value: &Value) -> Option<(Vec<u64>, Vec<usize>)> {
-    const PATHS: [(&[&str], &[&str]); 4] = [
-        (
-            &["data", "castAddBody", "mentions"],
-            &["data", "castAddBody", "mentionsPositions"],
-        ),
-        (&["cast", "mentions"], &["cast", "mentionsPositions"]),
-        (
-            &["result", "cast", "mentions"],
-            &["result", "cast", "mentionsPositions"],
-        ),
-        (
-            &["message", "data", "castAddBody", "mentions"],
-            &["message", "data", "castAddBody", "mentionsPositions"],
-        ),
-    ];
-
-    for (mention_path, position_path) in PATHS {
-        let Some(Value::Array(mention_values)) = get_nested(value, mention_path) else {
-            continue;
-        };
-        let Some(Value::Array(position_values)) = get_nested(value, position_path) else {
-            continue;
-        };
+    for (mention_path, position_path) in MENTION_PATHS {
+        let mention_values = get_nested(value, mention_path)?.as_array()?;
+        let position_values = get_nested(value, position_path)?.as_array()?;
 
         if mention_values.is_empty() || mention_values.len() != position_values.len() {
             continue;
         }
 
-        let mut mentions = Vec::with_capacity(mention_values.len());
-        let mut positions = Vec::with_capacity(position_values.len());
-        let mut valid = true;
+        let mentions: Option<Vec<u64>> = mention_values
+            .iter()
+            .map(|v| Some(value_to_u64(Some(v))))
+            .collect();
+        let positions: Option<Vec<usize>> = position_values
+            .iter()
+            .map(|v| Some(value_to_u64(Some(v)) as usize))
+            .collect();
 
-        for value in mention_values {
-            match value_to_u64(value) {
-                Some(fid) => mentions.push(fid),
-                None => {
-                    valid = false;
-                    break;
-                }
-            }
-        }
-
-        if !valid {
-            continue;
-        }
-
-        for value in position_values {
-            match value_to_u64(value) {
-                Some(pos) => positions.push(pos as usize),
-                None => {
-                    valid = false;
-                    break;
-                }
-            }
-        }
-
-        if valid && !mentions.is_empty() {
-            return Some((mentions, positions));
+        match (mentions, positions) {
+            (Some(m), Some(p)) if !m.is_empty() => return Some((m, p)),
+            _ => continue,
         }
     }
 
@@ -490,38 +477,37 @@ fn apply_mentions(
     text: &str,
     cache: &mut HashMap<u64, String>,
 ) -> Result<String> {
-    let Some((mention_fids, mention_positions)) = collect_mentions(cast) else {
-        return Ok(text.to_string());
+    let (mention_fids, mention_positions) = match collect_mentions(cast) {
+        Some(data) => data,
+        None => return Ok(text.to_string()),
     };
 
     if mention_fids.is_empty() {
         return Ok(text.to_string());
     }
 
-    let mut entries: Vec<(usize, String)> = Vec::new();
-    let mut seen_positions: HashSet<usize> = HashSet::new();
-
-    for (fid, pos) in mention_fids.into_iter().zip(mention_positions.into_iter()) {
-        if !seen_positions.insert(pos) {
-            continue;
-        }
-        let handle = resolve_handle(hub, fid, cache);
-        entries.push((pos, handle));
-    }
+    let mut entries: Vec<(usize, String)> = mention_fids
+        .into_iter()
+        .zip(mention_positions)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .map(|(fid, pos)| (pos, resolve_handle(hub, fid, cache)))
+        .collect();
 
     if entries.is_empty() {
         return Ok(text.to_string());
     }
 
-    entries.sort_by_key(|(pos, _)| *pos);
+    entries.sort_unstable_by_key(|(pos, _)| *pos);
 
     let text_len = text.len();
     let mut result = String::with_capacity(text_len + entries.len() * 8);
-    let mut last_byte = 0usize;
+    let mut last_byte = 0;
 
     for (pos, handle) in entries {
         let mut byte_pos = pos.min(text_len);
 
+        // Find proper char boundary
         while byte_pos > 0 && !text.is_char_boundary(byte_pos) {
             byte_pos -= 1;
         }
@@ -532,8 +518,7 @@ fn apply_mentions(
         let mut next_byte = byte_pos;
         if next_byte < text_len {
             if let Some(next_char) = text[next_byte..].chars().next() {
-                let should_skip = next_char == '@'
-                    || matches!(next_char as u32, 0x01 | 0x1f);
+                let should_skip = next_char == '@' || matches!(next_char as u32, 0x01 | 0x1f);
                 if should_skip {
                     next_byte += next_char.len_utf8();
                 }
@@ -548,26 +533,21 @@ fn apply_mentions(
 }
 
 fn resolve_handle(hub: &Url, fid: u64, cache: &mut HashMap<u64, String>) -> String {
-    if let Some(handle) = cache.get(&fid) {
-        return handle.clone();
-    }
-
-    let handle = fetch_fname_handle(hub, fid)
-        .map(|name| ensure_handle(&name))
-        .unwrap_or_else(|_| format!("@fid{fid}"));
-    cache.insert(fid, handle.clone());
-    handle
+    cache.get(&fid).cloned().unwrap_or_else(|| {
+        let handle = fetch_fname_handle(hub, fid)
+            .map(|name| ensure_handle(&name))
+            .unwrap_or_else(|_| format!("@fid{fid}"));
+        cache.insert(fid, handle.clone());
+        handle
+    })
 }
 
 fn fetch_fname_handle(hub: &Url, fid: u64) -> Result<String> {
     let mut url = hub.clone();
-    {
-        let mut segments = url
-            .path_segments_mut()
-            .map_err(|_| anyhow!("hub URL cannot be a base for segments"))?;
-        segments.pop_if_empty();
-        segments.extend(["v1", "userNameProofsByFid"]);
-    }
+    url.path_segments_mut()
+        .map_err(|_| anyhow!("hub URL cannot be a base for segments"))?
+        .pop_if_empty()
+        .extend(&["v1", "userNameProofsByFid"]);
     url.query_pairs_mut().append_pair("fid", &fid.to_string());
 
     let response = ureq::get(url.as_str())
@@ -577,15 +557,10 @@ fn fetch_fname_handle(hub: &Url, fid: u64) -> Result<String> {
     let json: Value = response.into_json().map_err(|err| {
         anyhow!(
             "failed to decode username proofs response for fid {}: {}",
-            fid, err
+            fid,
+            err
         )
     })?;
-
-    const PROOF_PATHS: [&[&str]; 3] = [
-        &["proofs"],
-        &["data", "proofs"],
-        &["result", "proofs"],
-    ];
 
     let mut proofs: Vec<&Value> = Vec::new();
     for path in PROOF_PATHS {
@@ -601,25 +576,20 @@ fn fetch_fname_handle(hub: &Url, fid: u64) -> Result<String> {
     }
 
     for proof in proofs {
-        if !is_fname_proof(proof) {
-            continue;
-        }
-        if let Some(name) = extract_proof_name(proof) {
-            return Ok(name);
+        if is_fname_proof(proof) {
+            if let Some(name) = extract_proof_name(proof) {
+                return Ok(name);
+            }
         }
     }
 
-    Err(anyhow!(
-        "FNAME proof not found for fid {}",
-        fid
-    ))
+    Err(anyhow!("FNAME proof not found for fid {}", fid))
 }
 
 fn is_fname_proof(value: &Value) -> bool {
     match value.get("type") {
         Some(Value::String(kind)) => {
-            kind.eq_ignore_ascii_case("USERNAME_TYPE_FNAME")
-                || kind.eq_ignore_ascii_case("FNAME")
+            kind.eq_ignore_ascii_case("USERNAME_TYPE_FNAME") || kind.eq_ignore_ascii_case("FNAME")
         }
         Some(Value::Number(num)) => num.as_u64() == Some(6),
         _ => false,
@@ -627,11 +597,11 @@ fn is_fname_proof(value: &Value) -> bool {
 }
 
 fn extract_proof_name(value: &Value) -> Option<String> {
-    const FIELDS: [&str; 3] = ["name", "username", "value"];
-    for field in FIELDS {
+    for field in PROOF_NAME_FIELDS {
         if let Some(name) = value.get(field).and_then(Value::as_str) {
-            if !name.trim().is_empty() {
-                return Some(name.to_string());
+            let trimmed = name.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
             }
         }
     }
@@ -639,23 +609,22 @@ fn extract_proof_name(value: &Value) -> Option<String> {
 }
 
 fn get_nested<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
-    let mut current = value;
-    for key in path {
-        current = current.get(*key)?;
-    }
-    Some(current)
+    path.iter().try_fold(value, |current, key| current.get(key))
 }
 
-fn value_to_u64(value: &Value) -> Option<u64> {
+fn value_to_u64(value: Option<&Value>) -> u64 {
     value
-        .as_u64()
-        .or_else(|| value.as_i64().map(|number| number as u64))
+        .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|n| n as u64)))
+        .unwrap_or(0)
 }
 
 fn append_quote(body: &mut String, username: &str, text: &str) {
-    let mut any = false;
-    for line in text.lines() {
-        any = true;
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.is_empty() {
+        return;
+    }
+
+    for line in lines {
         let trimmed = line.trim_end();
         if trimmed.is_empty() {
             body.push('>');
@@ -666,12 +635,9 @@ fn append_quote(body: &mut String, username: &str, text: &str) {
         body.push('\n');
     }
 
-    if any {
-        body.push_str(">\n");
-        body.push_str("> --");
-        body.push_str(username);
-        body.push('\n');
-    }
+    body.push_str(">\n> --");
+    body.push_str(username);
+    body.push('\n');
 }
 
 fn ensure_handle(input: &str) -> String {
@@ -691,7 +657,7 @@ fn fetch_content_type(url: &str) -> Option<String> {
     }
 }
 
-fn image_extension_from_mime(mime: &str) -> Option<String> {
+fn image_extension_from_mime(mime: &str) -> Option<&str> {
     let raw = mime.split(';').next()?.trim();
     if !raw.starts_with("image/") {
         return None;
@@ -702,12 +668,10 @@ fn image_extension_from_mime(mime: &str) -> Option<String> {
         subtype = &subtype[..pos];
     }
 
-    let ext = match subtype {
+    Some(match subtype {
         "jpeg" | "jpg" => "jpg",
         other => other,
-    };
-
-    Some(ext.to_string())
+    })
 }
 
 fn download_image(url: &str, destination: &Path) -> Result<()> {
@@ -724,16 +688,6 @@ fn download_image(url: &str, destination: &Path) -> Result<()> {
     fs::write(destination, &buffer)
         .with_context(|| format!("failed to write {}", destination.display()))?;
     Ok(())
-}
-
-fn date_format_custom() -> &'static [FormatItem<'static>] {
-    time::macros::format_description!("[year]-[month]-[day]")
-}
-
-fn front_matter_date_format() -> &'static [FormatItem<'static>] {
-    time::macros::format_description!(
-        "[year]-[month]-[day] [hour]:[minute]:[second] [offset_hour sign:mandatory][offset_minute]"
-    )
 }
 
 #[cfg(test)]
