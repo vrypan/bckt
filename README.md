@@ -32,8 +32,9 @@ compile locally with `cargo install --path .`.
 ```bash
 bckt init                     # scaffold posts/, templates/, skel/, bckt.yaml
 # edit bckt.yaml
+bckt-new --title "Hello"      # scaffold a new post (prompts for missing fields)
 bckt render                   # generate html/
-bckt dev --verbose  # preview with live reload
+bckt dev --verbose            # preview with live reload
 ```
 
 Deploy by publishing the generated `html/` directory with any static host.
