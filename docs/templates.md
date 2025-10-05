@@ -37,7 +37,7 @@ Create new views by extending `base.html` and overriding the blocks you need:
 Most templates receive:
 
 - `config` — parsed values from `bckt.yaml` (including `config.extra`).
-- `feed_url` — absolute URL to the generated RSS feed.
+- `base_url` — site base URL that always ends with a trailing slash.
 - `posts` — list of `PostSummary` objects (varies by view).
 - `pagination` — pagination metadata where applicable.
 - `tag`, `year`, `month` — extra values specific to tag or archive templates.

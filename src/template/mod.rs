@@ -13,8 +13,8 @@ pub fn environment(config: &Config) -> Result<Environment<'static>> {
     let mut env = Environment::new();
     env.add_global("config", Value::from_serialize(config));
     env.add_global(
-        "feed_url",
-        Value::from(absolute_url(&config.base_url, "/rss.xml")),
+        "base_url",
+        Value::from_safe_string(absolute_url(&config.base_url, "/")),
     );
 
     let default_format = config.date_format.clone();
@@ -94,14 +94,14 @@ mod tests {
     }
 
     #[test]
-    fn feed_url_available() {
+    fn base_url_has_trailing_slash() {
         let mut config = Config::default();
         config.base_url = "https://example.com/blog".to_string();
         let mut env = environment(&config).unwrap();
-        env.add_template("feed", "{{ feed_url }}").unwrap();
+        env.add_template("base", "{{ base_url }}assets").unwrap();
 
-        let rendered = env.get_template("feed").unwrap().render(()).unwrap();
-        assert_eq!(rendered, "https://example.com/blog/rss.xml");
+        let rendered = env.get_template("base").unwrap().render(()).unwrap();
+        assert_eq!(rendered, "https://example.com/blog/assets");
     }
 
     #[test]

@@ -14,14 +14,14 @@
             rel="alternate"
             type="application/rss+xml"
             title="RSS"
-            href="{{ feed_url | safe }}"
+            href="{{ base_url }}rss.xml"
         />
         {% for tag in config.rss_tags %}
         <link
             rel="alternate"
             type="application/rss+xml"
             title="RSS for {{ tag }}"
-            href="{{ config.base_url | safe }}rss-{{ tag }}.xml"
+            href="{{ base_url }}rss-{{ tag }}.xml"
         />
         {% endfor %}
         <link
@@ -77,9 +77,9 @@
                     <a class="site-nav__link" href="/search/"
                         >search</a
                     >
-                    <a
+                   <a
                         class="site-nav__link site-nav__link--icon"
-                        href="{{ feed_url | safe }}"
+                        href="{{ base_url }}rss.xml"
                         aria-label="RSS feed"
                         >rss</a
                     >
