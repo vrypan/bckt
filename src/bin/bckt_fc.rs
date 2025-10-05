@@ -16,6 +16,7 @@ use url::Url;
 #[derive(Parser, Debug)]
 #[command(
     name = "bckt-fc",
+    version,
     about = "Generate a Farcaster post stub from a cast id"
 )]
 struct Cli {

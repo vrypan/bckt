@@ -63,12 +63,22 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
+          set -euo pipefail
           VERSION="${GITHUB_REF_NAME}"
           TARGET="${{ matrix.platform.target }}"
-          BIN="bckt"
-          OUT="target/${TARGET}/release/${BIN}"
-          ARCHIVE="bckt-${VERSION}-${{ matrix.platform.name }}.tar.gz"
-          tar -C "$(dirname "${OUT}")" -czf "${ARCHIVE}" "${BIN}"
+          STAGING="bckt-${VERSION}-${{ matrix.platform.name }}"
+          rm -rf "${STAGING}"
+          mkdir -p "${STAGING}"
+          for BIN in bckt bckt-fc; do
+            SRC="target/${TARGET}/release/${BIN}"
+            if [ ! -f "${SRC}" ]; then
+              echo "expected binary ${SRC} was not built" >&2
+              exit 1
+            fi
+            cp "${SRC}" "${STAGING}/${BIN}"
+          done
+          ARCHIVE="${STAGING}.tar.gz"
+          tar -czf "${ARCHIVE}" "${STAGING}"
           echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
 
       - name: Package artifact (Windows)
@@ -78,15 +88,19 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $VERSION = $env:GITHUB_REF_NAME
           $TARGET = "${{ matrix.platform.target }}"
-          $BIN = "bckt.exe"
-          $OUT = "target/$TARGET/release/$BIN"
-          $ARCHIVE = "bckt-$VERSION-${{ matrix.platform.name }}.zip"
-          $root = (Get-Location).Path
-          $dir = Split-Path -Path $OUT
-          $file = Split-Path -Path $OUT -Leaf
-          Push-Location $dir
-          Compress-Archive -Path $file -DestinationPath (Join-Path $root $ARCHIVE)
-          Pop-Location
+          $Staging = "bckt-$VERSION-${{ matrix.platform.name }}"
+          if (Test-Path $Staging) { Remove-Item $Staging -Recurse -Force }
+          New-Item -ItemType Directory -Path $Staging | Out-Null
+          foreach ($bin in @('bckt.exe', 'bckt-fc.exe')) {
+            $src = "target/$TARGET/release/$bin"
+            if (-not (Test-Path $src)) {
+              throw "expected binary $src was not built"
+            }
+            Copy-Item $src (Join-Path $Staging $bin)
+          }
+          $ARCHIVE = "$Staging.zip"
+          if (Test-Path $ARCHIVE) { Remove-Item $ARCHIVE -Force }
+          Compress-Archive -Path $Staging -DestinationPath $ARCHIVE
           Add-Content -Path $env:GITHUB_ENV -Value "ARCHIVE=$ARCHIVE"
 
       - name: Upload artifact
