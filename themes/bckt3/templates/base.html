@@ -1,55 +1,97 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>{% block page_title %}{{ config.title | default("bckt") }}{% endblock page_title %}</title>
-    <link rel="alternate" type="application/rss+xml" title="RSS" href="{{ feed_url }}">
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-    <link rel="icon" href="/favicon.ico">
-    <link rel="stylesheet" href="/style.css">
-    {% block page_meta %}{% endblock page_meta %}
-  </head>
-  <body>
-    {% set base = config.base_url | default('/') %}
-    {% if base[-1] != '/' %}
-      {% set base = base ~ '/' %}
-    {% endif %}
-    <header class="site-header">
-      <div class="site-header__inner">
-        <div class="site-brand">
-          <a class="site-brand__badge" href="{{ base }}" aria-label="Home">
-            <img class="site-brand__avatar" src="{{ base }}img/site-avatar.png" alt="{{ config.title | default('bckt') }} avatar">
-          </a>
-          <div class="site-brand__text">
-            <h1 class="site-title">
-              <a href="{{ base }}">{{ config.title | default("bckt") }}</a>
-            </h1>
-            {% if config.subtitle %}
-            <p class="site-tagline">{{ config.subtitle }}</p>
-            {% endif %}
-          </div>
-        </div>
-        <nav class="site-nav" aria-label="Primary navigation">
-          <a class="site-nav__link" href="{{ base }}">home</a>
-          <a class="site-nav__link" href="{{ base }}about/">about</a>
-          <a class="site-nav__link" href="{{ base }}search/">search</a>
-          <a class="site-nav__link site-nav__link--icon" href="{{ feed_url }}" aria-label="RSS feed">rss</a>
-        </nav>
-      </div>
-    </header>
-    <main class="site-main">
-      <div class="site-main__inner">
-        {% block content %}{% endblock content %}
-      </div>
-    </main>
-    <footer class="site-footer">
-      <div class="site-main__inner">
-        <p>Powered by <a href="https://github.com/vrypan/bckt">bckt</a>.</p>
-      </div>
-    </footer>
-    {% block page_scripts %}{% endblock page_scripts %}
-  </body>
+    <head>
+        <meta charset="utf-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+        />
+        <title>
+            {% block page_title %}{{ config.title | default("bckt") }}{%
+            endblock page_title %}
+        </title>
+        <link
+            rel="alternate"
+            type="application/rss+xml"
+            title="RSS"
+            href="{{ feed_url }}"
+        />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="32x32"
+            href="/favicon-32x32.png"
+        />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="16x16"
+            href="/favicon-16x16.png"
+        />
+        <link
+            rel="apple-touch-icon"
+            sizes="180x180"
+            href="/apple-touch-icon.png"
+        />
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="stylesheet" href="/style.css" />
+        {% block page_meta %}{% endblock page_meta %}
+    </head>
+    <body>
+        {% set base = '/' %}
+        <header class="site-header">
+            <div class="site-header__inner">
+                <div class="site-brand">
+                    <a
+                        class="site-brand__badge"
+                        href="{{ base }}"
+                        aria-label="Home"
+                    >
+                        <img
+                            class="site-brand__avatar"
+                            src="{{ base }}img/site-avatar.png"
+                            alt="{{ config.title | default('bckt') }} avatar"
+                        />
+                    </a>
+                    <div class="site-brand__text">
+                        <h1 class="site-title">
+                            <a href="{{ base }}"
+                                >{{ config.title | default("bckt") }}</a
+                            >
+                        </h1>
+                        {% if config.subtitle %}
+                        <p class="site-tagline">{{ config.subtitle }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <nav class="site-nav" aria-label="Primary navigation">
+                    <a class="site-nav__link" href="{{ base }}">home</a>
+                    <a class="site-nav__link" href="{{ base }}about/">about</a>
+                    <a class="site-nav__link" href="{{ base }}search/"
+                        >search</a
+                    >
+                    <a
+                        class="site-nav__link site-nav__link--icon"
+                        href="{{ feed_url }}"
+                        aria-label="RSS feed"
+                        >rss</a
+                    >
+                </nav>
+            </div>
+        </header>
+        <main class="site-main">
+            <div class="site-main__inner">
+                {% block content %}{% endblock content %}
+            </div>
+        </main>
+        <footer class="site-footer">
+            <div class="site-main__inner">
+                <p>
+                    Powered by
+                    <a href="https://github.com/vrypan/bckt">bckt</a>.
+                </p>
+            </div>
+        </footer>
+        {% block page_scripts %}{% endblock page_scripts %}
+    </body>
 </html>
