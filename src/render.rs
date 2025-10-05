@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::error::Error as StdError;
 use std::fmt::Write;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
@@ -38,16 +39,47 @@ pub enum BuildMode {
 
 const CACHE_DIR: &str = ".bckt/cache";
 const HOME_PAGES_KEY: &str = "home_pages";
-const TAG_PAGES_KEY: &str = "tag_pages";
 const POST_HASH_PREFIX: &str = "post:";
 const SITE_INPUTS_KEY: &str = "site_inputs_hash";
 const STATIC_HASH_KEY: &str = "static_hash";
 const SEARCH_INDEX_KEY: &str = "search_index_hash";
 const THEME_ASSET_HASH_KEY: &str = "theme_asset_hash";
+const TAG_CACHE_PREFIX: &str = "tag_index:";
+const YEAR_ARCHIVE_PREFIX: &str = "archive_year:";
+const MONTH_ARCHIVE_PREFIX: &str = "archive_month:";
 
 fn log_status(enabled: bool, label: &str, message: impl AsRef<str>) {
     if enabled {
         println!("[{}] {}", label, message.as_ref());
+    }
+}
+
+fn compute_cache_digest<T: Serialize>(value: &T) -> Result<String> {
+    let data = serde_json::to_vec(value).context("failed to serialize cache payload")?;
+    let mut hasher = Hasher::new();
+    hasher.update(&data);
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
+fn remove_file_if_exists(path: &Path) -> Result<()> {
+    match fs::remove_file(path) {
+        Ok(_) => Ok(()),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err).with_context(|| format!("failed to remove {}", path.display())),
+    }
+}
+
+fn remove_dir_if_empty(path: &Path) -> Result<()> {
+    match fs::remove_dir(path) {
+        Ok(_) => Ok(()),
+        Err(err)
+            if err.kind() == ErrorKind::NotFound || err.kind() == ErrorKind::DirectoryNotEmpty =>
+        {
+            Ok(())
+        }
+        Err(err) => {
+            Err(err).with_context(|| format!("failed to remove directory {}", path.display()))
+        }
     }
 }
 
@@ -140,14 +172,6 @@ struct StoredPage {
     posts: Vec<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-struct StoredTagPage {
-    tag: String,
-    slug: String,
-    cursor: String,
-    posts: Vec<String>,
-}
-
 struct TagBucket {
     name: String,
     slug: String,
@@ -183,39 +207,6 @@ impl HomePageCache {
             .insert(HOME_PAGES_KEY, data)
             .context("failed to update homepage cache")?;
         self.db.flush().context("failed to flush homepage cache")?;
-        Ok(())
-    }
-}
-
-struct TagPageCache {
-    db: sled::Db,
-}
-
-impl TagPageCache {
-    fn new(db: sled::Db) -> Self {
-        Self { db }
-    }
-
-    fn load_pages(&self) -> Result<Vec<StoredTagPage>> {
-        let maybe = self
-            .db
-            .get(TAG_PAGES_KEY)
-            .context("failed to read tag cache")?;
-        if let Some(bytes) = maybe {
-            let pages: Vec<StoredTagPage> =
-                serde_json::from_slice(&bytes).context("failed to deserialize tag cache")?;
-            Ok(pages)
-        } else {
-            Ok(Vec::new())
-        }
-    }
-
-    fn store_pages(&self, pages: &[StoredTagPage]) -> Result<()> {
-        let data = serde_json::to_vec(pages).context("failed to serialize tag cache")?;
-        self.db
-            .insert(TAG_PAGES_KEY, data)
-            .context("failed to update tag cache")?;
-        self.db.flush().context("failed to flush tag cache")?;
         Ok(())
     }
 }
@@ -300,7 +291,6 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
     }
 
     let cache = HomePageCache::new(cache_db.clone());
-    let tag_cache = TagPageCache::new(cache_db.clone());
 
     let posts = if plan.posts {
         log_status(plan.verbose, "STEP", "Rendering posts");
@@ -329,8 +319,24 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
     if plan.posts {
         log_status(plan.verbose, "STEP", "Rendering indexes and feeds");
         render_homepage(&posts, &html_root, &config, &env, &cache)?;
-        render_tag_archives(&posts, &html_root, &config, &env, &tag_cache)?;
-        render_archives(&posts, &html_root, &config, &env)?;
+        render_tag_archives(
+            &posts,
+            &html_root,
+            &config,
+            &env,
+            &cache_db,
+            effective_mode,
+            plan.verbose,
+        )?;
+        render_archives(
+            &posts,
+            &html_root,
+            &config,
+            &env,
+            &cache_db,
+            effective_mode,
+            plan.verbose,
+        )?;
         render_feeds(&posts, &html_root, &config, &env)?;
 
         let artifact = search::build_index(&config, &posts)?;
@@ -715,6 +721,95 @@ fn cleanup_post_hashes(db: &sled::Db, keep: &BTreeSet<String>) -> Result<()> {
     Ok(())
 }
 
+fn cleanup_tag_cache(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -> Result<()> {
+    let mut stale: Vec<String> = Vec::new();
+    for entry in db.scan_prefix(TAG_CACHE_PREFIX.as_bytes()) {
+        let (key, _) = entry.context("failed to iterate tag cache entries")?;
+        let key_vec = key.to_vec();
+        let key_str =
+            String::from_utf8(key_vec.clone()).context("tag cache key is not valid utf-8")?;
+        if !keep.contains(&key_str) {
+            stale.push(key_str);
+        }
+    }
+
+    for key in stale {
+        db.remove(key.as_bytes())
+            .context("failed to remove stale tag cache entry")?;
+        if let Some(slug) = key.strip_prefix(TAG_CACHE_PREFIX) {
+            if slug.is_empty() {
+                continue;
+            }
+            let output = tag_index_path(html_root, slug);
+            remove_file_if_exists(&output)?;
+            if let Some(parent) = output.parent() {
+                remove_dir_if_empty(parent)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn cleanup_month_archives(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -> Result<()> {
+    let mut stale: Vec<String> = Vec::new();
+    for entry in db.scan_prefix(MONTH_ARCHIVE_PREFIX.as_bytes()) {
+        let (key, _) = entry.context("failed to iterate month archive cache entries")?;
+        let key_vec = key.to_vec();
+        let key_str = String::from_utf8(key_vec.clone())
+            .context("month archive cache key is not valid utf-8")?;
+        if !keep.contains(&key_str) {
+            stale.push(key_str);
+        }
+    }
+
+    for key in stale {
+        db.remove(key.as_bytes())
+            .context("failed to remove stale month archive cache entry")?;
+        if let Some(suffix) = key.strip_prefix(MONTH_ARCHIVE_PREFIX)
+            && let Some((year_str, month_str)) = suffix.split_once('-')
+            && let (Ok(year), Ok(month)) = (year_str.parse::<i32>(), month_str.parse::<u8>())
+        {
+            let output = archive_month_path(html_root, year, month);
+            remove_file_if_exists(&output)?;
+            if let Some(parent) = output.parent() {
+                remove_dir_if_empty(parent)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn cleanup_year_archives(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -> Result<()> {
+    let mut stale: Vec<String> = Vec::new();
+    for entry in db.scan_prefix(YEAR_ARCHIVE_PREFIX.as_bytes()) {
+        let (key, _) = entry.context("failed to iterate year archive cache entries")?;
+        let key_vec = key.to_vec();
+        let key_str = String::from_utf8(key_vec.clone())
+            .context("year archive cache key is not valid utf-8")?;
+        if !keep.contains(&key_str) {
+            stale.push(key_str);
+        }
+    }
+
+    for key in stale {
+        db.remove(key.as_bytes())
+            .context("failed to remove stale year archive cache entry")?;
+        if let Some(year_str) = key.strip_prefix(YEAR_ARCHIVE_PREFIX)
+            && let Ok(year) = year_str.parse::<i32>()
+        {
+            let output = archive_year_path(html_root, year);
+            remove_file_if_exists(&output)?;
+            if let Some(parent) = output.parent() {
+                remove_dir_if_empty(parent)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn render_homepage(
     posts: &[Post],
     html_root: &Path,
@@ -874,8 +969,16 @@ fn render_archives(
     html_root: &Path,
     config: &Config,
     env: &Environment<'static>,
+    cache_db: &sled::Db,
+    mode: BuildMode,
+    verbose: bool,
 ) -> Result<()> {
+    let mut year_keys: BTreeSet<String> = BTreeSet::new();
+    let mut month_keys: BTreeSet<String> = BTreeSet::new();
+
     if posts.is_empty() {
+        cleanup_month_archives(cache_db, html_root, &month_keys)?;
+        cleanup_year_archives(cache_db, html_root, &year_keys)?;
         return Ok(());
     }
 
@@ -907,20 +1010,49 @@ fn render_archives(
                 .map(|post| build_post_summary(config, post))
                 .collect::<Result<Vec<_>>>()?;
 
-            let scope = format!("rendering year archive {}", year);
-            let rendered = render_template_with_scope(
-                &year_template,
-                minijinja::context! { year => year, posts => summaries },
-                &scope,
-            )?;
+            let payload = YearArchiveCachePayload {
+                year,
+                posts: &summaries,
+            };
+            let digest = compute_cache_digest(&payload)
+                .with_context(|| format!("failed to compute digest for year {}", year))?;
+            let cache_key = format!("{YEAR_ARCHIVE_PREFIX}{year:04}");
+            year_keys.insert(cache_key.clone());
+            let cached = read_cached_string(cache_db, &cache_key)?;
 
             let output = archive_year_path(html_root, year);
-            if let Some(parent) = output.parent() {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("failed to create {}", parent.display()))?;
+
+            let mut needs_render = matches!(mode, BuildMode::Full);
+            if !needs_render {
+                match cached.as_deref() {
+                    Some(existing) if existing == digest.as_str() => {
+                        if !output.exists() {
+                            needs_render = true;
+                        }
+                    }
+                    _ => needs_render = true,
+                }
             }
-            fs::write(&output, rendered)
-                .with_context(|| format!("failed to write {}", output.display()))?;
+
+            if needs_render {
+                let scope = format!("rendering year archive {}", year);
+                let rendered = render_template_with_scope(
+                    &year_template,
+                    minijinja::context! { year => year, posts => summaries },
+                    &scope,
+                )?;
+
+                if let Some(parent) = output.parent() {
+                    fs::create_dir_all(parent)
+                        .with_context(|| format!("failed to create {}", parent.display()))?;
+                }
+                fs::write(&output, rendered)
+                    .with_context(|| format!("failed to write {}", output.display()))?;
+                store_cached_string(cache_db, &cache_key, &digest)?;
+                log_status(verbose, "ARCHIVE", format!("Rendered year {}", year));
+            } else {
+                log_status(verbose, "ARCHIVE", format!("Year {} unchanged", year));
+            }
         }
     }
 
@@ -934,22 +1066,67 @@ fn render_archives(
                 .map(|post| build_post_summary(config, post))
                 .collect::<Result<Vec<_>>>()?;
 
-            let scope = format!("rendering month archive {:04}-{:02}", year, month);
-            let rendered = render_template_with_scope(
-                &month_template,
-                minijinja::context! { year => year, month => month, posts => summaries },
-                &scope,
-            )?;
+            let payload = MonthArchiveCachePayload {
+                year,
+                month,
+                posts: &summaries,
+            };
+            let digest = compute_cache_digest(&payload).with_context(|| {
+                format!(
+                    "failed to compute digest for month {:04}-{:02}",
+                    year, month
+                )
+            })?;
+            let cache_key = format!("{MONTH_ARCHIVE_PREFIX}{year:04}-{month:02}");
+            month_keys.insert(cache_key.clone());
+            let cached = read_cached_string(cache_db, &cache_key)?;
 
             let output = archive_month_path(html_root, year, month);
-            if let Some(parent) = output.parent() {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("failed to create {}", parent.display()))?;
+
+            let mut needs_render = matches!(mode, BuildMode::Full);
+            if !needs_render {
+                match cached.as_deref() {
+                    Some(existing) if existing == digest.as_str() => {
+                        if !output.exists() {
+                            needs_render = true;
+                        }
+                    }
+                    _ => needs_render = true,
+                }
             }
-            fs::write(&output, rendered)
-                .with_context(|| format!("failed to write {}", output.display()))?;
+
+            if needs_render {
+                let scope = format!("rendering month archive {:04}-{:02}", year, month);
+                let rendered = render_template_with_scope(
+                    &month_template,
+                    minijinja::context! { year => year, month => month, posts => summaries },
+                    &scope,
+                )?;
+
+                if let Some(parent) = output.parent() {
+                    fs::create_dir_all(parent)
+                        .with_context(|| format!("failed to create {}", parent.display()))?;
+                }
+                fs::write(&output, rendered)
+                    .with_context(|| format!("failed to write {}", output.display()))?;
+                store_cached_string(cache_db, &cache_key, &digest)?;
+                log_status(
+                    verbose,
+                    "ARCHIVE",
+                    format!("Rendered month {:04}-{:02}", year, month),
+                );
+            } else {
+                log_status(
+                    verbose,
+                    "ARCHIVE",
+                    format!("Month {:04}-{:02} unchanged", year, month),
+                );
+            }
         }
     }
+
+    cleanup_month_archives(cache_db, html_root, &month_keys)?;
+    cleanup_year_archives(cache_db, html_root, &year_keys)?;
 
     Ok(())
 }
@@ -959,14 +1136,10 @@ fn render_tag_archives(
     html_root: &Path,
     config: &Config,
     env: &Environment<'static>,
-    cache: &TagPageCache,
+    cache_db: &sled::Db,
+    mode: BuildMode,
+    verbose: bool,
 ) -> Result<()> {
-    let mut lookup: HashMap<String, &Post> = HashMap::new();
-    for post in posts {
-        lookup.insert(post_key(post), post);
-    }
-
-    let per_page = std::cmp::max(1, config.homepage_posts);
     let tag_template = env
         .get_template("tag.html")
         .context("tag.html template missing")?;
@@ -993,200 +1166,90 @@ fn render_tag_archives(
     }
 
     if buckets.is_empty() {
-        cache.store_pages(&[])?;
+        let keep_keys = BTreeSet::new();
+        cleanup_tag_cache(cache_db, html_root, &keep_keys)?;
         return Ok(());
     }
 
-    if !config.paginate_tags {
-        for bucket in buckets.values() {
-            let summaries = bucket
-                .indices
-                .iter()
-                .map(|&idx| build_post_summary(config, &posts[idx]))
-                .collect::<Result<Vec<_>>>()?;
-            let plan = TagPagePlan {
-                tag: bucket.name.clone(),
-                summaries,
-                pagination: PaginationContext {
-                    current: 1,
-                    total: 1,
-                    prev: String::new(),
-                    next: String::new(),
-                },
-                outputs: vec![tag_index_path(html_root, &bucket.slug)],
-            };
-            render_tag_page(&tag_template, plan)?;
-        }
-        cache.store_pages(&[])?;
-        return Ok(());
-    }
-
-    let mut stored = cache.load_pages()?;
-    stored.sort_by(|a, b| a.slug.cmp(&b.slug).then_with(|| a.cursor.cmp(&b.cursor)));
-    let mut stored_map: HashMap<String, Vec<StoredTagPage>> = HashMap::new();
-    for page in stored {
-        stored_map.entry(page.slug.clone()).or_default().push(page);
-    }
-
-    let mut all_records: Vec<StoredTagPage> = Vec::new();
-    let mut plans: Vec<TagPagePlan> = Vec::new();
-
+    let mut plans = Vec::new();
     for bucket in buckets.values() {
-        let mut existing = stored_map.remove(&bucket.slug).unwrap_or_default();
-        if bucket.indices.is_empty() {
-            continue;
-        }
-
-        let head_indices: Vec<usize> = bucket.indices.iter().take(per_page).cloned().collect();
-        if head_indices.is_empty() {
-            continue;
-        }
-
-        let head_posts: Vec<&Post> = head_indices.iter().map(|&idx| &posts[idx]).collect();
-        let head_cursor = page_cursor(head_posts.last().unwrap());
-        let head_ids: Vec<String> = head_posts.iter().map(|post| post_key(post)).collect();
-
-        let existing_head_cursor = existing.first().map(|page| page.cursor.clone());
-        let head_changed = existing_head_cursor
-            .map(|cursor| cursor != head_cursor)
-            .unwrap_or(true);
-        let existing_cur_set: HashSet<String> =
-            existing.iter().map(|page| page.cursor.clone()).collect();
-
-        let mut records: Vec<StoredTagPage> = Vec::new();
-        records.push(StoredTagPage {
+        let summaries = bucket
+            .indices
+            .iter()
+            .map(|&idx| build_post_summary(config, &posts[idx]))
+            .collect::<Result<Vec<_>>>()?;
+        let pagination = PaginationContext {
+            current: 1,
+            total: 1,
+            prev: String::new(),
+            next: String::new(),
+        };
+        plans.push(TagPagePlan {
             tag: bucket.name.clone(),
             slug: bucket.slug.clone(),
-            cursor: head_cursor.clone(),
-            posts: head_ids.clone(),
+            summaries,
+            pagination,
+            output: tag_index_path(html_root, &bucket.slug),
         });
-
-        let mut known_ids: HashSet<String> = head_ids.iter().cloned().collect();
-
-        existing.retain(|page| page.cursor != head_cursor);
-        existing.retain(|page| page.posts.iter().all(|id| lookup.contains_key(id)));
-
-        for page in &existing {
-            for id in &page.posts {
-                known_ids.insert(id.clone());
-            }
-        }
-
-        let mut buffer: Vec<&Post> = Vec::new();
-        for &idx in &bucket.indices {
-            let post = &posts[idx];
-            let id = post_key(post);
-            if known_ids.contains(&id) {
-                continue;
-            }
-            buffer.push(post);
-            known_ids.insert(id);
-            if buffer.len() == per_page {
-                let cursor = page_cursor(buffer.last().unwrap());
-                let ids = buffer.iter().map(|p| post_key(p)).collect();
-                records.push(StoredTagPage {
-                    tag: bucket.name.clone(),
-                    slug: bucket.slug.clone(),
-                    cursor,
-                    posts: ids,
-                });
-                buffer.clear();
-            }
-        }
-        if !buffer.is_empty() {
-            let cursor = page_cursor(buffer.last().unwrap());
-            let ids = buffer.iter().map(|p| post_key(p)).collect();
-            records.push(StoredTagPage {
-                tag: bucket.name.clone(),
-                slug: bucket.slug.clone(),
-                cursor,
-                posts: ids,
-            });
-        }
-
-        records.extend(existing.into_iter());
-
-        for (index, record) in records.iter().enumerate() {
-            let summaries = record
-                .posts
-                .iter()
-                .filter_map(|id| lookup.get(id))
-                .map(|post| build_post_summary(config, post))
-                .collect::<Result<Vec<_>>>()?;
-
-            let prev = if index == 0 {
-                String::new()
-            } else if index == 1 {
-                tag_index_url(&record.slug)
-            } else {
-                tag_page_url(&record.slug, &records[index - 1].cursor)
-            };
-
-            let next = if index + 1 < records.len() {
-                tag_page_url(&record.slug, &records[index + 1].cursor)
-            } else {
-                String::new()
-            };
-
-            let outputs = if index == 0 {
-                vec![tag_index_path(html_root, &record.slug)]
-            } else {
-                vec![tag_page_path(html_root, &record.slug, &record.cursor)]
-            };
-
-            let mut needs_render = index == 0 || !existing_cur_set.contains(&record.cursor);
-            if !needs_render && head_changed && index == 1 {
-                needs_render = true;
-            }
-            if !needs_render {
-                needs_render = !outputs[0].as_path().exists();
-            }
-
-            if needs_render {
-                plans.push(TagPagePlan {
-                    tag: record.tag.clone(),
-                    summaries,
-                    pagination: PaginationContext {
-                        current: index + 1,
-                        total: records.len(),
-                        prev: prev.clone(),
-                        next: next.clone(),
-                    },
-                    outputs,
-                });
-            }
-        }
-
-        all_records.extend(records);
     }
+
+    let mut keep_keys: BTreeSet<String> = BTreeSet::new();
 
     for plan in plans {
-        render_tag_page(&tag_template, plan)?;
+        let cache_key = format!("{TAG_CACHE_PREFIX}{}", plan.slug);
+        keep_keys.insert(cache_key.clone());
+
+        let payload = TagCachePayload {
+            tag: &plan.tag,
+            posts: &plan.summaries,
+            pagination: &plan.pagination,
+        };
+        let digest = compute_cache_digest(&payload)
+            .with_context(|| format!("failed to compute digest for tag {}", plan.slug))?;
+        let cached = read_cached_string(cache_db, &cache_key)?;
+
+        let mut needs_render = matches!(mode, BuildMode::Full);
+        if !needs_render {
+            match cached.as_deref() {
+                Some(existing) if existing == digest.as_str() => {
+                    if !plan.output.exists() {
+                        needs_render = true;
+                    }
+                }
+                _ => needs_render = true,
+            }
+        }
+
+        let slug = plan.slug.clone();
+
+        if needs_render {
+            let log_message = format!("Rendered tag {}", slug);
+            render_tag_page(&tag_template, plan)?;
+            store_cached_string(cache_db, &cache_key, &digest)?;
+            log_status(verbose, "TAG", log_message);
+        } else {
+            log_status(verbose, "TAG", format!("Tag {} unchanged", slug));
+        }
     }
 
-    cache.store_pages(&all_records)?;
+    cleanup_tag_cache(cache_db, html_root, &keep_keys)?;
     Ok(())
 }
 
 fn render_tag_page(template: &minijinja::Template<'_, '_>, plan: TagPagePlan) -> Result<()> {
-    let scope = format!(
-        "rendering tag page for '{}', page {}",
-        plan.tag, plan.pagination.current
-    );
+    let scope = format!("rendering tag page for '{}'", plan.tag);
     let rendered = render_template_with_scope(
         template,
         minijinja::context! { tag => plan.tag, posts => plan.summaries, pagination => plan.pagination },
         &scope,
     )?;
 
-    for output in plan.outputs {
-        if let Some(parent) = output.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
-        fs::write(&output, &rendered)
-            .with_context(|| format!("failed to write {}", output.display()))?;
+    if let Some(parent) = plan.output.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
     }
+    fs::write(&plan.output, &rendered)
+        .with_context(|| format!("failed to write {}", plan.output.display()))?;
 
     Ok(())
 }
@@ -1529,20 +1592,8 @@ fn tag_index_path(html_root: &Path, slug: &str) -> PathBuf {
     html_root.join("tags").join(slug).join("index.html")
 }
 
-fn tag_page_path(html_root: &Path, slug: &str, cursor: &str) -> PathBuf {
-    html_root
-        .join("tags")
-        .join(slug)
-        .join(cursor)
-        .join("index.html")
-}
-
 fn tag_index_url(slug: &str) -> String {
     format!("/tags/{}/", slug)
-}
-
-fn tag_page_url(slug: &str, cursor: &str) -> String {
-    format!("/tags/{}/{}/", slug, cursor)
 }
 
 fn archive_year_path(html_root: &Path, year: i32) -> PathBuf {
@@ -1900,7 +1951,7 @@ fn render_sitemap(posts: &[Post], html_root: &Path, config: &Config) -> Result<(
         });
     }
 
-    let tag_entries = collect_tag_sitemap_entries(posts, config, per_page)?;
+    let tag_entries = collect_tag_sitemap_entries(posts, config)?;
     entries.extend(tag_entries);
 
     let mut buffer = String::new();
@@ -1925,11 +1976,7 @@ fn render_sitemap(posts: &[Post], html_root: &Path, config: &Config) -> Result<(
     Ok(())
 }
 
-fn collect_tag_sitemap_entries(
-    posts: &[Post],
-    config: &Config,
-    per_page: usize,
-) -> Result<Vec<SitemapEntry>> {
+fn collect_tag_sitemap_entries(posts: &[Post], config: &Config) -> Result<Vec<SitemapEntry>> {
     let mut buckets: BTreeMap<String, TagBucket> = BTreeMap::new();
 
     for (idx, post) in posts.iter().enumerate() {
@@ -1959,29 +2006,11 @@ fn collect_tag_sitemap_entries(
     let mut entries = Vec::new();
 
     for bucket in buckets.values() {
-        if !config.paginate_tags {
-            let first = &posts[bucket.indices[0]];
-            entries.push(SitemapEntry {
-                loc: absolute_url(&config.base_url, &tag_index_url(&bucket.slug)),
-                lastmod: Some(format_rfc3339(&first.date)?),
-            });
-            continue;
-        }
-
-        for (chunk_index, chunk) in bucket.indices.chunks(per_page).enumerate() {
-            let first = &posts[chunk[0]];
-            let url = if chunk_index == 0 {
-                tag_index_url(&bucket.slug)
-            } else {
-                let last = &posts[*chunk.last().unwrap()];
-                let cursor = page_cursor(last);
-                tag_page_url(&bucket.slug, &cursor)
-            };
-            entries.push(SitemapEntry {
-                loc: absolute_url(&config.base_url, &url),
-                lastmod: Some(format_rfc3339(&first.date)?),
-            });
-        }
+        let first = &posts[bucket.indices[0]];
+        entries.push(SitemapEntry {
+            loc: absolute_url(&config.base_url, &tag_index_url(&bucket.slug)),
+            lastmod: Some(format_rfc3339(&first.date)?),
+        });
     }
 
     Ok(entries)
@@ -2092,11 +2121,32 @@ struct PaginationContext {
     next: String,
 }
 
+#[derive(Serialize)]
+struct TagCachePayload<'a> {
+    tag: &'a str,
+    posts: &'a [PostSummary],
+    pagination: &'a PaginationContext,
+}
+
+#[derive(Serialize)]
+struct YearArchiveCachePayload<'a> {
+    year: i32,
+    posts: &'a [PostSummary],
+}
+
+#[derive(Serialize)]
+struct MonthArchiveCachePayload<'a> {
+    year: i32,
+    month: u8,
+    posts: &'a [PostSummary],
+}
+
 struct TagPagePlan {
     tag: String,
+    slug: String,
     summaries: Vec<PostSummary>,
     pagination: PaginationContext,
-    outputs: Vec<PathBuf>,
+    output: PathBuf,
 }
 
 struct PagePlan {
@@ -2567,29 +2617,17 @@ mod tests {
         )
         .unwrap();
 
-        let ts_beta = OffsetDateTime::parse("2024-02-01T00:00:00Z", &Rfc3339)
-            .unwrap()
-            .unix_timestamp();
-        let ts_alpha = OffsetDateTime::parse("2024-01-01T00:00:00Z", &Rfc3339)
-            .unwrap()
-            .unix_timestamp();
-
         let tag_index = fs::read_to_string(root.join("html/tags/shared/index.html")).unwrap();
         assert!(tag_index.contains("article data-slug=\"gamma\""));
-        assert!(tag_index.contains(&format!("data-next=\"/tags/shared/{ts_beta}-beta/\"")));
+        assert!(tag_index.contains("article data-slug=\"beta\""));
+        assert!(tag_index.contains("article data-slug=\"alpha\""));
+        assert!(tag_index.contains("data-total=\"1\""));
+        assert!(tag_index.contains("data-prev=\"\""));
+        assert!(tag_index.contains("data-next=\"\""));
 
-        let second =
-            fs::read_to_string(root.join(format!("html/tags/shared/{ts_beta}-beta/index.html")))
-                .unwrap();
-        assert!(second.contains("article data-slug=\"beta\""));
-        assert!(second.contains("data-prev=\"/tags/shared/\""));
-
-        let third =
-            fs::read_to_string(root.join(format!("html/tags/shared/{ts_alpha}-alpha/index.html")))
-                .unwrap();
-        assert!(third.contains("article data-slug=\"alpha\""));
-        assert!(third.contains(&format!("data-prev=\"/tags/shared/{ts_beta}-beta/\"")));
-        assert!(third.contains("data-next=\"\""));
+        assert!(!root.join("html/tags/shared/gamma").exists());
+        assert!(!root.join("html/tags/shared/beta").exists());
+        assert!(!root.join("html/tags/shared/alpha").exists());
     }
 
     #[test]
@@ -2738,11 +2776,284 @@ mod tests {
             "<loc>https://example.com/blog/page/{ts_alpha}-alpha/</loc>"
         )));
         assert!(sitemap.contains(&format!("<loc>https://example.com/blog/tags/shared/</loc>")));
-        assert!(sitemap.contains(&format!(
-            "<loc>https://example.com/blog/tags/shared/{ts_beta}-beta/</loc>"
-        )));
         assert!(sitemap.contains("<loc>https://example.com/blog/2024/03/01/gamma/</loc>"));
         assert!(sitemap.contains("<lastmod>2024-03-01T00:00:00Z</lastmod>"));
+    }
+
+    #[test]
+    fn skips_rewriting_tag_index_when_unchanged() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+
+        write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let tag_path = root.join("html/tags/shared/index.html");
+        assert!(tag_path.exists());
+        let first_mtime = file_mtime(&tag_path);
+
+        wait_for_filesystem_tick();
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Changed,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let second_mtime = file_mtime(&tag_path);
+        assert_eq!(first_mtime, second_mtime);
+    }
+
+    #[test]
+    fn rerenders_tag_index_when_post_changes() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+
+        write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let tag_path = root.join("html/tags/shared/index.html");
+        let first_mtime = file_mtime(&tag_path);
+
+        wait_for_filesystem_tick();
+
+        fs::write(
+            root.join("posts/alpha/post.md"),
+            "---\ntitle: Alpha Updated\ndate: 2024-01-01T00:00:00Z\nslug: alpha\ntags:\n  - shared\n---\nUpdated",
+        )
+        .unwrap();
+
+        wait_for_filesystem_tick();
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Changed,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let second_mtime = file_mtime(&tag_path);
+        assert!(second_mtime > first_mtime);
+    }
+
+    #[test]
+    fn removes_tag_index_when_tag_disappears() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+
+        write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let tag_path = root.join("html/tags/shared/index.html");
+        assert!(tag_path.exists());
+
+        wait_for_filesystem_tick();
+
+        fs::remove_dir_all(root.join("posts/alpha")).unwrap();
+
+        wait_for_filesystem_tick();
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Changed,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        assert!(!tag_path.exists());
+    }
+
+    #[test]
+    fn skips_rewriting_archives_when_unchanged() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+
+        write_dated_post(root, "alpha", "2024-02-01T00:00:00Z", "A");
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let year_path = root.join("html/2024/index.html");
+        let month_path = root.join("html/2024/02/index.html");
+        let first_year_mtime = file_mtime(&year_path);
+        let first_month_mtime = file_mtime(&month_path);
+
+        wait_for_filesystem_tick();
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Changed,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let second_year_mtime = file_mtime(&year_path);
+        let second_month_mtime = file_mtime(&month_path);
+
+        assert_eq!(first_year_mtime, second_year_mtime);
+        assert_eq!(first_month_mtime, second_month_mtime);
+    }
+
+    #[test]
+    fn rerenders_archives_when_post_changes() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+
+        write_dated_post(root, "alpha", "2024-03-01T00:00:00Z", "Original");
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let year_path = root.join("html/2024/index.html");
+        let month_path = root.join("html/2024/03/index.html");
+        let first_year_mtime = file_mtime(&year_path);
+        let first_month_mtime = file_mtime(&month_path);
+
+        wait_for_filesystem_tick();
+
+        fs::write(
+            root.join("posts/alpha/post.md"),
+            "---\ntitle: Alpha\ndate: 2024-03-01T00:00:00Z\nslug: alpha\ntags:\n  - alpha\n---\nUpdated body",
+        )
+        .unwrap();
+
+        wait_for_filesystem_tick();
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Changed,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let second_year_mtime = file_mtime(&year_path);
+        let second_month_mtime = file_mtime(&month_path);
+
+        assert!(second_year_mtime > first_year_mtime);
+        assert!(second_month_mtime > first_month_mtime);
+    }
+
+    #[test]
+    fn removes_archives_when_posts_are_removed() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        setup_markdown_templates(root);
+
+        write_dated_post(root, "alpha", "2024-04-01T00:00:00Z", "Body");
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Full,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        let year_path = root.join("html/2024/index.html");
+        let month_path = root.join("html/2024/04/index.html");
+        assert!(year_path.exists());
+        assert!(month_path.exists());
+
+        wait_for_filesystem_tick();
+
+        fs::remove_dir_all(root.join("posts/alpha")).unwrap();
+
+        wait_for_filesystem_tick();
+
+        render_site(
+            root,
+            RenderPlan {
+                posts: true,
+                static_assets: false,
+                mode: BuildMode::Changed,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        assert!(!year_path.exists());
+        assert!(!month_path.exists());
     }
 
     #[test]

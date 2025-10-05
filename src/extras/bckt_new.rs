@@ -99,7 +99,7 @@ fn run() -> Result<()> {
     };
 
     let date_str = value_or_prompt("Date", default_date, false, cli.no_prompt)?;
-    let parsed_date = parse_datetime(&date_str).unwrap_or_else(|| now);
+    let parsed_date = parse_datetime(&date_str).unwrap_or(now);
 
     let tags_input = value_or_prompt(
         "Tags (comma separated)",
@@ -216,12 +216,11 @@ fn parse_datetime(value: &str) -> Option<OffsetDateTime> {
         return Some(naive.assume_offset(UtcOffset::UTC));
     }
 
-    if let Some((main, offset_part)) = value.rsplit_once(' ') {
-        if let Ok(naive) = PrimitiveDateTime::parse(main, NAIVE_FORMAT)
-            && let Ok(offset) = parse_offset(offset_part)
-        {
-            return Some(naive.assume_offset(offset));
-        }
+    if let Some((main, offset_part)) = value.rsplit_once(' ')
+        && let Ok(naive) = PrimitiveDateTime::parse(main, NAIVE_FORMAT)
+        && let Ok(offset) = parse_offset(offset_part)
+    {
+        return Some(naive.assume_offset(offset));
     }
 
     None
@@ -298,20 +297,14 @@ fn build_front_matter(
     if !tags.is_empty() {
         fm.push_str(&format!("tags: {}\n", tags.join(", ")));
     }
-    if let Some(pt) = post_type {
-        if !pt.trim().is_empty() {
-            fm.push_str(&format!("type: {}\n", pt.trim()));
-        }
+    if let Some(pt) = post_type.filter(|pt| !pt.trim().is_empty()) {
+        fm.push_str(&format!("type: {}\n", pt.trim()));
     }
-    if let Some(summary) = abstract_text {
-        if !summary.trim().is_empty() {
-            fm.push_str(&format!("abstract: {}\n", yaml_quote(summary.trim())));
-        }
+    if let Some(summary) = abstract_text.filter(|value| !value.trim().is_empty()) {
+        fm.push_str(&format!("abstract: {}\n", yaml_quote(summary.trim())));
     }
-    if let Some(lang) = language {
-        if !lang.trim().is_empty() {
-            fm.push_str(&format!("language: {}\n", lang.trim()));
-        }
+    if let Some(lang) = language.filter(|lang| !lang.trim().is_empty()) {
+        fm.push_str(&format!("language: {}\n", lang.trim()));
     }
     fm.push_str("attached:\n");
     fm.push_str("---\n\n");
