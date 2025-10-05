@@ -122,13 +122,6 @@ pub struct RenderArgs {
     pub static_assets: bool,
     #[arg(
         long,
-        conflicts_with = "force",
-        help = "Reuse the incremental cache to rebuild only changed inputs",
-        long_help = "Skips work for posts whose content and assets are unchanged. Template or config changes still trigger the necessary downstream rebuilds."
-    )]
-    pub changed: bool,
-    #[arg(
-        long,
         help = "Ignore caches and rebuild everything from scratch",
         long_help = "Disables incremental shortcuts and regenerates every post, feed, and asset. Use this after large refactors or when you suspect the cache is stale."
     )]
@@ -160,10 +153,10 @@ pub struct DevArgs {
     pub port: u16,
     #[arg(
         long,
-        help = "Enable incremental rebuilds while watching files",
-        long_help = "Reuse the same incremental cache that `render --changed` uses so edits touch the minimum number of posts during dev."
+        help = "Rebuild everything on each change instead of using the incremental cache",
+        long_help = "Run full rebuilds while the dev server watches for edits. By default the dev server performs incremental renders."
     )]
-    pub changed: bool,
+    pub force: bool,
     #[arg(
         long,
         help = "Show verbose logs from the watcher and render pipeline",

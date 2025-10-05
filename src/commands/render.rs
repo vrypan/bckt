@@ -17,10 +17,8 @@ fn determine_plan(args: RenderArgs) -> RenderPlan {
     let static_assets = args.static_assets;
     let mode = if args.force {
         BuildMode::Full
-    } else if args.changed {
-        BuildMode::Changed
     } else {
-        BuildMode::Full
+        BuildMode::Changed
     };
 
     match (posts, static_assets) {
@@ -48,49 +46,6 @@ mod tests {
         let plan = determine_plan(RenderArgs {
             posts: false,
             static_assets: false,
-            changed: false,
-            force: false,
-            verbose: false,
-        });
-        assert!(plan.posts);
-        assert!(plan.static_assets);
-        assert!(matches!(plan.mode, BuildMode::Full));
-        assert!(!plan.verbose);
-    }
-
-    #[test]
-    fn plan_respects_individual_flags() {
-        let plan = determine_plan(RenderArgs {
-            posts: true,
-            static_assets: false,
-            changed: false,
-            force: false,
-            verbose: false,
-        });
-        assert!(plan.posts);
-        assert!(!plan.static_assets);
-        assert!(matches!(plan.mode, BuildMode::Full));
-        assert!(!plan.verbose);
-
-        let plan = determine_plan(RenderArgs {
-            posts: false,
-            static_assets: true,
-            changed: false,
-            force: false,
-            verbose: true,
-        });
-        assert!(!plan.posts);
-        assert!(plan.static_assets);
-        assert!(matches!(plan.mode, BuildMode::Full));
-        assert!(plan.verbose);
-    }
-
-    #[test]
-    fn plan_enters_changed_mode_when_requested() {
-        let plan = determine_plan(RenderArgs {
-            posts: false,
-            static_assets: false,
-            changed: true,
             force: false,
             verbose: false,
         });
@@ -101,11 +56,35 @@ mod tests {
     }
 
     #[test]
+    fn plan_respects_individual_flags() {
+        let plan = determine_plan(RenderArgs {
+            posts: true,
+            static_assets: false,
+            force: false,
+            verbose: false,
+        });
+        assert!(plan.posts);
+        assert!(!plan.static_assets);
+        assert!(matches!(plan.mode, BuildMode::Changed));
+        assert!(!plan.verbose);
+
+        let plan = determine_plan(RenderArgs {
+            posts: false,
+            static_assets: true,
+            force: false,
+            verbose: true,
+        });
+        assert!(!plan.posts);
+        assert!(plan.static_assets);
+        assert!(matches!(plan.mode, BuildMode::Changed));
+        assert!(plan.verbose);
+    }
+
+    #[test]
     fn force_overrides_changed_mode() {
         let plan = determine_plan(RenderArgs {
             posts: false,
             static_assets: false,
-            changed: true,
             force: true,
             verbose: false,
         });

@@ -10,3 +10,7 @@ pages/
 themes/*
 !themes/bckt3/
 !themes/bckt3/**
+PROJECT_GOALS.md
+STYLE_GUIDE.md
+TASKS.md
+TECH_STACK.md

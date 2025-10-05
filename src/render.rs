@@ -3,7 +3,7 @@ use std::error::Error as StdError;
 use std::fmt::Write;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow, bail};
 use blake3::Hasher;
@@ -49,6 +49,16 @@ fn log_status(enabled: bool, label: &str, message: impl AsRef<str>) {
     if enabled {
         println!("[{}] {}", label, message.as_ref());
     }
+}
+
+#[derive(Default, Debug)]
+struct RenderStats {
+    posts_rendered: usize,
+    posts_skipped: usize,
+    pages_rendered: usize,
+    search_documents: usize,
+    static_assets_copied: usize,
+    theme_assets_copied: usize,
 }
 
 fn render_template_with_scope(
@@ -237,6 +247,8 @@ fn store_cached_string(db: &sled::Db, key: &str, value: &str) -> Result<()> {
 }
 
 pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
+    let started = Instant::now();
+    let mut stats = RenderStats::default();
     let config_path = root.join("bckt.yaml");
     let config_raw = if config_path.exists() {
         fs::read_to_string(&config_path)
@@ -292,7 +304,7 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
 
     let posts = if plan.posts {
         log_status(plan.verbose, "STEP", "Rendering posts");
-        let posts = render_posts(
+        let (posts, rendered_posts, skipped_posts) = render_posts(
             root,
             &html_root,
             &config,
@@ -306,6 +318,8 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
             "STEP",
             format!("Processed {} posts", posts.len()),
         );
+        stats.posts_rendered = rendered_posts;
+        stats.posts_skipped = skipped_posts;
         posts
     } else {
         log_status(plan.verbose, "STEP", "Skipping post rendering");
@@ -320,6 +334,7 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
         render_feeds(&posts, &html_root, &config, &env)?;
 
         let artifact = search::build_index(&config, &posts)?;
+        stats.search_documents = artifact.document_count;
         let search_path = search::resolve_asset_path(&html_root, &config.search.asset_path);
         let cached_search_hash = read_cached_string(&cache_db, SEARCH_INDEX_KEY)?;
         let needs_search = cached_search_hash.as_deref() != Some(artifact.digest.as_str())
@@ -349,7 +364,7 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
         store_cached_string(&cache_db, SITE_INPUTS_KEY, &site_inputs_hash)?;
     }
 
-    render_pages(root, &html_root, &env, plan.verbose)?;
+    stats.pages_rendered = render_pages(root, &html_root, &env, plan.verbose)?;
 
     if plan.static_assets {
         let static_hash = compute_static_digest(root)?;
@@ -358,9 +373,10 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
         let should_copy_static = matches!(effective_mode, BuildMode::Full) || static_changed;
         if should_copy_static {
             log_status(plan.verbose, "STATIC", "Copying static assets");
-            copy_static_assets(root, &html_root)?;
+            stats.static_assets_copied = copy_static_assets(root, &html_root)?;
         } else {
             log_status(plan.verbose, "STATIC", "Static assets unchanged");
+            stats.static_assets_copied = 0;
         }
         store_cached_string(&cache_db, STATIC_HASH_KEY, &static_hash)?;
 
@@ -373,6 +389,7 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
             if should_copy_theme {
                 match copy_theme_assets(root, &html_root, theme_name)? {
                     ThemeAssetCopy::Copied(count) => {
+                        stats.theme_assets_copied = count;
                         log_status(
                             plan.verbose,
                             "THEME",
@@ -380,6 +397,7 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
                         );
                     }
                     ThemeAssetCopy::SkippedMissing => {
+                        stats.theme_assets_copied = 0;
                         log_status(
                             plan.verbose,
                             "THEME",
@@ -388,6 +406,7 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
                     }
                 }
             } else {
+                stats.theme_assets_copied = 0;
                 log_status(plan.verbose, "THEME", "Theme assets unchanged");
             }
 
@@ -395,11 +414,27 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
         }
     } else {
         log_status(plan.verbose, "STATIC", "Skipping static assets");
+        stats.static_assets_copied = 0;
+        stats.theme_assets_copied = 0;
     }
 
     cache_db.flush().context("failed to flush cache database")?;
 
     log_status(plan.verbose, "DONE", "Render complete");
+
+    let total_posts = stats.posts_rendered + stats.posts_skipped;
+    let elapsed = started.elapsed();
+    println!(
+        "[SUMMARY] posts rendered: {}/{} (skipped {}); pages: {}; search docs: {}; static assets copied: {}; theme assets copied: {}; elapsed: {:.2?}",
+        stats.posts_rendered,
+        total_posts,
+        stats.posts_skipped,
+        stats.pages_rendered,
+        stats.search_documents,
+        stats.static_assets_copied,
+        stats.theme_assets_copied,
+        elapsed
+    );
 
     Ok(())
 }
@@ -452,11 +487,11 @@ fn render_posts(
     cache_db: &sled::Db,
     mode: BuildMode,
     verbose: bool,
-) -> Result<Vec<Post>> {
+) -> Result<(Vec<Post>, usize, usize)> {
     let posts_dir = root.join("posts");
     let mut posts = discover_posts(&posts_dir, config)?;
     if posts.is_empty() {
-        return Ok(posts);
+        return Ok((posts, 0, 0));
     }
 
     posts.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.slug.cmp(&b.slug)));
@@ -466,6 +501,9 @@ fn render_posts(
         .context("post.html template missing")?;
 
     let mut cache_keys: BTreeSet<String> = BTreeSet::new();
+
+    let mut rendered_count = 0usize;
+    let mut skipped_count = 0usize;
 
     for post in &posts {
         let cache_key = format!("{POST_HASH_PREFIX}{}", post.permalink);
@@ -485,6 +523,7 @@ fn render_posts(
         };
 
         if needs_render {
+            rendered_count += 1;
             let render_target = html_root.join(post.permalink.trim_start_matches('/'));
             let output_path = render_target.join("index.html");
             if let Some(parent) = output_path.parent() {
@@ -543,6 +582,7 @@ fn render_posts(
                 format!("Rendered post {}", post.permalink),
             );
         } else {
+            skipped_count += 1;
             log_status(
                 verbose,
                 "SKIP",
@@ -557,7 +597,7 @@ fn render_posts(
 
     cleanup_post_hashes(cache_db, &cache_keys)?;
 
-    Ok(posts)
+    Ok((posts, rendered_count, skipped_count))
 }
 
 fn render_pages(
@@ -565,10 +605,10 @@ fn render_pages(
     html_root: &Path,
     env: &Environment<'static>,
     verbose: bool,
-) -> Result<()> {
+) -> Result<usize> {
     let pages_dir = root.join("pages");
     if !pages_dir.exists() {
-        return Ok(());
+        return Ok(0);
     }
 
     let mut files = Vec::new();
@@ -588,6 +628,7 @@ fn render_pages(
 
     files.sort();
 
+    let mut rendered_pages = 0usize;
     for path in files {
         let relative = path.strip_prefix(&pages_dir).unwrap();
         let output_path = html_root.join(relative);
@@ -613,9 +654,10 @@ fn render_pages(
             "PAGE",
             format!("Rendered {}", normalize_path(relative)),
         );
+        rendered_pages += 1;
     }
 
-    Ok(())
+    Ok(rendered_pages)
 }
 
 fn compute_post_digest(post: &Post) -> Result<String> {
@@ -1587,12 +1629,13 @@ fn compute_static_digest(root: &Path) -> Result<String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
-fn copy_static_assets(root: &Path, html_root: &Path) -> Result<()> {
+fn copy_static_assets(root: &Path, html_root: &Path) -> Result<usize> {
     let skel_dir = root.join("skel");
     if !skel_dir.exists() {
-        return Ok(());
+        return Ok(0);
     }
 
+    let mut copied = 0usize;
     for entry in WalkDir::new(&skel_dir) {
         let entry = entry?;
         if entry.file_type().is_dir() {
@@ -1611,9 +1654,10 @@ fn copy_static_assets(root: &Path, html_root: &Path) -> Result<()> {
                 destination.display()
             )
         })?;
+        copied += 1;
     }
 
-    Ok(())
+    Ok(copied)
 }
 
 fn compute_theme_asset_digest(root: &Path, theme: &str) -> Result<String> {

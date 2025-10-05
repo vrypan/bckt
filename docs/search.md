@@ -70,6 +70,6 @@ The search controller exposes filters for language, tag, type, and publication y
 Search index updates participate in incremental renders:
 
 - The renderer stores a hash of the search payload in the cache database. When posts change (or search-related configuration updates), the hash changes and the JSON file is rewritten.
-- Running `bckt render --changed` after editing a post regenerates the search index automatically. No manual cache invalidation is required.
+- After editing a post, run `bckt render` to regenerate the search index. Incremental rebuilds are the default, and `--force` remains available if you need a full refresh.
 
 If you relocate the search JSON or customise analyzers, re-run a full build (`bckt render --force` or delete the `.bckt` cache directory) to repopulate the cache with the new settings.

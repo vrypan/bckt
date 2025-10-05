@@ -28,10 +28,10 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
     let initial_plan = RenderPlan {
         posts: true,
         static_assets: true,
-        mode: if args.changed {
-            BuildMode::Changed
-        } else {
+        mode: if args.force {
             BuildMode::Full
+        } else {
+            BuildMode::Changed
         },
         verbose: args.verbose,
     };
@@ -57,10 +57,10 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
 
     let rebuild_root = root.clone();
     let rebuild_verbose = args.verbose;
-    let rebuild_mode = if args.changed {
-        BuildMode::Changed
-    } else {
+    let rebuild_mode = if args.force {
         BuildMode::Full
+    } else {
+        BuildMode::Changed
     };
     let rebuild_latest = Arc::clone(&latest_change);
 
