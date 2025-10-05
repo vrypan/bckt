@@ -12,6 +12,7 @@
   const filtersContainer = root.querySelector('[data-search-filters]');
   const toggleButton = root.querySelector('[data-search-toggle]');
   const sortSelect = root.querySelector('[data-search-sort]');
+  const resultTemplate = root.querySelector('[data-search-result-template]');
   const filterElements = {
     language: root.querySelector('[data-search-filter="language"]'),
     type: root.querySelector('[data-search-filter="type"]'),
@@ -224,6 +225,9 @@
   }
 
   function renderResultCard(result, tokens) {
+    if (resultTemplate) {
+      return renderFromTemplate(result, tokens);
+    }
     const isFarcaster = (result.type || '').toLowerCase() === 'farcaster';
     const article = document.createElement('article');
     article.className = 'post-card';
@@ -234,6 +238,78 @@
       renderDefaultSummary(article, result, tokens);
     }
     return article;
+  }
+
+  function renderFromTemplate(result, tokens) {
+    const clone = resultTemplate.content.cloneNode(true);
+    const card = clone.querySelector('[data-search-card]') || clone.firstElementChild;
+    if (card) {
+      card.classList.remove('post-card--farcaster');
+      if ((result.type || '').toLowerCase() === 'farcaster') {
+        card.classList.add('post-card--farcaster');
+      }
+    }
+
+    const url = result.url || result.id || '#';
+
+    const titleNode = clone.querySelector('[data-search-title]');
+    if (titleNode) {
+      if (result.title) {
+        titleNode.innerHTML = highlightText(result.title, tokens);
+        titleNode.removeAttribute('hidden');
+      } else {
+        titleNode.innerHTML = '';
+        titleNode.setAttribute('hidden', '');
+      }
+    }
+
+    const summaryNode = clone.querySelector('[data-search-summary]');
+    const summaryDivider = clone.querySelector('[data-search-summary-divider]');
+    const summarySource = (result.excerpt || result.content || '').trim();
+    if (summaryNode) {
+      if (summarySource.length > 0) {
+        summaryNode.innerHTML = highlightText(summarySource, tokens);
+        summaryNode.removeAttribute('hidden');
+        if (summaryDivider) {
+          summaryDivider.removeAttribute('hidden');
+        }
+      } else {
+        summaryNode.innerHTML = '';
+        summaryNode.setAttribute('hidden', '');
+        if (summaryDivider) {
+          summaryDivider.setAttribute('hidden', '');
+        }
+      }
+    } else if (summaryDivider) {
+      summaryDivider.remove();
+    }
+
+    const dateNode = clone.querySelector('[data-search-date]');
+    if (dateNode) {
+      const dateIso = result.date_iso || '';
+      const display = result.date_display || formatDate(dateIso);
+      if ('dateTime' in dateNode) {
+        dateNode.dateTime = dateIso;
+      } else if (dateIso) {
+        dateNode.setAttribute('data-date-iso', dateIso);
+      }
+      dateNode.textContent = display;
+    }
+
+    const tagTarget = clone.querySelector('[data-search-tags]');
+    if (tagTarget) {
+      populateTags(tagTarget, Array.isArray(result.tags) ? result.tags : []);
+    }
+
+    clone.querySelectorAll('[data-search-link]').forEach((element) => {
+      if ('href' in element) {
+        element.href = url;
+      } else {
+        element.setAttribute('data-href', url);
+      }
+    });
+
+    return clone;
   }
 
   function renderDefaultSummary(container, result, tokens) {
@@ -292,6 +368,28 @@
 
     header.appendChild(meta);
     container.appendChild(header);
+  }
+
+  function populateTags(target, tags) {
+    target.innerHTML = '';
+    if (!Array.isArray(tags) || tags.length === 0) {
+      target.setAttribute('hidden', '');
+      return;
+    }
+    target.removeAttribute('hidden');
+    const nodeName = target.nodeName.toLowerCase();
+    if (nodeName === 'ul' || nodeName === 'ol') {
+      for (const tag of tags) {
+        const item = document.createElement('li');
+        const link = document.createElement('a');
+        link.href = `/tags/${tagSlug(tag)}/`;
+        link.textContent = `#${tag}`;
+        item.appendChild(link);
+        target.appendChild(item);
+      }
+    } else {
+      target.textContent = tags.map((tag) => `#${tag}`).join(', ');
+    }
   }
 
   function renderFarcasterSummary(container, result, tokens) {
