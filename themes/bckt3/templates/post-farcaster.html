@@ -10,9 +10,9 @@
 <meta property="og:site_name" content="{{ config.title | default("bckt") }}">
 <meta property="og:type" content="article">
 <meta property="og:title" content="{{ config.title | default("bckt") }}">
-<meta property="og:url" content="{{ canonical }}">
+<meta property="og:url" content="{{ canonical | safe }}">
 <meta property="og:description" content="{{ post.excerpt }}">
-<link rel="canonical" href="{{ canonical }}">
+<link rel="canonical" href="{{ canonical | safe }}">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="{{ config.title | default("bckt") }}">
 <meta name="twitter:description" content="{{ post.excerpt }}">
@@ -41,21 +41,20 @@
   <div class="post-media post-media--images">
     {% for image in images %}
         <figure class="post-media__item">
-          <img src="{{ post.permalink }}{{ image }}" alt="">
+          <img src="{{ post.permalink | safe }}{{ image }}" alt="">
         </figure>
     {% endfor %}
   </div>
   {% endif %}
   {% set videos = post.videos | default([]) %}
   {% if videos %}
-  <div class="post-media post-media--videos">
     {% for video in videos %}
+      <div class="post-media post-media--videos">
       <div class="post-card__media-video">
-        <video controls preload="metadata" playsinline src="{{ post.permalink }}{{ video }}"></video>
-        <p class="post-media__download"><a href="{{ post.permalink }}{{ video }}">Download video</a></p>
+        <video controls preload="metadata" playsinline src="{{ post.permalink | safe }}{{ video }}"></video>
+      </div>
       </div>
     {% endfor %}
-  </div>
   {% endif %}
 </article>
 {% endblock content %}

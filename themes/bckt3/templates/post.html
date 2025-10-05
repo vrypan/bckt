@@ -10,9 +10,9 @@
 <meta property="og:site_name" content="{{ config.title | default("bckt") }}">
 <meta property="og:type" content="article">
 <meta property="og:title" content="{{ post.title | default(config.title | default("bckt")) }}">
-<meta property="og:url" content="{{ canonical }}">
+<meta property="og:url" content="{{ canonical | safe }}">
 <meta property="og:description" content="{{ post.abstract | default(post.excerpt) }}">
-<link rel="canonical" href="{{ canonical }}">
+<link rel="canonical" href="{{ canonical | safe }}">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="{{ post.title | default(config.title | default("bckt")) }}">
 <meta name="twitter:description" content="{{ post.abstract | default(post.excerpt) }}">
@@ -39,7 +39,7 @@
     <p class="post-subtitle">{{ post.abstract }}</p>
     {% endif %}
     {% if post.image %}
-    <img class="post-hero" src="{{ post.permalink }}{{ post.image }}" alt="">
+    <img class="post-hero" src="{{ post.permalink | safe }}{{ post.image }}" alt="">
     {% endif %}
   </header>
   <div class="post-content reading-flow">

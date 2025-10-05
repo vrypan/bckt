@@ -7,7 +7,7 @@
     {% for post in posts %}
     <li class="archive-item">
       <time datetime="{{ post.date_iso }}">{{ post.date }}</time>
-      <a href="{{ post.permalink }}">
+      <a href="{{ post.permalink | safe }}">
         {% if post.title %}{{ post.title }}{% else %}{{ post.slug }}{% endif %}
       </a>
     </li>

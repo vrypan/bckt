@@ -7,14 +7,10 @@
 {% endblock page_meta %}
 
 {% block content %}
-  {% set base = config.base_url | default('/') %}
-  {% if base[-1] != '/' %}
-    {% set base = base ~ '/' %}
-  {% endif %}
   <section
     class="page-section search-page"
     data-search-root
-    data-search-index="{{ base }}assets/search/search-index.json"
+    data-search-index="/assets/search/search-index.json"
   >
     <header class="search-header">
       <h1 class="page-title">Search</h1>
@@ -78,10 +74,6 @@
 {% endblock content %}
 
 {% block page_scripts %}
-  {% set base = config.base_url | default('/') %}
-  {% if base[-1] != '/' %}
-    {% set base = base ~ '/' %}
-  {% endif %}
-  <script defer src="{{ base }}assets/js/minisearch.js"></script>
-  <script defer src="{{ base }}assets/js/search.js"></script>
+  <script defer src="/assets/js/minisearch.js"></script>
+  <script defer src="/assets/js/search.js"></script>
 {% endblock page_scripts %}

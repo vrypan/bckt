@@ -14,8 +14,16 @@
             rel="alternate"
             type="application/rss+xml"
             title="RSS"
-            href="{{ feed_url }}"
+            href="{{ feed_url | safe }}"
         />
+        {% for tag in config.rss_tags %}
+        <link
+            rel="alternate"
+            type="application/rss+xml"
+            title="RSS for {{ tag }}"
+            href="{{ config.base_url | safe }}rss-{{ tag }}.xml"
+        />
+        {% endfor %}
         <link
             rel="icon"
             type="image/png"
@@ -38,24 +46,23 @@
         {% block page_meta %}{% endblock page_meta %}
     </head>
     <body>
-        {% set base = '/' %}
         <header class="site-header">
             <div class="site-header__inner">
                 <div class="site-brand">
                     <a
                         class="site-brand__badge"
-                        href="{{ base }}"
+                        href="/"
                         aria-label="Home"
                     >
                         <img
                             class="site-brand__avatar"
-                            src="{{ base }}img/site-avatar.png"
+                            src="/img/site-avatar.png"
                             alt="{{ config.title | default('bckt') }} avatar"
                         />
                     </a>
                     <div class="site-brand__text">
                         <h1 class="site-title">
-                            <a href="{{ base }}"
+                            <a href="/"
                                 >{{ config.title | default("bckt") }}</a
                             >
                         </h1>
@@ -65,14 +72,14 @@
                     </div>
                 </div>
                 <nav class="site-nav" aria-label="Primary navigation">
-                    <a class="site-nav__link" href="{{ base }}">home</a>
-                    <a class="site-nav__link" href="{{ base }}about/">about</a>
-                    <a class="site-nav__link" href="{{ base }}search/"
+                    <a class="site-nav__link" href="/">home</a>
+                    <a class="site-nav__link" href="/about/">about</a>
+                    <a class="site-nav__link" href="/search/"
                         >search</a
                     >
                     <a
                         class="site-nav__link site-nav__link--icon"
-                        href="{{ feed_url }}"
+                        href="{{ feed_url | safe }}"
                         aria-label="RSS feed"
                         >rss</a
                     >

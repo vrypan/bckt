@@ -8,7 +8,7 @@
 <div class="post-card__media post-card__media--images">
   {% for image in images %}
         <figure class="post-media__item">
-          <img src="{{ post.permalink }}{{ image }}" alt="">
+          <img src="{{ post.permalink | safe }}{{ image }}" alt="">
         </figure>
     {% endfor %}
 </div>
@@ -18,8 +18,7 @@
 <div class="post-card__media post-card__media--videos">
   {% for video in videos %}
       <div class="post-card__media-video">
-        <video controls preload="metadata" playsinline src="{{ post.permalink }}{{ video }}"></video>
-        <p class="post-media__download"><a href="{{ post.permalink }}{{ video }}">Download video</a></p>
+        <video controls preload="metadata" playsinline src="{{ post.permalink | safe }}{{ video }}"></video>
       </div>
   {% endfor %}
 </div>
@@ -28,5 +27,5 @@
     <span class="meta-divider">◉</span>
     <time class="post-meta__time" datetime="{{ post.date_iso }}">{{ post.date_iso | format_date("%a, %d %B %Y %H:%M") }}</time>
     <span class="meta-divider">//</span>
-    <span><a href="https://farcaster.xyz/{{ post.castid }}">on farcaster →</a></span>
+    <span><a href="https://farcaster.xyz/{{ post.castid | safe }}">on farcaster →</a></span>
   </div>
