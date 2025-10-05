@@ -31,6 +31,7 @@ compile locally with `cargo install --path .`.
 
 ```bash
 bckt init                     # scaffold posts/, templates/, skel/, bckt.yaml
+# edit bckt.yaml
 bckt render                   # generate html/
 bckt dev --changed --verbose  # preview with live reload
 ```

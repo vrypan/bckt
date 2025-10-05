@@ -15,6 +15,9 @@
     line-height: 1.7;
     background: #f4f3ef;
     color: #3f3a37;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
   }
 
   a {
@@ -165,6 +168,7 @@
 
   .site-main {
     padding: 2.5rem 0 4rem;
+    flex: 1 0 auto;
   }
 
   .site-main__inner {
@@ -175,9 +179,11 @@
 
   .site-footer {
     border-top: 1px solid #e5e7eb;
-    padding: 2rem 0 3rem;
+    padding: 1.5rem 0 1.5rem;
     font-size: 0.875rem;
     color: #9ca3af;
+    margin-top: auto;
+    text-align: center;
   }
 
   .site-footer p {
@@ -672,9 +678,8 @@
   }
 
   .reading-flow {
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     line-height: 1.25;
-    letter-spacing: 0.005em;
   }
 
   .post-content {
@@ -686,7 +691,7 @@
   .reading-flow,
   .post-content {
     font-family: var(--font-sans);
-    color: #2d2a26;
+    color: #5e5b57;
     text-rendering: optimizeLegibility;
     font-kerning: normal;
     hyphens: auto;
@@ -768,7 +773,6 @@
     padding: 1rem 1.5rem;
     border-left: 3px solid rgba(68, 68, 68, 0.2);
     background: #f5f5f4;
-    color: #3f3a37;
     font-style: italic;
   }
 

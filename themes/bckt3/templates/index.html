@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="page-section">
+  {% if not pagination.prev %}<h1>Recent</h1>{% endif %}
   {% for post in posts %}
   <article class="post-card{% if post.type == 'farcaster' %} post-card--farcaster{% endif %}">
     {% if post.type == 'farcaster' %}

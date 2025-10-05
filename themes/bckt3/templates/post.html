@@ -6,16 +6,21 @@
 
 {% block page_meta %}
 {% set canonical = (config.base_url | default("")) ~ post.permalink %}
-<meta name="description" content="{{ post.abstract | default(post.excerpt) }}">
+<meta name="description" content="{{ post.abstract | default(post.excerpt) | trim }}">
 <meta property="og:site_name" content="{{ config.title | default("bckt") }}">
 <meta property="og:type" content="article">
-<meta property="og:title" content="{{ post.title | default(config.title | default("bckt")) }}">
+<meta property="og:title" content="{{ post.title | default(config.title | default("bckt")) | trim }}">
 <meta property="og:url" content="{{ canonical | safe }}">
-<meta property="og:description" content="{{ post.abstract | default(post.excerpt) }}">
+<meta property="og:description" content="{{ post.abstract | default(post.excerpt) | trim}}">
 <link rel="canonical" href="{{ canonical | safe }}">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="{{ post.title | default(config.title | default("bckt")) }}">
-<meta name="twitter:description" content="{{ post.abstract | default(post.excerpt) }}">
+<meta name="twitter:title" content="{{ post.title | default(config.title | default("bckt")) | trim }}">
+<meta name="twitter:description" content="{{ post.abstract | default(post.excerpt) | trim }}">
+{% if post.image %}
+<meta property="og:image" content="{{ canonical | safe}}{{ post.image }}"/>
+<meta name="twitter:image" content="{{ canonical | safe}}{{ post.image }}"/>
+{% endif %}
+
 {% endblock page_meta %}
 
 {% block content %}
