@@ -27,6 +27,11 @@ Pre-built binaries live on the
 [releases page](https://github.com/vrypan/bckt/releases). You can also
 compile locally with `cargo install --path .`.
 
+## Demo
+
+There's no demo, but you can check [blog.vrypan.net](https://blog.vrypan.net/)
+built with bckt and a slightly modified default theme.
+
 ## Get Started
 
 ```bash
