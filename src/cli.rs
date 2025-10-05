@@ -27,7 +27,7 @@ pub enum Command {
 The command is idempotent: existing files are left untouched, so you can rerun it\n\
 to ensure required folders and templates are present without overwriting customisations."
     )]
-    Init,
+    Init(InitArgs),
     #[command(
         about = "Render posts and assets into the html/ output tree",
         long_about = "Transform your source posts and static assets into publish-ready HTML.\n\
@@ -54,6 +54,56 @@ The command recreates html/ so the next render starts from a clean slate.",
 Applying a theme copies its templates and assets into place and updates bckt.yaml."
     )]
     Themes(ThemesArgs),
+}
+
+#[derive(Args, Clone, Debug)]
+pub struct InitArgs {
+    #[arg(
+        long,
+        help = "URL of a zip archive containing the theme to initialise the project with",
+        long_help = "Provide an HTTP(S) URL pointing to a zip archive. The archive is downloaded, extracted, and stored under themes/<theme-name>."
+    )]
+    pub theme_url: Option<String>,
+    #[arg(
+        long,
+        help = "GitHub repository in the form owner/repo to fetch the theme from",
+        long_help = "Fetch the initial theme from a GitHub repository instead of a direct zip. Combine with --theme-branch or --theme-tag and --theme-subdir to pinpoint the desired folder."
+    )]
+    pub theme_github: Option<String>,
+    #[arg(
+        long,
+        requires = "theme_github",
+        conflicts_with = "theme_branch",
+        help = "Git tag to download when using --theme-github",
+        long_help = "Select a specific Git tag when downloading from GitHub. If omitted, bckt falls back to a tag that matches the binary version and then the main branch."
+    )]
+    pub theme_tag: Option<String>,
+    #[arg(
+        long,
+        requires = "theme_github",
+        conflicts_with = "theme_tag",
+        help = "Git branch to download when using --theme-github",
+        long_help = "Select a branch when downloading from GitHub."
+    )]
+    pub theme_branch: Option<String>,
+    #[arg(
+        long,
+        help = "Path inside the archive or repository that contains the theme",
+        long_help = "Specify the subdirectory within the downloaded archive that represents the theme (for example themes/bckt3)."
+    )]
+    pub theme_subdir: Option<String>,
+    #[arg(
+        long,
+        help = "Directory name created under themes/ for the downloaded theme",
+        long_help = "Override the directory name used under themes/. Defaults to the bundled theme name."
+    )]
+    pub theme_name: Option<String>,
+    #[arg(
+        long,
+        help = "Strip the given number of leading path components while extracting the archive",
+        long_help = "Useful when the theme archive nests the files under multiple leading directories."
+    )]
+    pub strip_components: Option<usize>,
 }
 
 #[derive(Args, Clone, Debug)]
@@ -149,4 +199,52 @@ pub enum ThemesSubcommand {
         )]
         force: bool,
     },
+    #[command(
+        about = "Download a theme archive into the local themes directory",
+        long_about = "Fetch a theme from a GitHub repository or a direct zip URL and store it under themes/<name>."
+    )]
+    Download(ThemeDownloadArgs),
+}
+
+#[derive(Args, Clone, Debug)]
+pub struct ThemeDownloadArgs {
+    #[arg(help = "Name for the theme directory under themes/")]
+    pub name: String,
+    #[arg(
+        long,
+        help = "Direct zip URL to download the theme from",
+        conflicts_with = "github",
+        long_help = "Provide an HTTP(S) URL that points directly to a zip archive containing the theme files."
+    )]
+    pub url: Option<String>,
+    #[arg(
+        long = "github",
+        help = "GitHub repository in the form owner/repo",
+        conflicts_with = "url",
+        long_help = "Fetch the theme from a GitHub repository. Combine with --branch or --tag and --subdir to select the desired folder."
+    )]
+    pub github: Option<String>,
+    #[arg(
+        long,
+        requires = "github",
+        conflicts_with = "branch",
+        help = "Git tag to download when using --github"
+    )]
+    pub tag: Option<String>,
+    #[arg(
+        long,
+        requires = "github",
+        conflicts_with = "tag",
+        help = "Git branch to download when using --github"
+    )]
+    pub branch: Option<String>,
+    #[arg(long, help = "Subdirectory inside the archive that contains the theme")]
+    pub subdir: Option<String>,
+    #[arg(
+        long,
+        help = "Strip the given number of leading path components while extracting the archive"
+    )]
+    pub strip_components: Option<usize>,
+    #[arg(long, help = "Overwrite an existing theme directory")]
+    pub force: bool,
 }

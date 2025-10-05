@@ -10,7 +10,7 @@ use crate::cli::Command;
 
 pub fn run(command: Command) -> Result<()> {
     match command {
-        Command::Init => init::run_init_command(),
+        Command::Init(args) => init::run_init_command(args),
         Command::Render(args) => render::run_render_command(args),
         Command::Dev(args) => dev::run_dev_command(args),
         Command::Clean => clean::run_clean_command(),

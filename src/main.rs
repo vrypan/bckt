@@ -6,6 +6,7 @@ pub mod markdown;
 pub mod render;
 pub mod search;
 pub mod template;
+pub mod theme;
 pub mod utils;
 
 fn main() {

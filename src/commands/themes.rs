@@ -3,11 +3,12 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use walkdir::WalkDir;
 
-use crate::cli::{ThemesArgs, ThemesSubcommand};
+use crate::cli::{ThemeDownloadArgs, ThemesArgs, ThemesSubcommand};
 use crate::config::Config;
+use crate::theme::{GithubReference, ThemeSource, download_theme};
 
 pub fn run_themes_command(args: ThemesArgs) -> Result<()> {
     let root = env::current_dir().context("failed to resolve current directory")?;
@@ -15,6 +16,7 @@ pub fn run_themes_command(args: ThemesArgs) -> Result<()> {
     match args.command {
         ThemesSubcommand::List => list_themes(&root),
         ThemesSubcommand::Use { name, force } => use_theme(&root, &name, force),
+        ThemesSubcommand::Download(download_args) => download_theme_into(&root, download_args),
     }
 }
 
@@ -80,6 +82,49 @@ fn use_theme(root: &Path, name: &str, force: bool) -> Result<()> {
     Ok(())
 }
 
+fn download_theme_into(root: &Path, args: ThemeDownloadArgs) -> Result<()> {
+    let themes_dir = root.join("themes");
+    fs::create_dir_all(&themes_dir).context("failed to create themes directory")?;
+
+    let destination = themes_dir.join(&args.name);
+    if destination.exists() {
+        if args.force {
+            fs::remove_dir_all(&destination).with_context(|| {
+                format!("failed to remove existing theme {}", destination.display())
+            })?;
+        } else {
+            bail!(
+                "theme '{}' already exists. Use --force to overwrite",
+                args.name
+            );
+        }
+    }
+
+    let source = if let Some(url) = &args.url {
+        ThemeSource::Url {
+            url: url.clone(),
+            subdir: args.subdir.clone(),
+            strip_components: args.strip_components,
+        }
+    } else if let Some(repo_spec) = &args.github {
+        let (owner, repo) = split_owner_repo(repo_spec)?;
+        let reference = select_github_reference(args.tag.clone(), args.branch.clone());
+        ThemeSource::Github {
+            owner,
+            repo,
+            reference,
+            subdir: args.subdir.clone(),
+            strip_components: Some(args.strip_components.unwrap_or(1)),
+        }
+    } else {
+        bail!("either --url or --github must be provided");
+    };
+
+    download_theme(&destination, source)?;
+    println!("Downloaded theme '{}'", args.name);
+    Ok(())
+}
+
 fn confirm_overwrite(project_root: &Path, force: bool) -> Result<()> {
     if force {
         return Ok(());
@@ -124,6 +169,28 @@ fn directory_has_contents(path: &Path) -> Result<bool> {
     let mut entries = fs::read_dir(path)
         .with_context(|| format!("failed to read directory {}", path.display()))?;
     Ok(entries.next().is_some())
+}
+
+fn split_owner_repo(spec: &str) -> Result<(String, String)> {
+    let mut parts = spec.splitn(2, '/');
+    let owner = parts
+        .next()
+        .ok_or_else(|| anyhow!("missing owner in GitHub specification"))?;
+    let repo = parts
+        .next()
+        .ok_or_else(|| anyhow!("missing repository name in GitHub specification"))?;
+    if owner.is_empty() || repo.is_empty() {
+        return Err(anyhow!("invalid GitHub specification '{spec}'"));
+    }
+    Ok((owner.to_string(), repo.to_string()))
+}
+
+fn select_github_reference(tag: Option<String>, branch: Option<String>) -> GithubReference {
+    match (tag, branch) {
+        (Some(tag), _) => GithubReference::Tag(tag),
+        (None, Some(branch)) => GithubReference::Branch(branch),
+        (None, None) => GithubReference::Branch("main".to_string()),
+    }
 }
 
 fn apply_theme(theme_root: &Path, project_root: &Path) -> Result<()> {

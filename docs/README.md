@@ -17,22 +17,21 @@ context variables.
   `format_date`.
 - [Search Integration](search.md) — client-side search requirements and build
 integration.
+- [Hosting Themes](theme-hosting.md) — package and distribute reusable theme zips.
 
-## Working With Themes
+## Themes are downloaded on demand
 
-The default theme can be found in `themes/bckt3/`. 
+When you run `bckt init`, the CLI downloads the default `bckt3` theme from
+[github.com/vrypan/bckt](https://github.com/vrypan/bckt) and unpacks it under
+`themes/bckt3/`. 
 
-When you ran `bckt init`, `pages/`, `themes/` and `skel/` were copied from
-`themes/bckt3/*`.
-
-You can clone it as a starting point for your own design:
+If you prefer to start from a custom source you can override the defaults:
 
 ```bash
-cp -r themes/bckt3 themes/mytheme
-bckt themes use mytheme
+bckt init --theme-github your-name/your-theme --theme-subdir themes/minimal
+# or
+bckt init --theme-url https://example.com/theme.zip --theme-name mytheme
 ```
 
-> [!WARNING] 
-> **Heads-up:** `bckt themes use` overwrites existing templates with the selected
-> theme. Commit or copy any local changes before switching.
-
+See [theme-hosting.md](theme-hosting.md) for details on packaging themes and
+hosting archives.
