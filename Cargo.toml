@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [[bin]]
 name = "bckt-fc"
-path = "src/bin/bckt_fc.rs"
+path = "src/extras/bckt_fc.rs"
 
 [dependencies]
 anyhow = "1"
