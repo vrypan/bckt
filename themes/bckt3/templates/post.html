@@ -5,7 +5,7 @@
 {% endblock page_title %}
 
 {% block page_meta %}
-{% set canonical = (config.base_url | default("")) ~ post.permalink %}
+{% set canonical = base_url ~ post.permalink %}
 <meta name="description" content="{{ post.abstract | default(post.excerpt) | trim }}">
 <meta property="og:site_name" content="{{ config.title | default("bckt") }}">
 <meta property="og:type" content="article">

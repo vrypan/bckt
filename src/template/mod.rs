@@ -7,14 +7,13 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::config::Config;
-use crate::utils::absolute_url;
 
 pub fn environment(config: &Config) -> Result<Environment<'static>> {
     let mut env = Environment::new();
     env.add_global("config", Value::from_serialize(config));
     env.add_global(
         "base_url",
-        Value::from_safe_string(absolute_url(&config.base_url, "/")),
+        Value::from_safe_string(normalize_base_url(&config.base_url)),
     );
 
     let default_format = config.date_format.clone();
@@ -94,14 +93,14 @@ mod tests {
     }
 
     #[test]
-    fn base_url_has_trailing_slash() {
+    fn base_url_has_no_trailing_slash() {
         let mut config = Config::default();
         config.base_url = "https://example.com/blog".to_string();
         let mut env = environment(&config).unwrap();
-        env.add_template("base", "{{ base_url }}assets").unwrap();
+        env.add_template("base", "{{ base_url }}").unwrap();
 
         let rendered = env.get_template("base").unwrap().render(()).unwrap();
-        assert_eq!(rendered, "https://example.com/blog/assets");
+        assert_eq!(rendered, "https://example.com/blog");
     }
 
     #[test]
@@ -118,4 +117,12 @@ mod tests {
         let rendered = env.get_template("theme").unwrap().render(()).unwrap();
         assert_eq!(rendered, "solarized");
     }
+}
+
+fn normalize_base_url(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    trimmed.trim_end_matches('/').to_string()
 }
