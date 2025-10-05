@@ -10,7 +10,7 @@ so you can mix long-form posts, link logs, photos, and other content -your perso
 It ships with a clean theme, incremental rebuilds, and a minimal toolchain so
 you can publish from Markdown or hand-written HTML without ceremony.
 
-> [! WARNING]
+> [!WARNING]
 > `bckt` is expected to run in a trusted envioronment, where templates
 > and content can be trusted (like your laptop or personal server).
 > Using it to render third-party content (for example a public bckt-SaaS) 
