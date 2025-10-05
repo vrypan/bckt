@@ -212,9 +212,9 @@ pub struct ThemeDownloadArgs {
     pub url: Option<String>,
     #[arg(
         long = "github",
-        help = "GitHub repository in the form owner/repo",
+        help = "GitHub repository in the form owner/repo[/path]",
         conflicts_with = "url",
-        long_help = "Fetch the theme from a GitHub repository. Combine with --branch or --tag and --subdir to select the desired folder."
+        long_help = "Fetch the theme from a GitHub repository. You can append an optional path (for example owner/repo/themes) to preselect a subdirectory. Combine with --branch or --tag and --subdir to override the folder if needed."
     )]
     pub github: Option<String>,
     #[arg(

@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use walkdir::WalkDir;
 
 use crate::cli::{ThemeDownloadArgs, ThemesArgs, ThemesSubcommand};
@@ -100,20 +100,25 @@ fn download_theme_into(root: &Path, args: ThemeDownloadArgs) -> Result<()> {
         }
     }
 
+    let repo_spec_info = args
+        .github
+        .as_ref()
+        .map(|spec| parse_github_spec(spec))
+        .transpose()?;
+
     let source = if let Some(url) = &args.url {
         ThemeSource::Url {
             url: url.clone(),
             subdir: args.subdir.clone(),
             strip_components: args.strip_components,
         }
-    } else if let Some(repo_spec) = &args.github {
-        let (owner, repo) = split_owner_repo(repo_spec)?;
+    } else if let Some((owner, repo, repo_path)) = repo_spec_info {
         let reference = select_github_reference(args.tag.clone(), args.branch.clone());
         ThemeSource::Github {
             owner,
             repo,
             reference,
-            subdir: args.subdir.clone(),
+            subdir: derive_subdir(args.subdir.clone(), repo_path, &args.name),
             strip_components: Some(args.strip_components.unwrap_or(1)),
         }
     } else {
@@ -171,18 +176,26 @@ fn directory_has_contents(path: &Path) -> Result<bool> {
     Ok(entries.next().is_some())
 }
 
-fn split_owner_repo(spec: &str) -> Result<(String, String)> {
-    let mut parts = spec.splitn(2, '/');
-    let owner = parts
-        .next()
-        .ok_or_else(|| anyhow!("missing owner in GitHub specification"))?;
-    let repo = parts
-        .next()
-        .ok_or_else(|| anyhow!("missing repository name in GitHub specification"))?;
-    if owner.is_empty() || repo.is_empty() {
-        return Err(anyhow!("invalid GitHub specification '{spec}'"));
+fn parse_github_spec(spec: &str) -> Result<(String, String, Option<String>)> {
+    let mut segments = spec.split('/').collect::<Vec<_>>();
+    if segments.len() < 2 {
+        bail!("invalid GitHub specification '{spec}' (expected owner/repo[/path])");
     }
-    Ok((owner.to_string(), repo.to_string()))
+
+    let owner = segments.remove(0);
+    let repo = segments.remove(0);
+
+    if owner.is_empty() || repo.is_empty() {
+        bail!("invalid GitHub specification '{spec}'");
+    }
+
+    let subdir = if segments.is_empty() {
+        None
+    } else {
+        Some(segments.join("/"))
+    };
+
+    Ok((owner.to_string(), repo.to_string(), subdir))
 }
 
 fn select_github_reference(tag: Option<String>, branch: Option<String>) -> GithubReference {
@@ -237,4 +250,81 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn derive_subdir(
+    explicit: Option<String>,
+    repo_path: Option<String>,
+    theme_name: &str,
+) -> Option<String> {
+    if let Some(explicit) = explicit {
+        return Some(explicit);
+    }
+
+    let repo_path = repo_path?;
+    let mut components: Vec<String> = repo_path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| segment.to_string())
+        .collect();
+
+    match components.last() {
+        Some(last) if last == theme_name => {}
+        _ => components.push(theme_name.to_string()),
+    }
+
+    Some(components.join("/"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_github_spec_handles_owner_repo() {
+        let (owner, repo, path) = parse_github_spec("vrypan/bckt").unwrap();
+        assert_eq!(owner, "vrypan");
+        assert_eq!(repo, "bckt");
+        assert!(path.is_none());
+    }
+
+    #[test]
+    fn parse_github_spec_handles_nested_path() {
+        let (owner, repo, path) = parse_github_spec("vrypan/bckt/themes").unwrap();
+        assert_eq!(owner, "vrypan");
+        assert_eq!(repo, "bckt");
+        assert_eq!(path.as_deref(), Some("themes"));
+    }
+
+    #[test]
+    fn parse_github_spec_requires_owner_repo() {
+        assert!(parse_github_spec("vrypan").is_err());
+    }
+
+    #[test]
+    fn derive_subdir_prefers_explicit_value() {
+        let result = derive_subdir(
+            Some("custom/path".to_string()),
+            Some("themes".to_string()),
+            "bckt3",
+        );
+        assert_eq!(result.as_deref(), Some("custom/path"));
+    }
+
+    #[test]
+    fn derive_subdir_appends_theme_name_when_missing() {
+        let result = derive_subdir(None, Some("themes".to_string()), "bckt3");
+        assert_eq!(result.as_deref(), Some("themes/bckt3"));
+    }
+
+    #[test]
+    fn derive_subdir_respects_existing_theme_name() {
+        let result = derive_subdir(None, Some("themes/bckt3".to_string()), "bckt3");
+        assert_eq!(result.as_deref(), Some("themes/bckt3"));
+    }
+
+    #[test]
+    fn derive_subdir_returns_none_without_repo_path() {
+        assert!(derive_subdir(None, None, "bckt3").is_none());
+    }
 }
