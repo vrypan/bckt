@@ -27,6 +27,11 @@ Pre-built binaries live on the
 [releases page](https://github.com/vrypan/bckt/releases). You can also
 compile locally with `cargo install --path .`.
 
+## Demo
+
+There's no demo, but you can check [blog.vrypan.net](https://blog.vrypan.net/)
+built with bckt and a slightly modified default theme.
+
 ## Get Started
 
 ```bash
@@ -59,4 +64,10 @@ Issues and pull requests are welcome.
 
 ## Extras
 
+### bckt-fc
+
 The companion `bckt-fc` command shows how different types of content can be integrated in a bckt blog in practice: run it to fetch a Farcaster cast (and its attached images and videos) and drop them straight into your blog, then render as usual (the default theme includes templates to render farcaster posts).
+
+### bckt-mcp
+[bckt-mcp](https://github.com/vrypan/bckt-mcp) is an experimental MCP server you can run locally and helps you create posts from your favorite MCP-enabled AI tool.
+It takes care of frontmatter, filenames, and filepaths.
