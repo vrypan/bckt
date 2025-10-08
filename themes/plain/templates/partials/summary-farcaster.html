@@ -1,0 +1,6 @@
+<time datetime="{{ post.date_iso }}">{{ post.date }}</time>
+{% if post.tags %}
+<p>Tags: {% for tag in post.tags %}<a href="/tags/{{ tag | replace(' ', '-') | lower }}/">{{ tag }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+{% endif %}
+{{ post.excerpt | safe }}
+<p><a href="{{ post.permalink | safe }}">Continue reading →</a></p>

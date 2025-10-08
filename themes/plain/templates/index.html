@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+{% if not pagination.prev %}<h2>Recent</h2>{% endif %}
+{% for post in posts %}
+<article>
+{% if post.type == 'farcaster' %}
+{% include "partials/summary-farcaster.html" %}
+{% else %}
+{% include "partials/summary-default.html" %}
+{% endif %}
+</article>
+{% else %}
+<p>No posts yet.</p>
+{% endfor %}
+
+{% if pagination.total > 1 %}
+<nav>
+<p>Page {{ pagination.current }} of {{ pagination.total }}</p>
+{% if pagination.prev %}<a href="{{ pagination.prev | safe }}">← Newer</a>{% endif %}
+{% if pagination.next %}<a href="{{ pagination.next | safe }}">Older →</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock content %}

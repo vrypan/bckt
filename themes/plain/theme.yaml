@@ -1,0 +1,5 @@
+name: "plain"
+description: "Plain theme with no formatting, just barebones templating"
+version: "0.1.0"
+author: "vrypan"
+license: "MIT"

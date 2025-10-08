@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Tag: {{ tag }}</h2>
+{% for post in posts %}
+<article>
+{% if post.type == 'farcaster' %}
+{% include "partials/summary-farcaster.html" %}
+{% else %}
+{% include "partials/summary-default.html" %}
+{% endif %}
+</article>
+{% else %}
+<p>No posts for this tag.</p>
+{% endfor %}
+{% if pagination.prev or pagination.next %}
+<nav>
+{% if pagination.prev %}<a href="{{ pagination.prev | safe }}">← Newer</a>{% endif %}
+{% if pagination.next %}<a href="{{ pagination.next | safe }}">Older →</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock content %}

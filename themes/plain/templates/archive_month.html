@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ month }}</h2>
+{% if posts %}
+<ul>
+{% for post in posts %}
+<li>
+<time datetime="{{ post.date_iso }}">{{ post.date }}</time> -
+<a href="{{ post.permalink | safe }}">{% if post.title %}{{ post.title }}{% else %}{{ post.slug }}{% endif %}</a>
+</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No posts yet.</p>
+{% endif %}
+{% endblock content %}

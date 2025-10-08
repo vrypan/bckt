@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block page_title %}{{ config.title | default("bckt") }}{% endblock page_title %}</title>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="{{ base_url }}/rss.xml">
+{% for tag in config.rss_tags %}
+<link rel="alternate" type="application/rss+xml" title="RSS for {{ tag }}" href="{{ base_url }}/rss-{{ tag }}.xml">
+{% endfor %}
+<link rel="stylesheet" href="/style.css">
+{% block page_meta %}{% endblock page_meta %}
+</head>
+<body>
+<header>
+<h1><a href="/">{{ config.title | default("bckt") }}</a></h1>
+{% if config.subtitle %}<p>{{ config.subtitle }}</p>{% endif %}
+<nav>
+<a href="/">home</a> |
+<a href="/about/">about</a> |
+<a href="/search/">search</a> |
+<a href="{{ base_url }}/rss.xml">rss</a>
+</nav>
+</header>
+<main>
+{% block content %}{% endblock content %}
+</main>
+<footer>
+<p>Powered by <a href="https://github.com/vrypan/bckt">bckt</a>.</p>
+</footer>
+{% block page_scripts %}{% endblock page_scripts %}
+</body>
+</html>

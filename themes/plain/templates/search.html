@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Search</h2>
+<input type="search" id="search-input" placeholder="Search posts...">
+<div id="search-results"></div>
+{% endblock content %}
+
+{% block page_scripts %}
+<script src="/js/minisearch.js"></script>
+<script src="/js/search.js"></script>
+{% endblock page_scripts %}
