@@ -829,8 +829,10 @@ mod tests {
         )
         .unwrap();
 
-        let mut config = Config::default();
-        config.default_timezone = "+02:00".to_string();
+        let config = Config {
+            default_timezone: "+02:00".to_string(),
+            ..Default::default()
+        };
 
         let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
         let post = &posts[0];

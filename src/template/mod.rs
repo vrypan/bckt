@@ -54,6 +54,14 @@ pub fn environment(config: &Config) -> Result<Environment<'static>> {
     Ok(env)
 }
 
+fn normalize_base_url(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    trimmed.trim_end_matches('/').to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -61,8 +69,10 @@ mod tests {
 
     #[test]
     fn config_available_in_templates() {
-        let mut config = Config::default();
-        config.title = Some("Bucket".to_string());
+        let config = Config {
+            title: Some("Bucket".to_string()),
+            ..Default::default()
+        };
         let mut env = environment(&config).unwrap();
         env.add_template("greet", "{{ config.title }}").unwrap();
 
@@ -72,8 +82,10 @@ mod tests {
 
     #[test]
     fn now_helper_uses_config_format() {
-        let mut config = Config::default();
-        config.date_format = "[year]".to_string();
+        let config = Config {
+            date_format: "[year]".to_string(),
+            ..Default::default()
+        };
         let mut env = environment(&config).unwrap();
         env.add_template("when", "{{ now() }}").unwrap();
 
@@ -94,8 +106,10 @@ mod tests {
 
     #[test]
     fn base_url_has_no_trailing_slash() {
-        let mut config = Config::default();
-        config.base_url = "https://example.com/blog".to_string();
+        let config = Config {
+            base_url: "https://example.com/blog".to_string(),
+            ..Default::default()
+        };
         let mut env = environment(&config).unwrap();
         env.add_template("base", "{{ base_url }}").unwrap();
 
@@ -117,12 +131,4 @@ mod tests {
         let rendered = env.get_template("theme").unwrap().render(()).unwrap();
         assert_eq!(rendered, "solarized");
     }
-}
-
-fn normalize_base_url(value: &str) -> String {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    trimmed.trim_end_matches('/').to_string()
 }

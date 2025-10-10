@@ -616,7 +616,7 @@ fn generates_sitemap_with_posts_tags_and_pages() {
     assert!(sitemap.contains(&format!(
         "<loc>https://example.com/blog/page/{ts_alpha}-alpha/</loc>"
     )));
-    assert!(sitemap.contains(&format!("<loc>https://example.com/blog/tags/shared/</loc>")));
+    assert!(sitemap.contains("<loc>https://example.com/blog/tags/shared/</loc>"));
     assert!(sitemap.contains("<loc>https://example.com/blog/2024/03/01/gamma/</loc>"));
     assert!(sitemap.contains("<lastmod>2024-03-01T00:00:00Z</lastmod>"));
 }

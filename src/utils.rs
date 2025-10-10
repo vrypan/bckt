@@ -1,6 +1,6 @@
+use anyhow::Result;
 use std::env;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
 
 pub fn absolute_url(base: &str, path: &str) -> String {
     let trimmed_base = base.trim_end_matches('/');
@@ -30,11 +30,11 @@ pub fn resolve_root(root_opt: Option<&str>) -> Result<PathBuf> {
 
 /// Expands ~ to the user's home directory
 fn expand_tilde(path: &str) -> String {
-    if path.starts_with("~/") {
-        if let Some(home) = env::var_os("HOME") {
-            let home_str = home.to_string_lossy();
-            return path.replacen("~", &home_str, 1);
-        }
+    if path.starts_with("~/")
+        && let Some(home) = env::var_os("HOME")
+    {
+        let home_str = home.to_string_lossy();
+        return path.replacen("~", &home_str, 1);
     }
     path.to_string()
 }

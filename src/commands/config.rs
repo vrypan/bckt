@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 
 use crate::cli::ConfigArgs;
-use crate::config::{find_project_root, Config};
+use crate::config::{Config, find_project_root};
 use crate::utils::resolve_root;
 
 pub fn run_config_command(args: ConfigArgs) -> Result<()> {

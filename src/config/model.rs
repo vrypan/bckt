@@ -8,7 +8,7 @@ use time::UtcOffset;
 use url::Url;
 
 use super::date_format::parse_format;
-use super::search::{validate_search_config, SearchConfig};
+use super::search::{SearchConfig, validate_search_config};
 use super::timezone::parse_timezone;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -164,9 +164,11 @@ default_timezone: "+05:30"
     fn save_round_trips_config() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("bckt.yaml");
-        let mut config = Config::default();
-        config.title = Some("Saved".into());
-        config.theme = Some("bckt3".into());
+        let config = Config {
+            title: Some("Saved".into()),
+            theme: Some("bckt3".into()),
+            ..Default::default()
+        };
         config.save(&path).unwrap();
 
         let loaded = Config::load(&path).unwrap();
