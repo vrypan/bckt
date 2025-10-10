@@ -5,15 +5,23 @@ This document summarises the core modules under `src/` and the responsibilities 
 ## Root (`src/`)
 - `main.rs`: binary entry point that wires CLI parsing with the command dispatcher and handles non-zero exit codes on failure.
 - `cli.rs`: defines the `bckt` command-line interface (arguments, subcommands, and shared option structs) using `clap`.
-- `config.rs`: loads, validates, and persists `bckt.yaml`; exposes project-wide configuration models and helpers such as project root discovery.
 - `markdown.rs`: wraps `comrak` to render Markdown into HTML while extracting short excerpts for listings.
 - `search.rs`: builds the JSON search index from rendered posts, including facet aggregation and digest computation.
 - `theme.rs`: downloads and extracts theme archives (zip or GitHub) and provides source descriptors used by commands.
 - `utils.rs`: helpers that are broadly useful across the crate (currently absolute URL resolution).
 
+## Module: `config` (`src/config/`)
+- `mod.rs`: module entry point that re-exports public configuration types and functions.
+- `model.rs`: defines the main `Config` struct with load, save, and validation methods; coordinates validation of all configuration fields.
+- `search.rs`: search configuration models (`SearchConfig`, `SearchLanguageConfig`), default language settings, stopwords, and search config validation.
+- `timezone.rs`: parses timezone strings (UTC offsets like `+00:00` or `UTC`/`Z` keywords) into `UtcOffset` values.
+- `date_format.rs`: validates date format strings using the `time` crate's format description parser.
+- `project.rs`: discovers the project root by walking up the directory tree to find `bckt.yaml`.
+
 ## Module: `commands` (`src/commands/`)
 - `mod.rs`: dispatches parsed CLI commands to the appropriate implementation module.
 - `clean.rs`: implements the `bckt clean` command (removes `html/` output and cache directories, recreates scaffolding).
+- `config.rs`: implements the `bckt config` command (queries configuration values from `bckt.yaml` or returns the project root path).
 - `dev.rs`: implements the file-watching development server, including initial render, live-reload polling endpoint, and static file serving.
 - `init.rs`: initialises a new workspace (creates directories, downloads a theme when required, seeds config/templates/assets/sample post).
 - `render.rs`: turns CLI render flags into a `RenderPlan` and invokes the renderer.

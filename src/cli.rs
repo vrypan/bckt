@@ -54,6 +54,12 @@ The command recreates html/ so the next render starts from a clean slate.",
 Applying a theme copies its templates and assets into place and updates bckt.yaml."
     )]
     Themes(ThemesArgs),
+    #[command(
+        about = "Query configuration values from bckt.yaml",
+        long_about = "Read configuration values from bckt.yaml or get the project root path.\n\
+Use this command from any subdirectory within the project to retrieve config values."
+    )]
+    Config(ConfigArgs),
 }
 
 #[derive(Args, Clone, Debug)]
@@ -240,4 +246,28 @@ pub struct ThemeDownloadArgs {
     pub strip_components: Option<usize>,
     #[arg(long, help = "Overwrite an existing theme directory")]
     pub force: bool,
+}
+
+#[derive(Args, Clone, Debug)]
+pub struct ConfigArgs {
+    #[arg(long, help = "Get the project root directory path")]
+    pub root: bool,
+    #[arg(long, help = "Get the base_url configuration value")]
+    pub base_url: bool,
+    #[arg(long, help = "Get the title configuration value")]
+    pub title: bool,
+    #[arg(long, help = "Get the homepage_posts configuration value")]
+    pub homepage_posts: bool,
+    #[arg(long, help = "Get the date_format configuration value")]
+    pub date_format: bool,
+    #[arg(long, help = "Get the paginate_tags configuration value")]
+    pub paginate_tags: bool,
+    #[arg(long, help = "Get the default_timezone configuration value")]
+    pub default_timezone: bool,
+    #[arg(long, help = "Get the theme configuration value")]
+    pub theme: bool,
+    #[arg(long, help = "Get the search.asset_path configuration value")]
+    pub search_asset_path: bool,
+    #[arg(long, help = "Get the search.default_language configuration value")]
+    pub search_default_language: bool,
 }

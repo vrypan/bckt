@@ -1,4 +1,5 @@
 mod clean;
+mod config;
 mod dev;
 mod init;
 mod render;
@@ -15,5 +16,6 @@ pub fn run(command: Command) -> Result<()> {
         Command::Dev(args) => dev::run_dev_command(args),
         Command::Clean => clean::run_clean_command(),
         Command::Themes(args) => themes::run_themes_command(args),
+        Command::Config(args) => config::run_config_command(args),
     }
 }
