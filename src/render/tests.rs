@@ -1,0 +1,1023 @@
+use super::*;
+use std::fs;
+use std::time::UNIX_EPOCH;
+use tempfile::TempDir;
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
+
+fn write_template(root: &Path, name: &str, contents: &str) {
+    let path = root.join("templates").join(name);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).unwrap();
+    }
+    fs::write(path, contents).unwrap();
+}
+
+fn setup_markdown_templates(root: &Path) {
+    write_template(
+        root,
+        "base.html",
+        "<!doctype html><html><body>{% block content %}{% endblock %}</body></html>",
+    );
+    write_template(
+        root,
+        "post.html",
+        "{% extends \"base.html\" %}{% block content %}<article>{{ post.title }}|{{ post.body | safe }}|{{ post.date }}|{{ post.excerpt }}</article>{% endblock %}",
+    );
+    write_template(
+        root,
+        "index.html",
+        "{% extends \"base.html\" %}{% block content %}<section data-current=\"{{ pagination.current }}\" data-total=\"{{ pagination.total }}\" data-prev=\"{{ pagination.prev | safe }}\" data-next=\"{{ pagination.next | safe }}\">{% for post in posts %}<article data-slug=\"{{ post.slug }}\"></article>{% endfor %}</section>{% endblock %}",
+    );
+    write_template(
+        root,
+        "tag.html",
+        "{% extends \"base.html\" %}{% block content %}<section data-tag=\"{{ tag }}\" data-current=\"{{ pagination.current }}\" data-total=\"{{ pagination.total }}\" data-prev=\"{{ pagination.prev | safe }}\" data-next=\"{{ pagination.next | safe }}\">{% for post in posts %}<article data-slug=\"{{ post.slug }}\"></article>{% endfor %}</section>{% endblock %}",
+    );
+    write_template(
+        root,
+        "archive_year.html",
+        "{% extends \"base.html\" %}{% block content %}<section data-year=\"{{ year }}\">{% for post in posts %}<article data-slug=\"{{ post.slug }}\"></article>{% endfor %}</section>{% endblock %}",
+    );
+    write_template(
+        root,
+        "archive_month.html",
+        "{% extends \"base.html\" %}{% block content %}<section data-year=\"{{ year }}\" data-month=\"{{ month }}\">{% for post in posts %}<article data-slug=\"{{ post.slug }}\"></article>{% endfor %}</section>{% endblock %}",
+    );
+    write_template(
+        root,
+        "rss.xml",
+        "{% autoescape false %}\n<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<rss version=\"2.0\" xmlns:content=\"http://purl.org/rss/1.0/modules/content/\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n  <channel>\n    <title>{{ feed.title }}</title>\n    <link>{{ feed.site_url }}</link>\n    <description>{{ feed.description }}</description>\n    <lastBuildDate>{{ feed.updated }}</lastBuildDate>\n    <generator>bckt</generator>\n    <atom:link href=\"{{ feed.feed_url }}\" rel=\"self\" type=\"application/rss+xml\"/>\n    {% for item in feed.items %}\n    <item>\n      <title>{{ item.title }}</title>\n      <link>{{ item.link }}</link>\n      <guid isPermaLink=\"true\">{{ item.guid }}</guid>\n      <pubDate>{{ item.pub_date }}</pubDate>\n      <description>{{ item.description }}</description>\n      <content:encoded><![CDATA[{{ item.content | safe }}]]></content:encoded>\n    </item>\n    {% endfor %}\n  </channel>\n</rss>\n{% endautoescape %}\n",
+    );
+}
+
+fn write_markdown_post(root: &Path, body: &str) {
+    let post_dir = root.join("posts/hello-world");
+    fs::create_dir_all(&post_dir).unwrap();
+    fs::write(
+        post_dir.join("post.md"),
+        format!(
+            "---\ntitle: Example\ndate: 2024-01-02T03:04:05Z\ntags: [test]\n---\n{}",
+            body
+        ),
+    )
+    .unwrap();
+}
+
+fn write_tagged_post(root: &Path, slug: &str, tag: &str, date: &str, body: &str) {
+    let dir = root.join("posts").join(slug);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("post.md"),
+        format!(
+            "---\ntitle: {0}\ndate: {2}\nslug: {0}\ntags:\n  - {1}\n---\n{3}",
+            slug, tag, date, body
+        ),
+    )
+    .unwrap();
+}
+
+fn write_dated_post(root: &Path, slug: &str, date: &str, body: &str) {
+    let dir = root.join("posts").join(slug);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("post.md"),
+        format!(
+            "---\ntitle: {0}\ndate: {1}\nslug: {0}\ntags:\n  - {0}\n---\n{2}",
+            slug, date, body
+        ),
+    )
+    .unwrap();
+}
+
+fn file_mtime(path: &Path) -> std::time::Duration {
+    fs::metadata(path)
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+}
+
+fn wait_for_filesystem_tick() {
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+}
+
+#[test]
+fn renders_markdown_post_to_expected_location() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    fs::create_dir_all(root.join("skel")).unwrap();
+    setup_markdown_templates(root);
+    write_markdown_post(root, "Hello **world**!");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let output = root.join("html/2024/01/02/hello-world/index.html");
+    let rendered = fs::read_to_string(output).unwrap();
+    assert!(rendered.contains("Example"));
+    assert!(rendered.contains("<strong>world</strong>"));
+    assert!(rendered.contains("Hello world"));
+
+    let homepage = fs::read_to_string(root.join("html/index.html")).unwrap();
+    assert!(homepage.contains("article data-slug=\"hello-world\""));
+    assert!(homepage.contains("data-current=\"1\""));
+    assert!(homepage.contains("data-total=\"1\""));
+}
+
+#[test]
+fn copies_post_assets() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts/assets-post")).unwrap();
+    setup_markdown_templates(root);
+    fs::write(
+        root.join("posts/assets-post/post.md"),
+        "---\ndate: 2024-01-01T00:00:00Z\nattached: [data/notes.txt, images/pic.png]\n---\nBody",
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("posts/assets-post/data")).unwrap();
+    fs::create_dir_all(root.join("posts/assets-post/images")).unwrap();
+    fs::write(root.join("posts/assets-post/data/notes.txt"), "notes").unwrap();
+    fs::write(root.join("posts/assets-post/images/pic.png"), "image").unwrap();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let asset = root.join("html/2024/01/01/assets-post/data/notes.txt");
+    let image = root.join("html/2024/01/01/assets-post/images/pic.png");
+    assert!(asset.exists());
+    assert!(image.exists());
+}
+
+#[test]
+fn renders_pages_from_pages_directory() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    fs::create_dir_all(root.join("pages/about")).unwrap();
+    fs::write(
+        root.join("pages/404.html"),
+        "{% extends \"base.html\" %}{% block content %}<h1>Missing</h1>{% endblock %}",
+    )
+    .unwrap();
+    fs::write(
+            root.join("pages/about/index.html"),
+            "{% extends \"base.html\" %}{% block content %}<p>About {{ config.title | default('site') }}</p>{% endblock %}",
+        )
+        .unwrap();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: false,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let not_found = fs::read_to_string(root.join("html/404.html")).unwrap();
+    assert!(not_found.contains("Missing"));
+
+    let about = fs::read_to_string(root.join("html/about/index.html")).unwrap();
+    assert!(about.contains("About"));
+}
+
+#[test]
+fn writes_search_index_with_posts() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    write_markdown_post(
+        root,
+        "This example body contains enough English text to exercise the search index.",
+    );
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let index_path = root.join("html/assets/search/search-index.json");
+    assert!(index_path.exists());
+    let data = fs::read_to_string(index_path).unwrap();
+    let payload: serde_json::Value = serde_json::from_str(&data).unwrap();
+    assert_eq!(payload["documents"].as_array().unwrap().len(), 1);
+    assert_eq!(payload["documents"][0]["language"], "en");
+}
+
+#[test]
+fn search_index_updates_when_post_changes() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    write_markdown_post(
+        root,
+        "Initial body content with enough characters for indexing.",
+    );
+
+    let full_plan = RenderPlan {
+        posts: true,
+        static_assets: false,
+        mode: BuildMode::Full,
+        verbose: false,
+    };
+    render_site(root, full_plan).unwrap();
+
+    let index_path = root.join("html/assets/search/search-index.json");
+    let original = fs::read_to_string(&index_path).unwrap();
+
+    fs::write(
+            root.join("posts/hello-world/post.md"),
+            "---\ntitle: Example\ndate: 2024-01-02T03:04:05Z\ntags: [test]\n---\nChanged body text that modifies the search index.",
+        )
+        .unwrap();
+
+    let changed_plan = RenderPlan {
+        posts: true,
+        static_assets: false,
+        mode: BuildMode::Changed,
+        verbose: false,
+    };
+    render_site(root, changed_plan).unwrap();
+
+    let updated = fs::read_to_string(&index_path).unwrap();
+    assert_ne!(original, updated);
+}
+
+#[test]
+fn exposes_additional_front_matter_in_templates() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+
+    fs::write(
+            root.join("templates/post.html"),
+            "{% extends \"base.html\" %}{% block content %}<article>{{ post.location.country }}</article>{% endblock %}",
+        )
+        .unwrap();
+
+    fs::create_dir_all(root.join("posts/location")).unwrap();
+    fs::write(
+        root.join("posts/location/post.md"),
+        "---\ndate: 2024-01-01T00:00:00Z\nlocation:\n  country: GR\n---\nBody",
+    )
+    .unwrap();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let rendered = fs::read_to_string(root.join("html/2024/01/01/location/index.html")).unwrap();
+    assert!(rendered.contains("GR"));
+}
+
+#[test]
+fn copies_static_assets() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("skel/css")).unwrap();
+    fs::write(root.join("skel/css/site.css"), "body { color: black; }").unwrap();
+    setup_markdown_templates(root);
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: false,
+            static_assets: true,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let copied = root.join("html/css/site.css");
+    assert!(copied.exists());
+}
+
+#[test]
+fn paginates_homepage_cursor_based() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+    fs::write(root.join("bckt.yaml"), "homepage_posts: 1\n").unwrap();
+
+    write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "A");
+    write_dated_post(root, "beta", "2024-02-01T00:00:00Z", "B");
+    write_dated_post(root, "gamma", "2024-03-01T00:00:00Z", "C");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let ts_gamma = OffsetDateTime::parse("2024-03-01T00:00:00Z", &Rfc3339)
+        .unwrap()
+        .unix_timestamp();
+    let ts_beta = OffsetDateTime::parse("2024-02-01T00:00:00Z", &Rfc3339)
+        .unwrap()
+        .unix_timestamp();
+    let ts_alpha = OffsetDateTime::parse("2024-01-01T00:00:00Z", &Rfc3339)
+        .unwrap()
+        .unix_timestamp();
+
+    let index = fs::read_to_string(root.join("html/index.html")).unwrap();
+    assert!(index.contains("article data-slug=\"gamma\""));
+    assert!(index.contains(&format!("data-next=\"/page/{ts_beta}-beta/\"")));
+
+    let second =
+        fs::read_to_string(root.join(format!("html/page/{ts_beta}-beta/index.html"))).unwrap();
+    assert!(second.contains("article data-slug=\"beta\""));
+    assert!(second.contains("data-prev=\"/\""));
+    assert!(second.contains(&format!("data-next=\"/page/{ts_alpha}-alpha/\"")));
+
+    let third =
+        fs::read_to_string(root.join(format!("html/page/{ts_alpha}-alpha/index.html"))).unwrap();
+    assert!(third.contains("article data-slug=\"alpha\""));
+    assert!(third.contains(&format!("data-prev=\"/page/{ts_beta}-beta/\"")));
+    assert!(third.contains("data-next=\"\""));
+
+    // Add a new post and ensure only new pages are added with stable cursors
+    write_dated_post(root, "delta", "2024-04-01T00:00:00Z", "D");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let refreshed_index = fs::read_to_string(root.join("html/index.html")).unwrap();
+    assert!(refreshed_index.contains("article data-slug=\"delta\""));
+    assert!(refreshed_index.contains(&format!("data-next=\"/page/{ts_gamma}-gamma/\"")));
+
+    let archived = root.join(format!("html/page/{ts_beta}-beta/index.html"));
+    assert!(archived.exists());
+}
+
+#[test]
+fn renders_tag_pages_without_pagination() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+    fs::write(
+        root.join("bckt.yaml"),
+        "homepage_posts: 5\npaginate_tags: false\n",
+    )
+    .unwrap();
+
+    write_tagged_post(root, "first", "shared", "2024-01-01T00:00:00Z", "Body A");
+    write_tagged_post(root, "second", "shared", "2024-02-01T00:00:00Z", "Body B");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let tag_root = root.join("html/tags/shared");
+    assert!(tag_root.join("index.html").exists());
+    assert!(!tag_root.join("first").exists());
+}
+
+#[test]
+fn renders_tag_pages_with_pagination() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+    fs::write(
+        root.join("bckt.yaml"),
+        "homepage_posts: 1\npaginate_tags: true\n",
+    )
+    .unwrap();
+
+    write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+    write_tagged_post(root, "beta", "shared", "2024-02-01T00:00:00Z", "B");
+    write_tagged_post(root, "gamma", "shared", "2024-03-01T00:00:00Z", "C");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let tag_index = fs::read_to_string(root.join("html/tags/shared/index.html")).unwrap();
+    assert!(tag_index.contains("article data-slug=\"gamma\""));
+    assert!(tag_index.contains("article data-slug=\"beta\""));
+    assert!(tag_index.contains("article data-slug=\"alpha\""));
+    assert!(tag_index.contains("data-total=\"1\""));
+    assert!(tag_index.contains("data-prev=\"\""));
+    assert!(tag_index.contains("data-next=\"\""));
+
+    assert!(!root.join("html/tags/shared/gamma").exists());
+    assert!(!root.join("html/tags/shared/beta").exists());
+    assert!(!root.join("html/tags/shared/alpha").exists());
+}
+
+#[test]
+fn generates_rss_feed_with_absolute_urls() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+    fs::write(
+        root.join("bckt.yaml"),
+        "base_url: \"https://example.com/blog\"\n",
+    )
+    .unwrap();
+
+    write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "Alpha body");
+    write_dated_post(root, "beta", "2024-02-01T00:00:00Z", "Beta body");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let feed = fs::read_to_string(root.join("html/rss.xml")).unwrap();
+    assert!(feed.contains("<link>https://example.com/blog/</link>"));
+    assert!(feed.contains("<atom:link href=\"https://example.com/blog/rss.xml\""));
+    assert!(feed.contains("<link>https://example.com/blog/2024/02/01/beta/</link>"));
+    assert!(feed.contains("<description>Beta body"));
+    assert!(feed.contains("<content:encoded><![CDATA["));
+}
+
+#[test]
+fn generates_tag_rss_feeds_when_configured() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+    fs::write(
+        root.join("bckt.yaml"),
+        "title: Demo Site\nbase_url: \"https://example.com\"\nrss_tags:\n  - shared\n",
+    )
+    .unwrap();
+
+    write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+    write_tagged_post(root, "beta", "other", "2024-02-01T00:00:00Z", "B");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let feed_path = root.join("html/rss-shared.xml");
+    assert!(feed_path.exists());
+    let feed = fs::read_to_string(feed_path).unwrap();
+    assert!(feed.contains("shared · Demo Site"));
+    assert!(feed.contains("/2024/01/01/alpha/"));
+    assert!(!feed.contains("/2024/02/01/beta/"));
+}
+
+#[test]
+fn rewrites_relative_asset_urls_to_absolute() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts/media/images")).unwrap();
+    setup_markdown_templates(root);
+    fs::write(root.join("posts/media/images/pic.png"), "image-bytes").unwrap();
+    fs::write(root.join("posts/media/notes.txt"), "notes").unwrap();
+    fs::write(
+            root.join("posts/media/post.md"),
+            "---\ndate: 2024-01-01T00:00:00Z\nattached:\n  - images/pic.png\n  - notes.txt\n---\n![Alt](images/pic.png)\n\n[Download](notes.txt)\n",
+        )
+        .unwrap();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let post_page = fs::read_to_string(root.join("html/2024/01/01/media/index.html")).unwrap();
+    assert!(post_page.contains("/2024/01/01/media/images/pic.png"));
+    assert!(post_page.contains("/2024/01/01/media/notes.txt"));
+
+    let feed = fs::read_to_string(root.join("html/rss.xml")).unwrap();
+    assert!(feed.contains("/2024/01/01/media/images/pic.png"));
+    assert!(feed.contains("/2024/01/01/media/notes.txt"));
+}
+
+#[test]
+fn generates_sitemap_with_posts_tags_and_pages() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+    fs::write(
+        root.join("bckt.yaml"),
+        "base_url: \"https://example.com/blog\"\nhomepage_posts: 1\npaginate_tags: true\n",
+    )
+    .unwrap();
+
+    write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+    write_tagged_post(root, "beta", "shared", "2024-02-01T00:00:00Z", "B");
+    write_tagged_post(root, "gamma", "shared", "2024-03-01T00:00:00Z", "C");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let sitemap = fs::read_to_string(root.join("html/sitemap.xml")).unwrap();
+    assert!(sitemap.contains("<loc>https://example.com/blog/</loc>"));
+
+    let ts_beta = OffsetDateTime::parse("2024-02-01T00:00:00Z", &Rfc3339)
+        .unwrap()
+        .unix_timestamp();
+    let ts_alpha = OffsetDateTime::parse("2024-01-01T00:00:00Z", &Rfc3339)
+        .unwrap()
+        .unix_timestamp();
+
+    assert!(sitemap.contains(&format!(
+        "<loc>https://example.com/blog/page/{ts_beta}-beta/</loc>"
+    )));
+    assert!(sitemap.contains(&format!(
+        "<loc>https://example.com/blog/page/{ts_alpha}-alpha/</loc>"
+    )));
+    assert!(sitemap.contains(&format!("<loc>https://example.com/blog/tags/shared/</loc>")));
+    assert!(sitemap.contains("<loc>https://example.com/blog/2024/03/01/gamma/</loc>"));
+    assert!(sitemap.contains("<lastmod>2024-03-01T00:00:00Z</lastmod>"));
+}
+
+#[test]
+fn skips_rewriting_tag_index_when_unchanged() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+
+    write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let tag_path = root.join("html/tags/shared/index.html");
+    assert!(tag_path.exists());
+    let first_mtime = file_mtime(&tag_path);
+
+    wait_for_filesystem_tick();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Changed,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let second_mtime = file_mtime(&tag_path);
+    assert_eq!(first_mtime, second_mtime);
+}
+
+#[test]
+fn rerenders_tag_index_when_post_changes() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+
+    write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let tag_path = root.join("html/tags/shared/index.html");
+    let first_mtime = file_mtime(&tag_path);
+
+    wait_for_filesystem_tick();
+
+    fs::write(
+            root.join("posts/alpha/post.md"),
+            "---\ntitle: Alpha Updated\ndate: 2024-01-01T00:00:00Z\nslug: alpha\ntags:\n  - shared\n---\nUpdated",
+        )
+        .unwrap();
+
+    wait_for_filesystem_tick();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Changed,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let second_mtime = file_mtime(&tag_path);
+    assert!(second_mtime > first_mtime);
+}
+
+#[test]
+fn removes_tag_index_when_tag_disappears() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+
+    write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let tag_path = root.join("html/tags/shared/index.html");
+    assert!(tag_path.exists());
+
+    wait_for_filesystem_tick();
+
+    fs::remove_dir_all(root.join("posts/alpha")).unwrap();
+
+    wait_for_filesystem_tick();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Changed,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    assert!(!tag_path.exists());
+}
+
+#[test]
+fn skips_rewriting_archives_when_unchanged() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+
+    write_dated_post(root, "alpha", "2024-02-01T00:00:00Z", "A");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let year_path = root.join("html/2024/index.html");
+    let month_path = root.join("html/2024/02/index.html");
+    let first_year_mtime = file_mtime(&year_path);
+    let first_month_mtime = file_mtime(&month_path);
+
+    wait_for_filesystem_tick();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Changed,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let second_year_mtime = file_mtime(&year_path);
+    let second_month_mtime = file_mtime(&month_path);
+
+    assert_eq!(first_year_mtime, second_year_mtime);
+    assert_eq!(first_month_mtime, second_month_mtime);
+}
+
+#[test]
+fn rerenders_archives_when_post_changes() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+
+    write_dated_post(root, "alpha", "2024-03-01T00:00:00Z", "Original");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let year_path = root.join("html/2024/index.html");
+    let month_path = root.join("html/2024/03/index.html");
+    let first_year_mtime = file_mtime(&year_path);
+    let first_month_mtime = file_mtime(&month_path);
+
+    wait_for_filesystem_tick();
+
+    fs::write(
+            root.join("posts/alpha/post.md"),
+            "---\ntitle: Alpha\ndate: 2024-03-01T00:00:00Z\nslug: alpha\ntags:\n  - alpha\n---\nUpdated body",
+        )
+        .unwrap();
+
+    wait_for_filesystem_tick();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Changed,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let second_year_mtime = file_mtime(&year_path);
+    let second_month_mtime = file_mtime(&month_path);
+
+    assert!(second_year_mtime > first_year_mtime);
+    assert!(second_month_mtime > first_month_mtime);
+}
+
+#[test]
+fn removes_archives_when_posts_are_removed() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+
+    write_dated_post(root, "alpha", "2024-04-01T00:00:00Z", "Body");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let year_path = root.join("html/2024/index.html");
+    let month_path = root.join("html/2024/04/index.html");
+    assert!(year_path.exists());
+    assert!(month_path.exists());
+
+    wait_for_filesystem_tick();
+
+    fs::remove_dir_all(root.join("posts/alpha")).unwrap();
+
+    wait_for_filesystem_tick();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Changed,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    assert!(!year_path.exists());
+    assert!(!month_path.exists());
+}
+
+#[test]
+fn renders_year_and_month_archives() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+
+    write_dated_post(root, "jan", "2023-01-01T00:00:00Z", "Old");
+    write_dated_post(root, "feb", "2024-02-01T00:00:00Z", "Mid");
+    write_dated_post(root, "mar", "2024-03-01T00:00:00Z", "New");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    assert!(root.join("html/2024/index.html").exists());
+    assert!(root.join("html/2024/03/index.html").exists());
+    assert!(root.join("html/2023/index.html").exists());
+}
+
+#[test]
+fn incremental_rebuilds_only_changed_post() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+
+    write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "Alpha body");
+    write_dated_post(root, "beta", "2024-02-01T00:00:00Z", "Beta body");
+
+    let alpha_output = root.join("html/2024/01/01/alpha/index.html");
+    let beta_output = root.join("html/2024/02/01/beta/index.html");
+
+    let full_plan = RenderPlan {
+        posts: true,
+        static_assets: false,
+        mode: BuildMode::Full,
+        verbose: false,
+    };
+    let changed_plan = RenderPlan {
+        posts: true,
+        static_assets: false,
+        mode: BuildMode::Changed,
+        verbose: false,
+    };
+
+    render_site(root, full_plan).unwrap();
+
+    let alpha_first = file_mtime(&alpha_output);
+    let beta_first = file_mtime(&beta_output);
+
+    wait_for_filesystem_tick();
+    render_site(root, changed_plan).unwrap();
+
+    let alpha_second = file_mtime(&alpha_output);
+    let beta_second = file_mtime(&beta_output);
+    assert_eq!(alpha_first, alpha_second);
+    assert_eq!(beta_first, beta_second);
+
+    wait_for_filesystem_tick();
+    write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "Alpha updated");
+    render_site(root, changed_plan).unwrap();
+
+    let alpha_third = file_mtime(&alpha_output);
+    let beta_third = file_mtime(&beta_output);
+    assert!(alpha_third > alpha_second);
+    assert_eq!(beta_second, beta_third);
+}
+
+#[test]
+fn template_change_triggers_full_rebuild() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+
+    write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "Alpha body");
+    write_dated_post(root, "beta", "2024-02-01T00:00:00Z", "Beta body");
+
+    let alpha_output = root.join("html/2024/01/01/alpha/index.html");
+    let beta_output = root.join("html/2024/02/01/beta/index.html");
+
+    let full_plan = RenderPlan {
+        posts: true,
+        static_assets: false,
+        mode: BuildMode::Full,
+        verbose: false,
+    };
+    let changed_plan = RenderPlan {
+        posts: true,
+        static_assets: false,
+        mode: BuildMode::Changed,
+        verbose: false,
+    };
+
+    render_site(root, full_plan).unwrap();
+    let alpha_initial = file_mtime(&alpha_output);
+    let beta_initial = file_mtime(&beta_output);
+
+    wait_for_filesystem_tick();
+    render_site(root, changed_plan).unwrap();
+    let alpha_after_changed = file_mtime(&alpha_output);
+    let beta_after_changed = file_mtime(&beta_output);
+    assert_eq!(alpha_initial, alpha_after_changed);
+    assert_eq!(beta_initial, beta_after_changed);
+
+    wait_for_filesystem_tick();
+    write_template(
+        root,
+        "base.html",
+        "<!doctype html><html><body data-version=\"v2\">{% block content %}{% endblock %}</body></html>",
+    );
+    render_site(root, changed_plan).unwrap();
+
+    let alpha_after_template = file_mtime(&alpha_output);
+    let beta_after_template = file_mtime(&beta_output);
+    assert!(alpha_after_template > alpha_after_changed);
+    assert!(beta_after_template > beta_after_changed);
+}
