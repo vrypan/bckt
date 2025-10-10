@@ -1,4 +1,3 @@
-use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
@@ -9,9 +8,10 @@ use walkdir::WalkDir;
 use crate::cli::{ThemeDownloadArgs, ThemesArgs, ThemesSubcommand};
 use crate::config::Config;
 use crate::theme::{GithubReference, ThemeSource, download_theme};
+use crate::utils::resolve_root;
 
 pub fn run_themes_command(args: ThemesArgs) -> Result<()> {
-    let root = env::current_dir().context("failed to resolve current directory")?;
+    let root = resolve_root(args.root.as_deref())?;
 
     match args.command {
         ThemesSubcommand::List => list_themes(&root),

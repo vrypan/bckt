@@ -1,16 +1,16 @@
 use anyhow::{Result, bail};
-use std::env;
 
 use crate::cli::ConfigArgs;
 use crate::config::{find_project_root, Config};
+use crate::utils::resolve_root;
 
 pub fn run_config_command(args: ConfigArgs) -> Result<()> {
-    // Find project root from current directory
-    let cwd = env::current_dir()?;
-    let root = find_project_root(&cwd)?;
+    // Resolve starting directory (use --root if provided, otherwise CWD)
+    let start_dir = resolve_root(args.root.as_deref())?;
+    let root = find_project_root(&start_dir)?;
 
-    // Handle --root flag
-    if args.root {
+    // Handle --root-dir flag
+    if args.root_dir {
         println!("{}", root.display());
         return Ok(());
     }

@@ -14,7 +14,7 @@ pub fn run(command: Command) -> Result<()> {
         Command::Init(args) => init::run_init_command(args),
         Command::Render(args) => render::run_render_command(args),
         Command::Dev(args) => dev::run_dev_command(args),
-        Command::Clean => clean::run_clean_command(),
+        Command::Clean(args) => clean::run_clean_command(args),
         Command::Themes(args) => themes::run_themes_command(args),
         Command::Config(args) => config::run_config_command(args),
     }

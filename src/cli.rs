@@ -47,7 +47,7 @@ The development server recompiles on edits so you can preview posts live while i
 The command recreates html/ so the next render starts from a clean slate.",
         alias = "clear"
     )]
-    Clean,
+    Clean(CleanArgs),
     #[command(
         about = "Inspect and switch between installed themes",
         long_about = "List the themes stored in themes/ or apply a different one to the current project.\n\
@@ -64,6 +64,12 @@ Use this command from any subdirectory within the project to retrieve config val
 
 #[derive(Args, Clone, Debug)]
 pub struct InitArgs {
+    #[arg(
+        long,
+        help = "Project root directory (defaults to current directory)",
+        long_help = "Specify the project root directory. Supports tilde expansion (e.g., ~/myblog). If not provided, uses the current working directory."
+    )]
+    pub root: Option<String>,
     #[arg(
         long,
         help = "URL of a zip archive containing the theme to initialise the project with",
@@ -116,6 +122,12 @@ pub struct InitArgs {
 pub struct RenderArgs {
     #[arg(
         long,
+        help = "Project root directory (defaults to current directory)",
+        long_help = "Specify the project root directory. Supports tilde expansion (e.g., ~/myblog). If not provided, uses the current working directory."
+    )]
+    pub root: Option<String>,
+    #[arg(
+        long,
         help = "Render post content and attachments only (skip copying static assets)",
         long_help = "Render only the posts pipeline. When supplied on its own the static asset step is skipped so you can focus on Markdown/HTML sources."
     )]
@@ -145,6 +157,12 @@ pub struct RenderArgs {
 pub struct DevArgs {
     #[arg(
         long,
+        help = "Project root directory (defaults to current directory)",
+        long_help = "Specify the project root directory. Supports tilde expansion (e.g., ~/myblog). If not provided, uses the current working directory."
+    )]
+    pub root: Option<String>,
+    #[arg(
+        long,
         default_value = "127.0.0.1",
         help = "Interface to bind the development server to",
         long_help = "Set an alternate host/IP address for the dev server. Defaults to 127.0.0.1 so it only listens locally."
@@ -172,7 +190,23 @@ pub struct DevArgs {
 }
 
 #[derive(Args, Clone, Debug)]
+pub struct CleanArgs {
+    #[arg(
+        long,
+        help = "Project root directory (defaults to current directory)",
+        long_help = "Specify the project root directory. Supports tilde expansion (e.g., ~/myblog). If not provided, uses the current working directory."
+    )]
+    pub root: Option<String>,
+}
+
+#[derive(Args, Clone, Debug)]
 pub struct ThemesArgs {
+    #[arg(
+        long,
+        help = "Project root directory (defaults to current directory)",
+        long_help = "Specify the project root directory. Supports tilde expansion (e.g., ~/myblog). If not provided, uses the current working directory."
+    )]
+    pub root: Option<String>,
     #[command(subcommand)]
     pub command: ThemesSubcommand,
 }
@@ -250,8 +284,14 @@ pub struct ThemeDownloadArgs {
 
 #[derive(Args, Clone, Debug)]
 pub struct ConfigArgs {
-    #[arg(long, help = "Get the project root directory path")]
-    pub root: bool,
+    #[arg(
+        long,
+        help = "Project root directory (defaults to current directory)",
+        long_help = "Specify the project root directory. Supports tilde expansion (e.g., ~/myblog). If not provided, uses the current working directory."
+    )]
+    pub root: Option<String>,
+    #[arg(long = "root-dir", help = "Get the project root directory path")]
+    pub root_dir: bool,
     #[arg(long, help = "Get the base_url configuration value")]
     pub base_url: bool,
     #[arg(long, help = "Get the title configuration value")]

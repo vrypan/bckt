@@ -1,8 +1,10 @@
-use std::env;
 use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result};
+
+use crate::cli::CleanArgs;
+use crate::utils::resolve_root;
 
 fn ensure_directory(path: &Path) -> Result<()> {
     if !path.exists() {
@@ -28,8 +30,8 @@ fn remove_path(path: &Path) -> Result<bool> {
     Ok(true)
 }
 
-pub fn run_clean_command() -> Result<()> {
-    let root = env::current_dir().context("failed to resolve current directory")?;
+pub fn run_clean_command(args: CleanArgs) -> Result<()> {
+    let root = resolve_root(args.root.as_deref())?;
     let html = root.join("html");
     let cache = root.join(".bckt");
 

@@ -8,6 +8,7 @@ use walkdir::WalkDir;
 
 use crate::cli::InitArgs;
 use crate::theme::{GithubReference, ThemeSource, download_theme};
+use crate::utils::resolve_root;
 
 const DIRECTORIES: &[&str] = &["html", "posts", "templates", "skel", "themes", "pages"];
 const CONFIG_FILE: &str = "bckt.yaml";
@@ -40,7 +41,7 @@ This is the starter post. Edit it or drop in your own content to get going.
 "#;
 
 pub fn run_init_command(args: InitArgs) -> Result<()> {
-    let root = env::current_dir().context("failed to resolve current directory")?;
+    let root = resolve_root(args.root.as_deref())?;
 
     establish_directories(&root)?;
 

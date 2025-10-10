@@ -1,13 +1,13 @@
 use anyhow::Result;
-use std::env;
 
 use crate::cli::RenderArgs;
 use crate::config;
 use crate::render::{BuildMode, RenderPlan, render_site};
+use crate::utils::resolve_root;
 
 pub fn run_render_command(args: RenderArgs) -> Result<()> {
-    let cwd = env::current_dir()?;
-    let root = config::find_project_root(&cwd)?;
+    let start_dir = resolve_root(args.root.as_deref())?;
+    let root = config::find_project_root(&start_dir)?;
     let plan = determine_plan(args);
     render_site(&root, plan)
 }
@@ -44,6 +44,7 @@ mod tests {
     #[test]
     fn plan_defaults_to_both_when_flags_missing() {
         let plan = determine_plan(RenderArgs {
+            root: None,
             posts: false,
             static_assets: false,
             force: false,
@@ -58,6 +59,7 @@ mod tests {
     #[test]
     fn plan_respects_individual_flags() {
         let plan = determine_plan(RenderArgs {
+            root: None,
             posts: true,
             static_assets: false,
             force: false,
@@ -69,6 +71,7 @@ mod tests {
         assert!(!plan.verbose);
 
         let plan = determine_plan(RenderArgs {
+            root: None,
             posts: false,
             static_assets: true,
             force: false,
@@ -83,6 +86,7 @@ mod tests {
     #[test]
     fn force_overrides_changed_mode() {
         let plan = determine_plan(RenderArgs {
+            root: None,
             posts: false,
             static_assets: false,
             force: true,

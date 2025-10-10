@@ -1,4 +1,3 @@
-use std::env;
 use std::fs;
 use std::net::ToSocketAddrs;
 use std::path::{Component, Path, PathBuf};
@@ -15,13 +14,14 @@ use tiny_http::{Header, Response, Server, StatusCode};
 use crate::cli::DevArgs;
 use crate::config;
 use crate::render::{BuildMode, RenderPlan, render_site};
+use crate::utils::resolve_root;
 
 const LIVE_RELOAD_ID: &str = "__bckt_live_reload__";
 const LIVE_RELOAD_SNIPPET: &str = r#"<script id=\"__bckt_live_reload__\">(function(){if(window.__bcktLiveReload){return;}window.__bcktLiveReload=true;let last=0;async function poll(){try{const res=await fetch('/__bckt__/poll?since='+last+'&_='+(Date.now()),{cache:'no-store'});if(res.ok){const data=await res.json();if(typeof data.timestamp==='number'){last=data.timestamp;}if(data.reload){window.location.reload();return;}}}catch(e){}setTimeout(poll,1000);}poll();})();</script>"#;
 
 pub fn run_dev_command(args: DevArgs) -> Result<()> {
-    let cwd = env::current_dir().context("failed to determine current directory")?;
-    let root = config::find_project_root(&cwd)?;
+    let start_dir = resolve_root(args.root.as_deref())?;
+    let root = config::find_project_root(&start_dir)?;
     let html_root = root.join("html");
     fs::create_dir_all(&html_root).context("failed to create html directory")?;
 
