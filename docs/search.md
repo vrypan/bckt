@@ -9,6 +9,7 @@ The `bckt` renderer produces a client-side JSON index at `/assets/search/search-
   - `documents`: one entry per post with title, excerpt, permalink, language, tags, type, timestamps, and the plain-text body used for full-text search.
   - `languages`: analyzer metadata (identifier, display name, stopword list) exposed for the client UI.
   - `facets`: precalculated lists of tags, types, and publication years for building filter widgets.
+  - `payload`: optional per-document metadata copied directly from front matter (see “Custom payload fields” below).
 - The index lives under `html/assets/search/search-index.json`. Adjust the target path with `search.asset_path` in `bckt.yaml` if you serve assets from a different prefix.
 
 ## Configuring analyzers and stopwords
@@ -19,6 +20,9 @@ Search behaviour is controlled in `bckt.yaml` under the `search` key. English (`
 search:
   asset_path: assets/search/search-index.json
   default_language: en
+  payload_fields:
+    - image
+    - duration
   languages:
     - id: en
       name: English
@@ -64,6 +68,32 @@ The `bckt3` theme provides a ready-to-use wiring in `themes/bckt3/templates/sear
 5. **Styling** – add CSS for the search page (`search-page`, `search-field__input`, `search-card`, etc.) so that the results match the rest of the theme.
 
 The search controller exposes filters for language, tag, type, and publication year. Facet values come from the generated JSON. Update `themes/bckt3/assets/js/search.js` if you need bespoke behaviour (for example, additional filters or custom result rendering).
+
+## Custom payload fields
+
+Expose arbitrary metadata alongside each search result by opting into payload fields:
+
+1. Declare the whitelist in `bckt.yaml`.
+
+   ```yaml
+   search:
+     payload_fields:
+       - image
+       - duration
+   ```
+
+2. Populate the payload in a post’s front matter. Entries live under the `search.payload` table so unrelated metadata can continue to use other keys.
+
+   ```yaml
+   search:
+     payload:
+       image: /img/posts/my-post-cover.jpg
+       duration: 9
+   ```
+
+3. Re-render (`bckt render`) to rebuild `search-index.json`. Each document will now contain a `payload` object with the requested keys.
+
+The renderer only copies the keys declared in `payload_fields` and ignores `null` values. Complex JSON values are preserved as-is, enabling themes to consume strings, numbers, booleans, or nested objects. Use JavaScript in your theme (for example, `themes/bckt3/assets/js/search.js`) to read `result.payload` and render the additional metadata.
 
 ## Incremental builds
 

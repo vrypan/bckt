@@ -11,6 +11,8 @@ pub struct SearchConfig {
     pub default_language: String,
     #[serde(default = "default_search_languages")]
     pub languages: Vec<SearchLanguageConfig>,
+    #[serde(default)]
+    pub payload_fields: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -28,6 +30,7 @@ impl Default for SearchConfig {
             asset_path: "assets/search/search-index.json".to_string(),
             default_language: "en".to_string(),
             languages: default_search_languages(),
+            payload_fields: Vec::new(),
         }
     }
 }
@@ -76,6 +79,38 @@ pub fn validate_search_config(config: &SearchConfig, origin: &Path) -> Result<()
             origin.display(),
             config.default_language
         );
+    }
+
+    let mut payload_seen = HashSet::new();
+    for field in &config.payload_fields {
+        let trimmed = field.trim();
+        if trimmed.is_empty() {
+            bail!(
+                "{}: search.payload_fields entries must not be empty",
+                origin.display()
+            );
+        }
+        if trimmed != field {
+            bail!(
+                "{}: search.payload_fields '{}' must not contain leading or trailing whitespace",
+                origin.display(),
+                field
+            );
+        }
+        if trimmed.chars().any(char::is_whitespace) {
+            bail!(
+                "{}: search.payload_fields '{}' must not contain internal whitespace",
+                origin.display(),
+                field
+            );
+        }
+        if !payload_seen.insert(trimmed.to_string()) {
+            bail!(
+                "{}: duplicate entry '{}' in search.payload_fields",
+                origin.display(),
+                field
+            );
+        }
     }
 
     Ok(())
@@ -178,6 +213,7 @@ mod tests {
             .collect();
         assert!(ids.contains(&"en"));
         assert!(ids.contains(&"el"));
+        assert!(config.payload_fields.is_empty());
     }
 
     #[test]
@@ -191,5 +227,17 @@ mod tests {
 
         let error = validate_search_config(&config, Path::new("config.yml")).unwrap_err();
         assert!(error.to_string().contains("duplicate language id"));
+    }
+
+    #[test]
+    fn payload_fields_reject_whitespace_and_duplicates() {
+        let mut config = SearchConfig::default();
+        config.payload_fields = vec!["image".into(), "image ".into()];
+        let error = validate_search_config(&config, Path::new("config.yml")).unwrap_err();
+        assert!(error.to_string().contains("whitespace"));
+
+        config.payload_fields = vec!["cover".into(), "cover".into()];
+        let error = validate_search_config(&config, Path::new("config.yml")).unwrap_err();
+        assert!(error.to_string().contains("duplicate entry"));
     }
 }

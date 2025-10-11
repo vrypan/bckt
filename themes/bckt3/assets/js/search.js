@@ -309,6 +309,36 @@
       }
     });
 
+    const payload = result.payload || {};
+    clone.querySelectorAll('[data-search-payload]').forEach((element) => {
+      const key = element.getAttribute('data-search-payload');
+      if (!key) {
+        return;
+      }
+      const value = payload[key];
+      if (value === undefined || value === null) {
+        element.setAttribute('hidden', '');
+        return;
+      }
+      const attrTarget = element.getAttribute('data-search-payload-attr');
+      if (attrTarget) {
+        element.setAttribute(attrTarget, String(value));
+        element.removeAttribute('hidden');
+        return;
+      }
+      if (element.tagName === 'IMG' && typeof value === 'string') {
+        element.setAttribute('src', value);
+        element.removeAttribute('hidden');
+        return;
+      }
+      if (typeof value === 'object') {
+        element.textContent = JSON.stringify(value);
+      } else if ('textContent' in element) {
+        element.textContent = String(value);
+      }
+      element.removeAttribute('hidden');
+    });
+
     return clone;
   }
 

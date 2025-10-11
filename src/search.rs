@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use blake3::Hasher;
 use isolang::Language;
 use serde::Serialize;
+use serde_json::{Map as JsonMap, Value as JsonValue};
 use time::OffsetDateTime;
 use time::format_description;
 use time::format_description::well_known::Rfc3339;
@@ -50,6 +51,8 @@ struct SearchDocument {
     timestamp: i64,
     excerpt: String,
     content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    payload: Option<JsonMap<String, JsonValue>>,
 }
 
 #[derive(Serialize)]
@@ -145,6 +148,44 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
 
         let title = post.title.as_ref().unwrap_or(&post.slug).clone();
 
+        let mut payload_map = JsonMap::new();
+        if !config.search.payload_fields.is_empty() {
+            let mut candidates: Vec<&JsonMap<String, JsonValue>> = Vec::new();
+            if let Some(search_obj) = post
+                .extra
+                .get("search")
+                .and_then(|value| value.as_object())
+            {
+                if let Some(inner) = search_obj
+                    .get("payload")
+                    .and_then(|value| value.as_object())
+                {
+                    candidates.push(inner);
+                }
+                candidates.push(search_obj);
+            }
+            if let Some(legacy) = post
+                .extra
+                .get("search_payload")
+                .and_then(|value| value.as_object())
+            {
+                candidates.push(legacy);
+            }
+
+            for object in candidates {
+                for key in &config.search.payload_fields {
+                    if payload_map.contains_key(key) {
+                        continue;
+                    }
+                    if let Some(value) = object.get(key) {
+                        if !value.is_null() {
+                            payload_map.insert(key.clone(), value.clone());
+                        }
+                    }
+                }
+            }
+        }
+
         documents.push(SearchDocument {
             id: post.permalink.clone(),
             title,
@@ -157,6 +198,11 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
             timestamp: post.date.unix_timestamp(),
             excerpt,
             content: post.search_text.clone(),
+            payload: if payload_map.is_empty() {
+                None
+            } else {
+                Some(payload_map)
+            },
         });
     }
 
@@ -275,7 +321,7 @@ fn sanitize_language(value: &str) -> String {
 mod tests {
     use super::*;
     use crate::content::Post;
-    use serde_json::Value as JsonValue;
+    use serde_json::{json, Value as JsonValue};
     use std::path::PathBuf;
 
     fn build_post(slug: &str, language: &str, tags: &[&str]) -> Post {
@@ -325,5 +371,28 @@ mod tests {
         let payload: JsonValue = serde_json::from_slice(&artifact.bytes).unwrap();
         let document_language = payload["documents"][0]["language"].as_str().unwrap();
         assert_eq!(document_language, "en");
+    }
+
+    #[test]
+    fn payload_fields_are_emitted() {
+        let mut config = Config::default();
+        config.search.payload_fields = vec!["image".into(), "duration".into()];
+        let mut post = build_post("gamma", "en", &[]);
+        post.extra.insert(
+            "search".into(),
+            json!({
+                "payload": {
+                    "image": "/static/img/cover.jpg",
+                    "duration": 128,
+                    "ignored": "value"
+                }
+            }),
+        );
+        let artifact = build_index(&config, &[post]).unwrap();
+        let root: JsonValue = serde_json::from_slice(&artifact.bytes).unwrap();
+        let payload = root["documents"][0]["payload"].as_object().unwrap();
+        assert_eq!(payload.get("image").unwrap(), &json!("/static/img/cover.jpg"));
+        assert_eq!(payload.get("duration").unwrap(), &json!(128));
+        assert!(payload.get("ignored").is_none());
     }
 }
