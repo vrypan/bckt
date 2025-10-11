@@ -1,6 +1,6 @@
 [package]
 name = "bckt"
-version = "0.3.3"
+version = "0.4.2"
 edition = "2024"
 repository = "https://github.com/vrypan/bckt"
 description = "bckt is an opinionated but flexible static site generator for blogs"
