@@ -82,18 +82,16 @@ Expose arbitrary metadata alongside each search result by opting into payload fi
        - duration
    ```
 
-2. Populate the payload in a post’s front matter. Entries live under the `search.payload` table so unrelated metadata can continue to use other keys.
+2. Populate the payload in a post’s front matter using the whitelisted keys directly.
 
    ```yaml
-   search:
-     payload:
-       image: /img/posts/my-post-cover.jpg
-       duration: 9
+   image: /img/posts/my-post-cover.jpg
+   duration: 9
    ```
 
 3. Re-render (`bckt render`) to rebuild `search-index.json`. Each document will now contain a `payload` object with the requested keys.
 
-The renderer only copies the keys declared in `payload_fields` and ignores `null` values. Complex JSON values are preserved as-is, enabling themes to consume strings, numbers, booleans, or nested objects. Use JavaScript in your theme (for example, `themes/bckt3/assets/js/search.js`) to read `result.payload` and render the additional metadata.
+The renderer only copies the keys declared in `payload_fields`, reads them from top-level front matter, and ignores `null` values. Complex JSON values are preserved as-is, enabling themes to consume strings, numbers, booleans, or nested objects. Use JavaScript in your theme (for example, `themes/bckt3/assets/js/search.js`) to read `result.payload` and render the additional metadata.
 
 ## Incremental builds
 

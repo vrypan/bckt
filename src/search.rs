@@ -150,37 +150,10 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
 
         let mut payload_map = JsonMap::new();
         if !config.search.payload_fields.is_empty() {
-            let mut candidates: Vec<&JsonMap<String, JsonValue>> = Vec::new();
-            if let Some(search_obj) = post
-                .extra
-                .get("search")
-                .and_then(|value| value.as_object())
-            {
-                if let Some(inner) = search_obj
-                    .get("payload")
-                    .and_then(|value| value.as_object())
-                {
-                    candidates.push(inner);
-                }
-                candidates.push(search_obj);
-            }
-            if let Some(legacy) = post
-                .extra
-                .get("search_payload")
-                .and_then(|value| value.as_object())
-            {
-                candidates.push(legacy);
-            }
-
-            for object in candidates {
-                for key in &config.search.payload_fields {
-                    if payload_map.contains_key(key) {
-                        continue;
-                    }
-                    if let Some(value) = object.get(key) {
-                        if !value.is_null() {
-                            payload_map.insert(key.clone(), value.clone());
-                        }
+            for key in &config.search.payload_fields {
+                if let Some(value) = post.extra.get(key) {
+                    if !value.is_null() {
+                        payload_map.insert(key.clone(), value.clone());
                     }
                 }
             }
@@ -378,21 +351,36 @@ mod tests {
         let mut config = Config::default();
         config.search.payload_fields = vec!["image".into(), "duration".into()];
         let mut post = build_post("gamma", "en", &[]);
-        post.extra.insert(
-            "search".into(),
-            json!({
-                "payload": {
-                    "image": "/static/img/cover.jpg",
-                    "duration": 128,
-                    "ignored": "value"
-                }
-            }),
-        );
+        post.extra
+            .insert("image".into(), json!("/static/img/cover.jpg"));
+        post.extra.insert("duration".into(), json!(128));
+        post.extra.insert("ignored".into(), json!("value"));
         let artifact = build_index(&config, &[post]).unwrap();
         let root: JsonValue = serde_json::from_slice(&artifact.bytes).unwrap();
         let payload = root["documents"][0]["payload"].as_object().unwrap();
         assert_eq!(payload.get("image").unwrap(), &json!("/static/img/cover.jpg"));
         assert_eq!(payload.get("duration").unwrap(), &json!(128));
         assert!(payload.get("ignored").is_none());
+    }
+
+    #[test]
+    fn namespaced_payload_is_ignored() {
+        let mut config = Config::default();
+        config.search.payload_fields = vec!["image".into(), "duration".into()];
+        let mut post = build_post("delta", "en", &[]);
+        post.extra.insert(
+            "search".into(),
+            json!({
+                "payload": {
+                    "image": "/covers/delta.png",
+                    "duration": 42
+                },
+                "image": "/covers/other.png"
+            }),
+        );
+
+        let artifact = build_index(&config, &[post]).unwrap();
+        let root: JsonValue = serde_json::from_slice(&artifact.bytes).unwrap();
+        assert!(root["documents"][0]["payload"].is_null());
     }
 }
