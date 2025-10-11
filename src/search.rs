@@ -151,10 +151,10 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
         let mut payload_map = JsonMap::new();
         if !config.search.payload_fields.is_empty() {
             for key in &config.search.payload_fields {
-                if let Some(value) = post.extra.get(key) {
-                    if !value.is_null() {
-                        payload_map.insert(key.clone(), value.clone());
-                    }
+                if let Some(value) = post.extra.get(key)
+                    && !value.is_null()
+                {
+                    payload_map.insert(key.clone(), value.clone());
                 }
             }
         }
@@ -294,7 +294,7 @@ fn sanitize_language(value: &str) -> String {
 mod tests {
     use super::*;
     use crate::content::Post;
-    use serde_json::{json, Value as JsonValue};
+    use serde_json::{Value as JsonValue, json};
     use std::path::PathBuf;
 
     fn build_post(slug: &str, language: &str, tags: &[&str]) -> Post {
@@ -358,7 +358,10 @@ mod tests {
         let artifact = build_index(&config, &[post]).unwrap();
         let root: JsonValue = serde_json::from_slice(&artifact.bytes).unwrap();
         let payload = root["documents"][0]["payload"].as_object().unwrap();
-        assert_eq!(payload.get("image").unwrap(), &json!("/static/img/cover.jpg"));
+        assert_eq!(
+            payload.get("image").unwrap(),
+            &json!("/static/img/cover.jpg")
+        );
         assert_eq!(payload.get("duration").unwrap(), &json!(128));
         assert!(payload.get("ignored").is_none());
     }

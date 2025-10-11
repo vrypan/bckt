@@ -231,12 +231,17 @@ mod tests {
 
     #[test]
     fn payload_fields_reject_whitespace_and_duplicates() {
-        let mut config = SearchConfig::default();
-        config.payload_fields = vec!["image".into(), "image ".into()];
+        let config = SearchConfig {
+            payload_fields: vec!["image".into(), "image ".into()],
+            ..SearchConfig::default()
+        };
         let error = validate_search_config(&config, Path::new("config.yml")).unwrap_err();
         assert!(error.to_string().contains("whitespace"));
 
-        config.payload_fields = vec!["cover".into(), "cover".into()];
+        let config = SearchConfig {
+            payload_fields: vec!["cover".into(), "cover".into()],
+            ..SearchConfig::default()
+        };
         let error = validate_search_config(&config, Path::new("config.yml")).unwrap_err();
         assert!(error.to_string().contains("duplicate entry"));
     }
