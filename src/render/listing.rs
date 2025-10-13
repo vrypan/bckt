@@ -99,11 +99,7 @@ pub(super) fn render_homepage(
         let start = (page_num - 1) * per_page;
         let end = start + per_page;
         // Reverse the slice to display newest first within the page
-        let page_posts: Vec<String> = posts[start..end]
-            .iter()
-            .rev()
-            .map(post_key)
-            .collect();
+        let page_posts: Vec<String> = posts[start..end].iter().rev().map(post_key).collect();
         new_records.push(StoredPage {
             page_number: page_num,
             posts: page_posts,
@@ -112,11 +108,7 @@ pub(super) fn render_homepage(
 
     // Homepage gets the last posts (newest) - store in display order (reversed)
     let home_start = regular_page_count * per_page;
-    let home_posts: Vec<String> = posts[home_start..]
-        .iter()
-        .rev()
-        .map(post_key)
-        .collect();
+    let home_posts: Vec<String> = posts[home_start..].iter().rev().map(post_key).collect();
     new_records.push(StoredPage {
         page_number: 0,
         posts: home_posts,
@@ -507,7 +499,10 @@ pub(super) fn tag_index_url(slug: &str) -> String {
 }
 
 pub(super) fn page_output_path(html_root: &Path, page_number: usize) -> PathBuf {
-    html_root.join("page").join(page_number.to_string()).join("index.html")
+    html_root
+        .join("page")
+        .join(page_number.to_string())
+        .join("index.html")
 }
 
 pub(super) fn tag_index_path(html_root: &Path, slug: &str) -> PathBuf {
@@ -681,11 +676,13 @@ fn cleanup_homepage_pages(html_root: &Path, keep: &[StoredPage]) -> Result<()> {
 
         if let Some(name) = path.file_name().and_then(|n| n.to_str())
             && let Ok(page_num) = name.parse::<usize>()
-                && !keep_pages.contains(&page_num) {
-                    // This is a stale page directory, remove it
-                    fs::remove_dir_all(&path)
-                        .with_context(|| format!("failed to remove stale page directory {}", path.display()))?;
-                }
+            && !keep_pages.contains(&page_num)
+        {
+            // This is a stale page directory, remove it
+            fs::remove_dir_all(&path).with_context(|| {
+                format!("failed to remove stale page directory {}", path.display())
+            })?;
+        }
     }
 
     Ok(())

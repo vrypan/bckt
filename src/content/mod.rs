@@ -36,7 +36,6 @@ pub struct Post {
     pub extra: JsonMap<String, JsonValue>,
 }
 
-
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 struct FrontMatter {
