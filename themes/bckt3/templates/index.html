@@ -18,13 +18,17 @@
 {% if pagination.total > 1 %}
 <nav aria-label="Pagination" class="pager">
   <div class="pager__links">
-    {% if pagination.prev %}
-    <a href="{{ pagination.prev | safe }}" rel="prev">← Newer Posts</a>
-    {% endif %}
-    <span class="pager__status">Page {{ pagination.current }} of {{ pagination.total }}</span>
-    {% if pagination.next %}
-    <a href="{{ pagination.next | safe }}" rel="next">Older Posts →</a>
-    {% endif %}
+    <div class="pager__newer">
+      {% if pagination.next %}
+      <a href="{{ pagination.next | safe }}" rel="next">← Newer Posts</a>
+      {% endif %}
+    </div>
+    <span class="pager__status">Page {{ pagination.current }}</span>
+    <div class="pager__older">
+      {% if pagination.prev %}
+      <a href="{{ pagination.prev | safe }}" rel="prev">Older Posts →</a>
+      {% endif %}
+    </div>
   </div>
 </nav>
 {% endif %}

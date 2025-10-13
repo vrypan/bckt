@@ -13,7 +13,7 @@ use crate::config::Config;
 use crate::content::Post;
 use crate::utils::absolute_url;
 
-use super::listing::{page_cursor, page_url, tag_index_url, tag_slug};
+use super::listing::{page_url, tag_index_url, tag_slug};
 use super::posts::att_to_absolute;
 use super::templates::render_template_with_scope;
 use super::utils::{format_rfc2822, format_rfc3339, sanitize_cdata, xml_escape};
@@ -30,6 +30,7 @@ pub(super) fn render_feeds(
         let slug = tag_slug(&tag);
         let tag_posts: Vec<&Post> = posts
             .iter()
+            .rev()
             .filter(|post| post.tags.iter().any(|t| t.eq(&tag)))
             .collect();
         let output_path = html_root.join(format!("rss-{}.xml", slug));
@@ -59,7 +60,8 @@ fn render_rss(
     env: &Environment<'static>,
 ) -> Result<()> {
     let output_path = html_root.join("rss.xml");
-    let posts_ref: Vec<&Post> = posts.iter().collect();
+    // Posts are sorted ascending, but RSS feeds should show newest first
+    let posts_ref: Vec<&Post> = posts.iter().rev().collect();
     render_feed(posts_ref, config, env, "/", "/rss.xml", &output_path, None)
 }
 
@@ -118,8 +120,23 @@ fn render_sitemap(posts: &[Post], html_root: &Path, config: &Config) -> Result<(
     let per_page = std::cmp::max(1, config.homepage_posts);
     let mut entries: Vec<SitemapEntry> = Vec::new();
 
+    // Posts are sorted ASCENDING (oldest first, newest last)
+    // Calculate pagination structure (must match listing.rs logic)
+    let remainder = posts.len() % per_page;
+    let home_page_size = if posts.len() < per_page {
+        posts.len()
+    } else if remainder == 0 {
+        per_page
+    } else if remainder < per_page {
+        remainder + per_page
+    } else {
+        per_page
+    };
+    let regular_page_count = (posts.len() - home_page_size) / per_page;
+
+    // Homepage entry (most recent posts = end of array)
     let homepage_date = posts
-        .first()
+        .last()
         .map(|post| format_rfc3339(&post.date))
         .transpose()?;
     entries.push(SitemapEntry {
@@ -127,17 +144,17 @@ fn render_sitemap(posts: &[Post], html_root: &Path, config: &Config) -> Result<(
         lastmod: homepage_date,
     });
 
-    for chunk in posts.chunks(per_page).enumerate() {
-        if chunk.0 == 0 {
-            continue;
-        }
-        let last = chunk.1.last().expect("chunks() never yields empty slices");
-        let cursor = page_cursor(last);
-        let path = page_url(&cursor);
-        let chunk_date = format_rfc3339(&chunk.1[0].date)?;
+    // Regular page entries (page 1, 2, 3, ...)
+    // Each page's date is the NEWEST post on that page (end of the range)
+    for page_num in 1..=regular_page_count {
+        let start = (page_num - 1) * per_page;
+        let end = start + per_page;
+        let path = page_url(page_num);
+        // The newest post on this page is at end-1 (since sorted ascending)
+        let page_date = format_rfc3339(&posts[end - 1].date)?;
         entries.push(SitemapEntry {
             loc: absolute_url(&config.base_url, &path),
-            lastmod: Some(chunk_date),
+            lastmod: Some(page_date),
         });
     }
 
