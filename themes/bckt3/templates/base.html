@@ -43,7 +43,24 @@
         />
         <link rel="icon" href="/favicon.ico" />
         <link rel="stylesheet" href="/style.css" />
-        {% block page_meta %}{% endblock page_meta %}
+
+	{% block page_meta %}
+        <meta name="description" content="{{ config.description }}">
+        <meta property="og:site_name" content="{{ config.title | default("bckt") }}">
+        <meta property="og:type" content="website">
+        <meta property="og:title" content="{{ config.title | default("bckt") | trim }}">
+        <meta property="og:url" content="{{ base_url | safe }}">
+        <meta property="og:description" content="{{ config.description | trim}}">
+        <link rel="canonical" href="{{ base_url | safe }}">
+        <meta name="twitter:card" content="summary">
+        <meta name="twitter:title" content="{{ config.title | default("bckt") | trim }}">
+        <meta name="twitter:description" content="{{ config.description | trim }}">
+        {% if config.open_graph_image %}
+        <meta property="og:image" content="{{ config.open_graph_image | safe}}"/>
+        <meta name="twitter:image" content="{{ config.open_graph_image | safe }}"/>
+        {% endif %}
+        {% endblock page_meta %}
+
     </head>
     <body>
         <header class="site-header">
