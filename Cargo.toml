@@ -47,3 +47,9 @@ tempfile = "3.12"
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[package.metadata.release]
+pre-release-commit-message = "Release {{version}}"
+tag-message = "Release {{version}}"
+tag-name = "v{{version}}"
+push = false
