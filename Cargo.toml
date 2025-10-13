@@ -1,10 +1,11 @@
 [package]
 name = "bckt"
-version = "0.4.3"
+version = "0.5.0"
 edition = "2024"
 repository = "https://github.com/vrypan/bckt"
 description = "bckt is an opinionated but flexible static site generator for blogs"
 homepage = "https://github.com/vrypan/bckt"
+license = "MIT"
 
 [[bin]]
 name = "bckt"
@@ -52,4 +53,4 @@ lto = "thin"
 pre-release-commit-message = "Release {{version}}"
 tag-message = "Release {{version}}"
 tag-name = "v{{version}}"
-push = false
+push = true
