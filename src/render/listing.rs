@@ -56,6 +56,7 @@ pub(super) fn render_homepage(
     config: &Config,
     env: &Environment<'static>,
     cache: &HomePageCache,
+    mode: BuildMode,
 ) -> Result<()> {
     if posts.is_empty() {
         cache.store_pages(&[])?;
@@ -67,46 +68,98 @@ pub(super) fn render_homepage(
         .context("index.html template missing")?;
 
     let per_page = std::cmp::max(1, config.homepage_posts);
+
+    // Posts are now sorted ASCENDING (oldest first, newest last)
+    // posts[0] = oldest, posts[len-1] = newest
+    // Page 1 gets posts[0..per_page-1], Page 2 gets posts[per_page..2*per_page-1], etc.
+    // Homepage gets the last per_page to per_page*2-1 posts (newest)
+    // Posts within each page are displayed in reverse (newest first)
+
+    let remainder = posts.len() % per_page;
+
+    // Determine homepage size: between per_page and per_page*2-1 posts
+    let home_page_size = if posts.len() < per_page {
+        posts.len()
+    } else if remainder == 0 {
+        per_page
+    } else if remainder < per_page {
+        remainder + per_page
+    } else {
+        per_page
+    };
+
+    // Number of regular pages
+    let regular_page_count = (posts.len() - home_page_size) / per_page;
+    let total_pages = regular_page_count + 1;
+
+    let mut new_records = Vec::new();
+
+    // Regular pages (page 1, 2, 3, ...) - store in display order (reversed)
+    for page_num in 1..=regular_page_count {
+        let start = (page_num - 1) * per_page;
+        let end = start + per_page;
+        // Reverse the slice to display newest first within the page
+        let page_posts: Vec<String> = posts[start..end]
+            .iter()
+            .rev()
+            .map(post_key)
+            .collect();
+        new_records.push(StoredPage {
+            page_number: page_num,
+            posts: page_posts,
+        });
+    }
+
+    // Homepage gets the last posts (newest) - store in display order (reversed)
+    let home_start = regular_page_count * per_page;
+    let home_posts: Vec<String> = posts[home_start..]
+        .iter()
+        .rev()
+        .map(post_key)
+        .collect();
+    new_records.push(StoredPage {
+        page_number: 0,
+        posts: home_posts,
+    });
+
+    // Load cached pages to detect changes
+    let stored_pages = cache.load_pages()?;
+    let mut stored_map: HashMap<usize, &StoredPage> = HashMap::new();
+    for page in &stored_pages {
+        stored_map.insert(page.page_number, page);
+    }
+
+    // Build lookup for rendering
     let mut lookup: HashMap<String, &Post> = HashMap::new();
     for post in posts {
         lookup.insert(post_key(post), post);
     }
 
-    let head_slice: Vec<&Post> = posts.iter().take(per_page).collect();
-    if head_slice.is_empty() {
-        return Ok(());
-    }
-    let head_cursor = page_cursor(head_slice.last().unwrap());
-
-    let stored_pages = cache.load_pages()?;
-    let previous_head_cursor = stored_pages.first().map(|page| page.cursor.clone());
-
-    let head_changed = previous_head_cursor
-        .as_ref()
-        .map(|cursor| cursor != &head_cursor)
-        .unwrap_or(true);
-
-    // If head changed, we need to rebuild all pages from scratch
-    // because posts have shifted positions
-    let new_records = if head_changed {
-        // Build all pages from current post list
-        let mut records = Vec::new();
-        for chunk in posts.chunks(per_page) {
-            if let Some(last) = chunk.last() {
-                let cursor = page_cursor(last);
-                let ids = chunk.iter().map(post_key).collect::<Vec<_>>();
-                records.push(StoredPage { cursor, posts: ids });
-            }
-        }
-        records
-    } else {
-        // Head unchanged, reuse cached pages
-        stored_pages
-    };
-
     let mut plans: Vec<PagePlan> = Vec::new();
 
-    for (index, record) in new_records.iter().enumerate() {
+    for record in &new_records {
+        let page_num = record.page_number;
+
+        // Check if this page needs rendering
+        let mut needs_render = matches!(mode, BuildMode::Full);
+        if !needs_render {
+            needs_render = match stored_map.get(&page_num) {
+                Some(cached) => {
+                    // Page exists in cache - check if content changed
+                    cached.posts != record.posts
+                }
+                None => {
+                    // New page
+                    true
+                }
+            };
+        }
+
+        if !needs_render {
+            continue;
+        }
+
+        // Build post summaries
         let summaries = record
             .posts
             .iter()
@@ -114,63 +167,52 @@ pub(super) fn render_homepage(
             .map(|post| build_post_summary(config, post))
             .collect::<Result<Vec<_>>>()?;
 
-        let prev = if index == 0 {
-            String::new()
-        } else if index == 1 {
-            "/".to_string()
+        // Build pagination links
+        let (prev, next) = if page_num == 0 {
+            // Homepage
+            let prev = if regular_page_count > 0 {
+                page_url(regular_page_count)
+            } else {
+                String::new()
+            };
+            (prev, String::new())
+        } else if page_num == 1 {
+            // Page 1
+            let next = if page_num < regular_page_count {
+                page_url(page_num + 1)
+            } else {
+                "/".to_string() // Link to homepage
+            };
+            (String::new(), next)
         } else {
-            page_url(&new_records[index - 1].cursor)
-        };
-        let next = if index + 1 < new_records.len() {
-            page_url(&new_records[index + 1].cursor)
-        } else {
-            String::new()
+            // Middle pages
+            let prev = page_url(page_num - 1);
+            let next = if page_num < regular_page_count {
+                page_url(page_num + 1)
+            } else {
+                "/".to_string() // Link to homepage
+            };
+            (prev, next)
         };
 
         let pagination = PaginationContext {
-            current: index + 1,
-            total: new_records.len(),
+            current: if page_num == 0 { total_pages } else { page_num },
+            total: total_pages,
             prev,
             next,
         };
 
-        let outputs = if index == 0 {
-            vec![html_root.join("index.html")]
+        let output = if page_num == 0 {
+            html_root.join("index.html")
         } else {
-            vec![page_output_path(html_root, &record.cursor)]
+            page_output_path(html_root, page_num)
         };
 
-        // Determine if we need to render this page
-        let needs_render = if head_changed {
-            // Always render first page when head changes
-            // For other pages, check if file exists
-            if index == 0 {
-                true
-            } else {
-                let path = if index == 0 {
-                    html_root.join("index.html")
-                } else {
-                    page_output_path(html_root, &record.cursor)
-                };
-                !path.exists()
-            }
-        } else {
-            // Head unchanged, only render if missing
-            let path = if index == 0 {
-                html_root.join("index.html")
-            } else {
-                page_output_path(html_root, &record.cursor)
-            };
-            !path.exists()
-        };
-
-        if needs_render {
-            plans.push(PagePlan {
-                summaries,
-                pagination,
-                outputs,
-            });
-        }
+        plans.push(PagePlan {
+            summaries,
+            pagination,
+            outputs: vec![output],
+        });
     }
 
     for plan in plans {
@@ -178,6 +220,9 @@ pub(super) fn render_homepage(
     }
 
     cache.store_pages(&new_records)?;
+
+    // Cleanup stale page directories
+    cleanup_homepage_pages(html_root, &new_records)?;
 
     Ok(())
 }
@@ -428,12 +473,8 @@ pub(super) fn render_tag_archives(
     Ok(())
 }
 
-pub(super) fn page_cursor(post: &Post) -> String {
-    post_key(post)
-}
-
-pub(super) fn page_url(cursor: &str) -> String {
-    format!("/page/{}/", cursor)
+pub(super) fn page_url(page_number: usize) -> String {
+    format!("/page/{}/", page_number)
 }
 
 pub(super) fn tag_slug(tag: &str) -> String {
@@ -465,8 +506,8 @@ pub(super) fn tag_index_url(slug: &str) -> String {
     format!("/tags/{}/", slug)
 }
 
-pub(super) fn page_output_path(html_root: &Path, cursor: &str) -> PathBuf {
-    html_root.join("page").join(cursor).join("index.html")
+pub(super) fn page_output_path(html_root: &Path, page_number: usize) -> PathBuf {
+    html_root.join("page").join(page_number.to_string()).join("index.html")
 }
 
 pub(super) fn tag_index_path(html_root: &Path, slug: &str) -> PathBuf {
@@ -613,9 +654,46 @@ fn cleanup_year_archives(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String
     Ok(())
 }
 
+fn cleanup_homepage_pages(html_root: &Path, keep: &[StoredPage]) -> Result<()> {
+    let page_dir = html_root.join("page");
+    if !page_dir.exists() {
+        return Ok(());
+    }
+
+    // Build set of page numbers we want to keep (skip homepage which is page_number=0)
+    let keep_pages: HashSet<usize> = keep
+        .iter()
+        .filter(|p| p.page_number > 0)
+        .map(|p| p.page_number)
+        .collect();
+
+    // Read all subdirectories in html/page
+    let entries = fs::read_dir(&page_dir)
+        .with_context(|| format!("failed to read directory {}", page_dir.display()))?;
+
+    for entry in entries {
+        let entry = entry.context("failed to read directory entry")?;
+        let path = entry.path();
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        if let Some(name) = path.file_name().and_then(|n| n.to_str())
+            && let Ok(page_num) = name.parse::<usize>()
+                && !keep_pages.contains(&page_num) {
+                    // This is a stale page directory, remove it
+                    fs::remove_dir_all(&path)
+                        .with_context(|| format!("failed to remove stale page directory {}", path.display()))?;
+                }
+    }
+
+    Ok(())
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 struct StoredPage {
-    cursor: String,
+    page_number: usize, // 0 = homepage, 1+ = numbered pages
     posts: Vec<String>,
 }
 

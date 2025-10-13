@@ -34,7 +34,7 @@ pub(super) fn render_posts(
         return Ok((posts, 0, 0));
     }
 
-    posts.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.slug.cmp(&b.slug)));
+    posts.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.slug.cmp(&b.slug)));
 
     let default_post_template = env
         .get_template("post.html")

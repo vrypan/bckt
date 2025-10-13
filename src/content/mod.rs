@@ -36,11 +36,6 @@ pub struct Post {
     pub extra: JsonMap<String, JsonValue>,
 }
 
-impl Post {
-    pub fn cursor(&self) -> String {
-        format!("{}-{}", self.date.unix_timestamp(), self.slug)
-    }
-}
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]

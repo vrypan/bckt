@@ -149,7 +149,7 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
 
     if plan.posts {
         log_status(plan.verbose, "STEP", "Rendering indexes and feeds");
-        render_homepage(&posts, &html_root, &config, &env, &cache)?;
+        render_homepage(&posts, &html_root, &config, &env, &cache, effective_mode)?;
         render_tag_archives(
             &posts,
             &html_root,

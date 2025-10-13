@@ -2,8 +2,6 @@ use super::*;
 use std::fs;
 use std::time::UNIX_EPOCH;
 use tempfile::TempDir;
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
 
 fn write_template(root: &Path, name: &str, contents: &str) {
     let path = root.join("templates").join(name);
@@ -330,7 +328,7 @@ fn copies_static_assets() {
 }
 
 #[test]
-fn paginates_homepage_cursor_based() {
+fn paginates_homepage_with_page_numbers() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();
     fs::create_dir_all(root.join("posts")).unwrap();
@@ -352,33 +350,32 @@ fn paginates_homepage_cursor_based() {
     )
     .unwrap();
 
-    let ts_gamma = OffsetDateTime::parse("2024-03-01T00:00:00Z", &Rfc3339)
-        .unwrap()
-        .unix_timestamp();
-    let ts_beta = OffsetDateTime::parse("2024-02-01T00:00:00Z", &Rfc3339)
-        .unwrap()
-        .unix_timestamp();
-    let ts_alpha = OffsetDateTime::parse("2024-01-01T00:00:00Z", &Rfc3339)
-        .unwrap()
-        .unix_timestamp();
-
+    // Posts are sorted ascending, so page 1 has alpha (oldest), homepage has gamma (newest)
+    // Homepage is at the end of the pagination sequence, so prev goes backward to page 2
     let index = fs::read_to_string(root.join("html/index.html")).unwrap();
     assert!(index.contains("article data-slug=\"gamma\""));
-    assert!(index.contains(&format!("data-next=\"/page/{ts_beta}-beta/\"")));
+    assert!(index.contains("data-prev=\"/page/2/\""));
+    assert!(index.contains("data-next=\"\""));
+    assert!(index.contains("data-current=\"3\""));
+    assert!(index.contains("data-total=\"3\""));
 
-    let second =
-        fs::read_to_string(root.join(format!("html/page/{ts_beta}-beta/index.html"))).unwrap();
+    // Page 2 is in the middle
+    let second = fs::read_to_string(root.join("html/page/2/index.html")).unwrap();
     assert!(second.contains("article data-slug=\"beta\""));
-    assert!(second.contains("data-prev=\"/\""));
-    assert!(second.contains(&format!("data-next=\"/page/{ts_alpha}-alpha/\"")));
+    assert!(second.contains("data-prev=\"/page/1/\""));
+    assert!(second.contains("data-next=\"/\""));
+    assert!(second.contains("data-current=\"2\""));
+    assert!(second.contains("data-total=\"3\""));
 
-    let third =
-        fs::read_to_string(root.join(format!("html/page/{ts_alpha}-alpha/index.html"))).unwrap();
-    assert!(third.contains("article data-slug=\"alpha\""));
-    assert!(third.contains(&format!("data-prev=\"/page/{ts_beta}-beta/\"")));
-    assert!(third.contains("data-next=\"\""));
+    // Page 1 is at the beginning
+    let first = fs::read_to_string(root.join("html/page/1/index.html")).unwrap();
+    assert!(first.contains("article data-slug=\"alpha\""));
+    assert!(first.contains("data-prev=\"\""));
+    assert!(first.contains("data-next=\"/page/2/\""));
+    assert!(first.contains("data-current=\"1\""));
+    assert!(first.contains("data-total=\"3\""));
 
-    // Add a new post and ensure only new pages are added with stable cursors
+    // Add a new post and ensure homepage is updated but old pages remain stable
     write_dated_post(root, "delta", "2024-04-01T00:00:00Z", "D");
 
     render_site(
@@ -392,12 +389,16 @@ fn paginates_homepage_cursor_based() {
     )
     .unwrap();
 
+    // Homepage now shows delta (newest), prev goes to page 3
     let refreshed_index = fs::read_to_string(root.join("html/index.html")).unwrap();
     assert!(refreshed_index.contains("article data-slug=\"delta\""));
-    assert!(refreshed_index.contains(&format!("data-next=\"/page/{ts_gamma}-gamma/\"")));
+    assert!(refreshed_index.contains("data-prev=\"/page/3/\""));
+    assert!(refreshed_index.contains("data-current=\"4\""));
+    assert!(refreshed_index.contains("data-total=\"4\""));
 
-    let archived = root.join(format!("html/page/{ts_beta}-beta/index.html"));
-    assert!(archived.exists());
+    // Page 1 (alpha) and Page 2 (beta) should still exist and be unchanged
+    assert!(root.join("html/page/1/index.html").exists());
+    assert!(root.join("html/page/2/index.html").exists());
 }
 
 #[test]
@@ -603,19 +604,9 @@ fn generates_sitemap_with_posts_tags_and_pages() {
     let sitemap = fs::read_to_string(root.join("html/sitemap.xml")).unwrap();
     assert!(sitemap.contains("<loc>https://example.com/blog/</loc>"));
 
-    let ts_beta = OffsetDateTime::parse("2024-02-01T00:00:00Z", &Rfc3339)
-        .unwrap()
-        .unix_timestamp();
-    let ts_alpha = OffsetDateTime::parse("2024-01-01T00:00:00Z", &Rfc3339)
-        .unwrap()
-        .unix_timestamp();
-
-    assert!(sitemap.contains(&format!(
-        "<loc>https://example.com/blog/page/{ts_beta}-beta/</loc>"
-    )));
-    assert!(sitemap.contains(&format!(
-        "<loc>https://example.com/blog/page/{ts_alpha}-alpha/</loc>"
-    )));
+    // Page-number based URLs (page 1 = oldest, page 2 = middle)
+    assert!(sitemap.contains("<loc>https://example.com/blog/page/1/</loc>"));
+    assert!(sitemap.contains("<loc>https://example.com/blog/page/2/</loc>"));
     assert!(sitemap.contains("<loc>https://example.com/blog/tags/shared/</loc>"));
     assert!(sitemap.contains("<loc>https://example.com/blog/2024/03/01/gamma/</loc>"));
     assert!(sitemap.contains("<lastmod>2024-03-01T00:00:00Z</lastmod>"));
