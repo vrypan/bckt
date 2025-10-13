@@ -77,67 +77,32 @@ pub(super) fn render_homepage(
         return Ok(());
     }
     let head_cursor = page_cursor(head_slice.last().unwrap());
-    let head_posts: Vec<String> = head_slice.iter().map(|p| post_key(p)).collect();
 
-    let mut stored_pages = cache.load_pages()?;
+    let stored_pages = cache.load_pages()?;
     let previous_head_cursor = stored_pages.first().map(|page| page.cursor.clone());
 
-    stored_pages.retain(|page| page.cursor != head_cursor);
+    let head_changed = previous_head_cursor
+        .as_ref()
+        .map(|cursor| cursor != &head_cursor)
+        .unwrap_or(true);
 
-    let mut new_records = Vec::new();
-    new_records.push(StoredPage {
-        cursor: head_cursor.clone(),
-        posts: head_posts.clone(),
-    });
-
-    let mut known_ids: HashSet<String> = stored_pages
-        .iter()
-        .flat_map(|page| page.posts.iter().cloned())
-        .collect();
-    for id in &head_posts {
-        known_ids.insert(id.clone());
-    }
-
-    let mut buffer: Vec<&Post> = Vec::new();
-    let mut extra_chunks: Vec<Vec<&Post>> = Vec::new();
-    for post in posts.iter().skip(per_page) {
-        let id = post_key(post);
-        if known_ids.contains(&id) {
-            continue;
-        }
-        buffer.push(post);
-        known_ids.insert(id);
-        if buffer.len() == per_page {
-            extra_chunks.push(buffer.clone());
-            buffer.clear();
-        }
-    }
-    if !buffer.is_empty() {
-        extra_chunks.push(buffer);
-    }
-
-    let mut seen_cursors: HashSet<String> = HashSet::new();
-    seen_cursors.insert(head_cursor.clone());
-
-    for chunk in &extra_chunks {
-        if let Some(last) = chunk.last() {
-            let cursor = page_cursor(last);
-            if seen_cursors.insert(cursor.clone()) {
-                let ids = chunk.iter().map(|p| post_key(p)).collect::<Vec<_>>();
-                new_records.push(StoredPage { cursor, posts: ids });
+    // If head changed, we need to rebuild all pages from scratch
+    // because posts have shifted positions
+    let new_records = if head_changed {
+        // Build all pages from current post list
+        let mut records = Vec::new();
+        for chunk in posts.chunks(per_page) {
+            if let Some(last) = chunk.last() {
+                let cursor = page_cursor(last);
+                let ids = chunk.iter().map(post_key).collect::<Vec<_>>();
+                records.push(StoredPage { cursor, posts: ids });
             }
         }
-    }
-
-    for page in stored_pages.iter() {
-        if seen_cursors.insert(page.cursor.clone()) {
-            new_records.push(page.clone());
-        }
-    }
-
-    let head_changed = previous_head_cursor
-        .map(|cursor| cursor != head_cursor)
-        .unwrap_or(true);
+        records
+    } else {
+        // Head unchanged, reuse cached pages
+        stored_pages
+    };
 
     let mut plans: Vec<PagePlan> = Vec::new();
 
@@ -175,16 +140,29 @@ pub(super) fn render_homepage(
             vec![page_output_path(html_root, &record.cursor)]
         };
 
-        let exists_previously = stored_pages.iter().any(|page| page.cursor == record.cursor);
-        let mut needs_render = index == 0 || !exists_previously;
-        if !needs_render {
-            if head_changed && index == 1 {
-                needs_render = true;
+        // Determine if we need to render this page
+        let needs_render = if head_changed {
+            // Always render first page when head changes
+            // For other pages, check if file exists
+            if index == 0 {
+                true
             } else {
-                let path = page_output_path(html_root, &record.cursor);
-                needs_render = !path.exists();
+                let path = if index == 0 {
+                    html_root.join("index.html")
+                } else {
+                    page_output_path(html_root, &record.cursor)
+                };
+                !path.exists()
             }
-        }
+        } else {
+            // Head unchanged, only render if missing
+            let path = if index == 0 {
+                html_root.join("index.html")
+            } else {
+                page_output_path(html_root, &record.cursor)
+            };
+            !path.exists()
+        };
 
         if needs_render {
             plans.push(PagePlan {
