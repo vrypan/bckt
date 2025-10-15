@@ -32,6 +32,8 @@ compile locally with `cargo install --path .`.
 There's no demo, but you can check [blog.vrypan.net](https://blog.vrypan.net/)
 built with bckt and a slightly modified default theme.
 
+Also [steve.photo](https://steve.photo) is built using bckt and bckt-photo (see [Extras](#extras)).
+
 ## Get Started
 
 ```bash
@@ -71,3 +73,7 @@ The companion `bckt-fc` command shows how different types of content can be inte
 ### bckt-mcp
 [bckt-mcp](https://github.com/vrypan/bckt-mcp) is an experimental MCP server you can run locally and helps you create posts from your favorite MCP-enabled AI tool.
 It takes care of frontmatter, filenames, and filepaths.
+
+### bckt-photo
+[bckt-photo](https://github.com/vrypan/bckt-photo): command line tool written that creates bckt blog posts from image files using their EXIF data. It comes with a theme designed for photography blogs.
+
