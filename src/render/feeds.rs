@@ -248,6 +248,7 @@ fn build_feed_item(config: &Config, post: &Post) -> Result<FeedItem> {
         &post.permalink,
         &config.base_url,
         &post.attached,
+        true,
     );
 
     Ok(FeedItem {

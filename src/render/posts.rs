@@ -157,6 +157,7 @@ fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
         &post.permalink,
         &config.base_url,
         &post.attached,
+        false,
     );
 
     Ok(PostTemplate {
@@ -188,6 +189,7 @@ pub(super) fn build_post_summary(config: &Config, post: &Post) -> Result<PostSum
         &post.permalink,
         &config.base_url,
         &post.attached,
+        false,
     );
 
     Ok(PostSummary {
@@ -364,6 +366,7 @@ pub(super) fn att_to_absolute(
     permalink: &str,
     base_url: &str,
     attached: &[PathBuf],
+    return_absolute: bool,
 ) -> String {
     if attached.is_empty() {
         return body.to_string();
@@ -403,7 +406,7 @@ pub(super) fn att_to_absolute(
 
             let value = &body[i + prefix_len..value_end];
             if let Some(rewritten) =
-                rewrite_if_attached(value, permalink, base_url, &attached_paths)
+                rewrite_if_attached(value, permalink, base_url, &attached_paths, return_absolute)
             {
                 output.push_str(&rewritten);
             } else {
@@ -441,6 +444,7 @@ fn rewrite_if_attached(
     permalink: &str,
     base_url: &str,
     attached: &HashSet<String>,
+    return_absolute: bool,
 ) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -484,7 +488,12 @@ fn rewrite_if_attached(
     } else {
         format!("{}{}", base, suffix)
     };
-    Some(absolute_url(base_url, &joined))
+
+    if return_absolute {
+        Some(absolute_url(base_url, &joined))
+    } else {
+        Some(joined)
+    }
 }
 
 fn join_permalink(permalink: &str, relative: &str) -> String {
