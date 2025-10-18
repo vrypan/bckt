@@ -250,6 +250,7 @@ pub(super) fn render_archives(
     for (year, group) in year_groups.iter().rev() {
         let summaries = group
             .iter()
+            .rev()
             .map(|post| build_post_summary(config, post))
             .collect::<Result<Vec<_>>>()?;
         let payload = YearArchiveCachePayload {
@@ -299,6 +300,7 @@ pub(super) fn render_archives(
     for ((year, month), group) in month_groups.iter().rev() {
         let summaries = group
             .iter()
+            .rev()
             .map(|post| build_post_summary(config, post))
             .collect::<Result<Vec<_>>>()?;
         let payload = MonthArchiveCachePayload {
@@ -405,6 +407,7 @@ pub(super) fn render_tag_archives(
         let summaries = bucket
             .indices
             .iter()
+            .rev()
             .map(|&idx| build_post_summary(config, &posts[idx]))
             .collect::<Result<Vec<_>>>()?;
         let pagination = PaginationContext {
