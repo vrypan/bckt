@@ -1,0 +1,33 @@
+<header>
+  <div class="post-card__body">
+  <div class="post-card__content reading-flow">
+    {{ post.body | safe }}
+  </div>
+</div>
+{% set images = post.images | default([]) %}
+{% if images %}
+<div class="post-card__media post-card__media--images">
+  {% for image in images %}
+        <figure class="post-media__item">
+          <img src="{{ post.permalink | safe }}{{ image }}" alt="">
+        </figure>
+    {% endfor %}
+</div>
+{% endif %}
+{% set videos = post.videos | default([]) %}
+{% if videos %}
+<div class="post-card__media post-card__media--videos">
+  {% for video in videos %}
+      <div class="post-card__media-video">
+        <video controls preload="metadata" playsinline src="{{ post.permalink | safe }}{{ video }}"></video>
+      </div>
+  {% endfor %}
+</div>
+{% endif %}
+</header>
+<div class="post-meta post-meta--inline">
+    <span class="meta-divider">◉</span>
+    <time class="post-meta__time" datetime="{{ post.date_iso }}">{{ post.date_iso | format_date("%a, %d %B %Y %H:%M") }}</time>
+    <span class="meta-divider">//</span>
+    <span><a href="https://farcaster.xyz/{{ post.castid | safe }}">on farcaster →</a></span>
+  </div>

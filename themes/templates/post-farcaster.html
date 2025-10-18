@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block page_title %}
+{{ config.title | default("bckt") }}
+{% endblock page_title %}
+
+{% block page_meta %}
+{% set canonical = base_url ~ post.permalink %}
+<meta name="description" content="{{ post.abstract | default(post.excerpt) | trim }}">
+<meta property="og:site_name" content="{{ config.title | default("bckt") }}">
+<meta property="og:type" content="article">
+<meta property="og:title" content="{{ post.title | default(config.title | default("bckt")) | trim }}">
+<meta property="og:url" content="{{ canonical | safe }}">
+<meta property="og:description" content="{{ post.abstract | default(post.excerpt) | trim}}">
+<link rel="canonical" href="{{ canonical | safe }}">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{{ post.title | default(config.title | default("bckt")) | trim }}">
+<meta name="twitter:description" content="{{ post.abstract | default(post.excerpt) | trim }}">
+{% if post.image %}
+<meta property="og:image" content="{{ canonical | safe}}{{ post.image }}"/>
+<meta name="twitter:image" content="{{ canonical | safe}}{{ post.image }}"/>
+{% endif %}
+
+{% endblock page_meta %}
+
+{% block content %}
+<article class="post-article post-article--farcaster">
+  <header class="post-header">
+    <div class="post-meta">
+      <time class="post-meta__time" datetime="{{ post.date_iso }}">{{ post.date }}</time>
+      {% if post.tags %}
+        <span class="meta-divider">•</span>
+        <ul class="post-tags">
+          {% for tag in post.tags %}
+          <li><a href="/tags/{{ tag | replace(' ', '-') | lower }}/">#{{ tag }}</a></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  </header>
+  <div class="post-content reading-flow">
+    {{ post.body | safe }}
+  </div>
+  {% set images = post.images | default([]) %}
+  {% if images %}
+  <div class="post-media post-media--images">
+    {% for image in images %}
+        <figure class="post-media__item">
+          <img src="{{ post.permalink | safe }}{{ image }}" alt="">
+        </figure>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% set videos = post.videos | default([]) %}
+  {% if videos %}
+    {% for video in videos %}
+      <div class="post-media post-media--videos">
+      <div class="post-card__media-video">
+        <video controls preload="metadata" playsinline src="{{ post.permalink | safe }}{{ video }}"></video>
+      </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+</article>
+{% endblock content %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block page_meta %}
+<meta name="title" content="{{ config.title }} | RSS feeds">
+<meta name="description" content="RSS Feeds for blog.vrypan.net">
+{% endblock page_meta %}
+
+
+{% block content %}
+<h1>Available RSS feeds.</h1>
+	<p>
+	All posts: <a href="{{ base_url | safe }}/rss.xml">Direct link</a>
+		<button class="ml-2 inline-block rounded px-6 border-2 border-gray-700"
+			onclick="(function(btn){var z=document.createElement('script');document.subtomeBtn=btn;z.src='https://www.subtome.com/load.js';document.body.appendChild(z);})(this)"
+			data-subtome-feeds="{{ base_url | safe }}/rss.xml"
+		>Subscribe</button>
+	</p>
+	{% for tag in config.rss_tags %}
+		<p>
+		Posts tagged "{{tag}}": <a href="{{ base_url | safe }}/rss-{{ tag }}.xml">Direct link</a>
+		<button class="ml-2 inline-block rounded px-6 border-2 border-gray-700"
+			type="button" 
+			onclick="(function(btn){var z=document.createElement('script');document.subtomeBtn=btn;z.src='https://www.subtome.com/load.js';document.body.appendChild(z);})(this)"
+			data-subtome-feeds="{{ base_url | safe }}/rss-{{ tag }}.xml"
+		>Subscribe</button>
+		</p>
+	{% endfor %}
+<p>
+All feeds contain complete posts.
+</p>
+{% endblock %}

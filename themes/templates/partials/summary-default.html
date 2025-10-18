@@ -1,0 +1,26 @@
+{% set summary_text = post.abstract | default(post.excerpt) %}
+<header>
+  <div class="post-meta post-meta--compact">
+    {% if post.title %}
+      <a class="post-card__title" href="{{ post.permalink | safe }}" rel="bookmark">{{ post.title }}</a>
+    {% endif %}
+    {% if post.tags %}
+      <ul class="post-tags post-tags--compact">
+        {% for tag in post.tags %}
+        <li><a href="/tags/{{ tag | replace(' ', '-') | lower }}/">#{{ tag }}</a></li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    {% if summary_text %}
+      <span class="meta-divider">·</span>
+      <span class="post-card__abstract">{{ summary_text }}</span>
+    {% endif %}
+    
+  </div>
+</header>
+<div class="post-meta post-meta--inline">
+    <span class="meta-divider">◉</span>
+    <time class="post-meta__time" datetime="{{ post.date_iso }}">{{ post.date_iso | format_date("%a, %d %B %Y %H:%M") }}</time>
+    <span class="meta-divider">//</span>
+    <span><a class="post-card__continue" href="{{ post.permalink | safe }}" aria-label="Read full post">Continue reading →</a></span>
+  </div>

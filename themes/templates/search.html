@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block page_title %}Search · {{ config.title | default("bckt") }}{% endblock page_title %}
+
+{% block page_meta %}
+  <meta name="robots" content="noindex">
+{% endblock page_meta %}
+
+{% block content %}
+  <section
+    class="page-section search-page"
+    data-search-root
+    data-search-index="/assets/search/search-index.json"
+  >
+    <header class="search-header">
+      <h1 class="page-title">Search</h1>
+    </header>
+
+    <div class="search-panel">
+      <div class="search-panel__row">
+        <label class="search-field">
+          <span class="search-field__label">Search for</span>
+          <div class="search-field__control">
+            <span class="search-field__icon" aria-hidden="true">⌕</span>
+            <input
+              type="search"
+              name="q"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Type keywords…"
+              class="search-field__input"
+              data-search-input
+            >
+          </div>
+        </label>
+        <div class="search-sort">
+          <label for="search-sort" class="search-filter__label">Sort by</label>
+          <select id="search-sort" class="search-filter__select search-sort__select" data-search-sort>
+            <option value="relevance" selected>Relevance</option>
+            <option value="newest">Newest</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="search-panel__actions">
+        <button type="button" class="search-options__toggle" data-search-toggle aria-expanded="false">More options</button>
+      </div>
+
+      <div class="search-filters" aria-label="Search filters" data-search-filters hidden>
+        <div class="search-filter">
+          <label for="search-filter-language" class="search-filter__label">Language</label>
+          <select id="search-filter-language" class="search-filter__select" data-search-filter="language"></select>
+        </div>
+        <div class="search-filter">
+          <label for="search-filter-type" class="search-filter__label">Type</label>
+          <select id="search-filter-type" class="search-filter__select" data-search-filter="type"></select>
+        </div>
+        <div class="search-filter">
+          <label for="search-filter-tag" class="search-filter__label">Tag</label>
+          <select id="search-filter-tag" class="search-filter__select" data-search-filter="tag"></select>
+        </div>
+        <div class="search-filter">
+          <label for="search-filter-year" class="search-filter__label">Year</label>
+          <select id="search-filter-year" class="search-filter__select" data-search-filter="year"></select>
+        </div>
+      </div>
+
+      <p class="search-status" data-search-status></p>
+    </div>
+
+    <div class="search-results" data-search-results></div>
+    {% include "partials/search-results.html" %}
+  </section>
+{% endblock content %}
+
+{% block page_scripts %}
+  <script defer src="/assets/js/minisearch.js"></script>
+  <script defer src="/assets/js/search.js"></script>
+{% endblock page_scripts %}
