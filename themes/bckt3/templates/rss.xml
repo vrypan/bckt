@@ -9,20 +9,32 @@
     <atom:link href="{{ feed.feed_url }}" rel="self" type="application/rss+xml"/>
     {% for item in feed.items %}
     <item>
-      <title>{{ item.title | default(value=item.slug) }}</title>
+      {% if item.title %}<title>{{ item.title | default(value=item.slug) }}</title>{% endif %}
       <link>{{ base_url }}{{ item.permalink }}</link>
       <guid isPermaLink="true">{{ base_url }}{{ item.permalink }}</guid>
       <pubDate>{{ item.pub_date }}</pubDate>
       <description>{{ item.excerpt | default(value=item.title | default(value=item.slug)) }}</description>
       <content:encoded><![CDATA[
 	{% if item.image %}
-        <img  src="{{ item.permalink | safe }}{{ item.image }}">
+        <img  src="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}">
         {% endif %}
 	{{ item.body }}
 ]]></content:encoded>
-      {% if item.image %}
-      <enclosure url="{{ item.image }}" type="image/jpeg"/>
-      {% endif %}
+ {% if item.image %}
+    {% set ext = item.image | lower | split('.') | last %}
+    {% if ext == "png" %}
+      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="image/png"/>
+    {% elif ext == "jpg" or ext == "jpeg" %}
+      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="image/jpeg"/>
+    {% elif ext == "gif" %}
+      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="image/gif"/>
+    {% elif ext == "webp" %}
+      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="image/webp"/>
+    {% else %}
+      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="application/octet-stream"/>
+    {% endif %}
+  {% endif %}
+
     </item>
     {% endfor %}
   </channel>

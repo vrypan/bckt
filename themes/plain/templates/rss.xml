@@ -1,25 +1,42 @@
 {% autoescape false %}<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom">
-<channel>
-<title>{{ feed.title }}</title>
-<link>{{ feed.site_url }}</link>
-<description>{{ feed.description }}</description>
-<lastBuildDate>{{ feed.updated }}</lastBuildDate>
-<generator>bckt</generator>
-<atom:link href="{{ feed.feed_url }}" rel="self" type="application/rss+xml"/>
-{% for item in feed.items %}
-<item>
-<title>{{ item.title | default(value=item.slug) }}</title>
-<link>{{ base_url }}{{ item.permalink }}</link>
-<guid isPermaLink="true">{{ base_url }}{{ item.permalink }}</guid>
-<pubDate>{{ item.pub_date }}</pubDate>
-<description>{{ item.excerpt | default(value=item.title | default(value=item.slug)) }}</description>
-<content:encoded><![CDATA[{{ item.body }}]]></content:encoded>
-{% if item.image %}
-<enclosure url="{{ item.image }}" type="image/jpeg"/>
-{% endif %}
-</item>
-{% endfor %}
-</channel>
+  <channel>
+    <title>{{ feed.title }}</title>
+    <link>{{ feed.site_url }}</link>
+    <description>{{ feed.description }}</description>
+    <lastBuildDate>{{ feed.updated }}</lastBuildDate>
+    <generator>bckt</generator>
+    <atom:link href="{{ feed.feed_url }}" rel="self" type="application/rss+xml"/>
+    {% for item in feed.items %}
+    <item>
+      {% if item.title %}<title>{{ item.title | default(value=item.slug) }}</title>{% endif %}
+      <link>{{ base_url }}{{ item.permalink }}</link>
+      <guid isPermaLink="true">{{ base_url }}{{ item.permalink }}</guid>
+      <pubDate>{{ item.pub_date }}</pubDate>
+      <description>{{ item.excerpt | default(value=item.title | default(value=item.slug)) }}</description>
+      <content:encoded><![CDATA[
+	{% if item.image %}
+        <img  src="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}">
+        {% endif %}
+	{{ item.body }}
+]]></content:encoded>
+ {% if item.image %}
+    {% set ext = item.image | lower | split('.') | last %}
+    {% if ext == "png" %}
+      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="image/png"/>
+    {% elif ext == "jpg" or ext == "jpeg" %}
+      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="image/jpeg"/>
+    {% elif ext == "gif" %}
+      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="image/gif"/>
+    {% elif ext == "webp" %}
+      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="image/webp"/>
+    {% else %}
+      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="application/octet-stream"/>
+    {% endif %}
+  {% endif %}
+
+    </item>
+    {% endfor %}
+  </channel>
 </rss>
 {% endautoescape %}
