@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
@@ -160,6 +160,22 @@ fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
         false,
     );
 
+    // Build attachments metadata map
+    let mut attachments = HashMap::new();
+    for relative_path in &post.attached {
+        let normalized = normalize_path(relative_path);
+        let asset_path = post.source_dir.join(relative_path);
+
+        if let Ok(metadata) = fs::metadata(&asset_path) {
+            let size = metadata.len();
+            let mime_type = mime_guess::from_path(&asset_path)
+                .first_or_octet_stream()
+                .to_string();
+
+            attachments.insert(normalized, AttachmentMeta { size, mime_type });
+        }
+    }
+
     Ok(PostTemplate {
         title: post.title.clone(),
         slug: post.slug.clone(),
@@ -173,6 +189,7 @@ fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
         body,
         excerpt: post.excerpt.clone(),
         permalink: post.permalink.clone(),
+        attachments,
         extra: post.extra.clone(),
     })
 }
@@ -192,6 +209,22 @@ pub(super) fn build_post_summary(config: &Config, post: &Post) -> Result<PostSum
         false,
     );
 
+    // Build attachments metadata map
+    let mut attachments = HashMap::new();
+    for relative_path in &post.attached {
+        let normalized = normalize_path(relative_path);
+        let asset_path = post.source_dir.join(relative_path);
+
+        if let Ok(metadata) = fs::metadata(&asset_path) {
+            let size = metadata.len();
+            let mime_type = mime_guess::from_path(&asset_path)
+                .first_or_octet_stream()
+                .to_string();
+
+            attachments.insert(normalized, AttachmentMeta { size, mime_type });
+        }
+    }
+
     Ok(PostSummary {
         title: post.title.clone(),
         slug: post.slug.clone(),
@@ -204,6 +237,7 @@ pub(super) fn build_post_summary(config: &Config, post: &Post) -> Result<PostSum
         body,
         excerpt: post.excerpt.clone(),
         permalink: post.permalink.clone(),
+        attachments,
         extra: post.extra.clone(),
     })
 }
@@ -224,8 +258,15 @@ pub(super) struct PostTemplate {
     pub(super) body: String,
     pub(super) excerpt: String,
     pub(super) permalink: String,
+    pub(super) attachments: HashMap<String, AttachmentMeta>,
     #[serde(flatten)]
     pub(super) extra: serde_json::Map<String, JsonValue>,
+}
+
+#[derive(Serialize)]
+pub(super) struct AttachmentMeta {
+    pub(super) size: u64,
+    pub(super) mime_type: String,
 }
 
 #[derive(Serialize)]
@@ -243,6 +284,7 @@ pub(super) struct PostSummary {
     pub(super) body: String,
     pub(super) excerpt: String,
     pub(super) permalink: String,
+    pub(super) attachments: HashMap<String, AttachmentMeta>,
     #[serde(flatten)]
     pub(super) extra: serde_json::Map<String, JsonValue>,
 }

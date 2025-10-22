@@ -20,21 +20,11 @@
         {% endif %}
 	{{ item.body }}
 ]]></content:encoded>
- {% if item.image %}
-    {% set ext = item.image | lower | split('.') | last %}
-    {% if ext == "png" %}
-      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="image/png"/>
-    {% elif ext == "jpg" or ext == "jpeg" %}
-      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="image/jpeg"/>
-    {% elif ext == "gif" %}
-      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="image/gif"/>
-    {% elif ext == "webp" %}
-      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="image/webp"/>
-    {% else %}
-      <enclosure url="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}" type="application/octet-stream"/>
-    {% endif %}
-  {% endif %}
-
+{% for path, att in item.attachments | items %}
+   <enclosure url="{{ base_url }}{{ item.permalink }}{{ path }}"
+   type="{{ att.mime_type }}"
+   length="{{ att.size }}"/>
+{% endfor %}
     </item>
     {% endfor %}
   </channel>
