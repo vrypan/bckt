@@ -14,7 +14,7 @@ use crate::content::Post;
 use crate::utils::absolute_url;
 
 use super::listing::{page_url, tag_index_url, tag_slug};
-use super::posts::att_to_absolute;
+use super::posts::{att_to_absolute, build_post_summary, PostSummary};
 use super::templates::render_template_with_scope;
 use super::utils::{format_rfc2822, format_rfc3339, sanitize_cdata, xml_escape};
 
@@ -229,20 +229,10 @@ fn collect_tag_sitemap_entries(posts: &[Post], config: &Config) -> Result<Vec<Si
     Ok(entries)
 }
 
-fn build_feed_item(config: &Config, post: &Post) -> Result<FeedItem> {
-    let item_title = post
-        .title
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or(&post.slug);
-    let link = absolute_url(&config.base_url, &post.permalink);
-    let pub_date = format_rfc2822(&post.date)?;
-    let description = if post.excerpt.trim().is_empty() {
-        item_title.to_string()
-    } else {
-        post.excerpt.clone()
-    };
+fn build_feed_item(config: &Config, post: &Post) -> Result<PostSummary> {
+    let mut summary = build_post_summary(config, post)?;
 
+    // Reprocess body with return_absolute=true for RSS feeds and sanitize CDATA
     let body = att_to_absolute(
         &post.body_html,
         &post.permalink,
@@ -250,15 +240,13 @@ fn build_feed_item(config: &Config, post: &Post) -> Result<FeedItem> {
         &post.attached,
         true,
     );
+    summary.body = sanitize_cdata(&body);
 
-    Ok(FeedItem {
-        title: xml_escape(item_title),
-        link: xml_escape(&link),
-        guid: xml_escape(&link),
-        pub_date: xml_escape(&pub_date),
-        description: xml_escape(&description),
-        content: sanitize_cdata(&body),
-    })
+    // Add RSS-specific pub_date in RFC 2822 format
+    let pub_date = format_rfc2822(&post.date)?;
+    summary.extra.insert("pub_date".to_string(), JsonValue::String(pub_date));
+
+    Ok(summary)
 }
 
 fn config_tag_feeds(config: &Config) -> Vec<String> {
@@ -299,18 +287,9 @@ struct FeedContext {
     feed_url: String,
     description: String,
     updated: String,
-    items: Vec<FeedItem>,
+    items: Vec<PostSummary>,
 }
 
-#[derive(Serialize)]
-struct FeedItem {
-    title: String,
-    link: String,
-    guid: String,
-    pub_date: String,
-    description: String,
-    content: String,
-}
 
 #[derive(Clone)]
 struct TagBucket {
