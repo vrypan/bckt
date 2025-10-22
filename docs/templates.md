@@ -42,5 +42,46 @@ Most templates receive:
 - `pagination` — pagination metadata where applicable.
 - `tag`, `year`, `month` — extra values specific to tag or archive templates.
 
+#### PostSummary and PostTemplate Objects
+
+Both `PostSummary` (used in listings and RSS) and `PostTemplate` (used in individual post pages) expose:
+
+- `title`, `slug`, `permalink` — basic post identification
+- `date`, `date_iso` — formatted date and ISO 8601 timestamp
+- `tags` — array of tag strings
+- `body`, `excerpt` — HTML content and excerpt
+- `attachments` — HashMap of attached files with metadata (see below)
+- All custom frontmatter fields via the flattened `extra` map
+
+#### Attachment Metadata
+
+Each post exposes an `attachments` map where keys are file paths and values contain:
+- `size` — file size in bytes
+- `mime_type` — MIME type (e.g., `image/png`, `application/pdf`)
+
+**Direct lookup:**
+```jinja
+{% if post.image %}
+  {% set att = post.attachments[post.image] %}
+  <img src="{{ post.image }}" alt="Size: {{ att.size }} bytes">
+{% endif %}
+```
+
+**Loop through all attachments:**
+```jinja
+{% for path, att in post.attachments | items %}
+  <a href="{{ path }}">{{ path }}</a> ({{ att.mime_type }}, {{ att.size }} bytes)
+{% endfor %}
+```
+
+**RSS enclosures:**
+```xml
+{% for path, att in item.attachments | items %}
+  <enclosure url="{{ base_url }}{{ item.permalink }}{{ path }}"
+             type="{{ att.mime_type }}"
+             length="{{ att.size }}"/>
+{% endfor %}
+```
+
 Refer to the existing templates for patterns and helper classes you can reuse
 when building custom layouts or partials.

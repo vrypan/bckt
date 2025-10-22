@@ -50,7 +50,9 @@ Deploy by publishing the generated `html/` directory with any static host.
 
 Detailed guides live in [`docs/`](docs/README.md):
 
+- Posts organization, frontmatter, and `.bcktignore` for excluding directories
 - Theme structure (templates, pages, static assets)
+- Attachment metadata (file sizes and MIME types) in templates
 - Custom MiniJinja filters such as `format_date`
 - Client-side search integration and configuration tips
 

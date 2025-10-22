@@ -8,6 +8,8 @@ All MiniJinja templates and static assets are editable; see the documents below
 for detailed reference.
 
 ## Contents
+- [Posts and Content](posts.md) — organizing posts, frontmatter, attached files,
+  and ignoring directories with `.bcktignore`.
 - [Pages Directory](pages.md) — how `pages/` files render and how to build
 dedicated pages.
 - [Templates Overview](templates.md) — anatomy of core templates and available
