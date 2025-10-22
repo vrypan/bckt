@@ -14,7 +14,7 @@ use crate::content::Post;
 use crate::utils::absolute_url;
 
 use super::listing::{page_url, tag_index_url, tag_slug};
-use super::posts::{att_to_absolute, build_post_summary, PostSummary};
+use super::posts::{PostSummary, att_to_absolute, build_post_summary};
 use super::templates::render_template_with_scope;
 use super::utils::{format_rfc2822, format_rfc3339, sanitize_cdata, xml_escape};
 
@@ -244,7 +244,9 @@ fn build_feed_item(config: &Config, post: &Post) -> Result<PostSummary> {
 
     // Add RSS-specific pub_date in RFC 2822 format
     let pub_date = format_rfc2822(&post.date)?;
-    summary.extra.insert("pub_date".to_string(), JsonValue::String(pub_date));
+    summary
+        .extra
+        .insert("pub_date".to_string(), JsonValue::String(pub_date));
 
     Ok(summary)
 }
@@ -289,7 +291,6 @@ struct FeedContext {
     updated: String,
     items: Vec<PostSummary>,
 }
-
 
 #[derive(Clone)]
 struct TagBucket {
