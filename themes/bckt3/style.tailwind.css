@@ -795,6 +795,117 @@
     font-style: italic;
   }
 
+  .post-content .markdown-alert {
+    margin: 1.9rem 0;
+    padding: 1rem 1.25rem;
+    border-left: 4px solid;
+    border-radius: 0.5rem;
+    font-style: normal;
+  }
+
+  .post-content .markdown-alert > *:first-child {
+    margin-top: 0;
+  }
+
+  .post-content .markdown-alert > *:last-child {
+    margin-bottom: 0;
+  }
+
+  .post-content .markdown-alert-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .post-content .markdown-alert-title::before {
+    content: "";
+    display: inline-block;
+    width: 1.1rem;
+    height: 1.1rem;
+    flex-shrink: 0;
+  }
+
+  .post-content .markdown-alert-note {
+    background: #dbeafe;
+    border-color: #3b82f6;
+    color: #1e3a8a;
+  }
+
+  .post-content .markdown-alert-note .markdown-alert-title {
+    color: #1e40af;
+  }
+
+  .post-content .markdown-alert-note .markdown-alert-title::before {
+    content: "ℹ";
+    background: #3b82f6;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: bold;
+  }
+
+  .post-content .markdown-alert-tip {
+    background: #d1fae5;
+    border-color: #10b981;
+    color: #065f46;
+  }
+
+  .post-content .markdown-alert-tip .markdown-alert-title {
+    color: #047857;
+  }
+
+  .post-content .markdown-alert-tip .markdown-alert-title::before {
+    content: "💡";
+  }
+
+  .post-content .markdown-alert-important {
+    background: #fce7f3;
+    border-color: #ec4899;
+    color: #831843;
+  }
+
+  .post-content .markdown-alert-important .markdown-alert-title {
+    color: #9f1239;
+  }
+
+  .post-content .markdown-alert-important .markdown-alert-title::before {
+    content: "❗";
+  }
+
+  .post-content .markdown-alert-warning {
+    background: #fef3c7;
+    border-color: #f59e0b;
+    color: #78350f;
+  }
+
+  .post-content .markdown-alert-warning .markdown-alert-title {
+    color: #92400e;
+  }
+
+  .post-content .markdown-alert-warning .markdown-alert-title::before {
+    content: "⚠";
+  }
+
+  .post-content .markdown-alert-caution {
+    background: #fee2e2;
+    border-color: #ef4444;
+    color: #7f1d1d;
+  }
+
+  .post-content .markdown-alert-caution .markdown-alert-title {
+    color: #991b1b;
+  }
+
+  .post-content .markdown-alert-caution .markdown-alert-title::before {
+    content: "🔥";
+  }
+
   .post-content code {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     font-size: 0.8rem;
