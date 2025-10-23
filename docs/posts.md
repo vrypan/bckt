@@ -82,3 +82,122 @@ Files listed in the `attached` frontmatter field are:
    - `mime_type` — MIME type detected from file extension
 
 See [templates.md](templates.md#attachment-metadata) for usage examples.
+
+## Markdown Extensions
+
+`bckt` uses [Comrak](https://github.com/kivikakk/comrak) for Markdown rendering with support for GitHub Flavored Markdown (GFM) and additional extensions.
+
+### Enabled Features
+
+#### GitHub Flavored Markdown (GFM)
+
+**Tables**
+```markdown
+| Header 1 | Header 2 |
+|----------|----------|
+| Cell 1   | Cell 2   |
+```
+
+**Strikethrough**
+```markdown
+~~This text is crossed out~~
+```
+
+**Autolinks**
+```markdown
+Visit www.example.com or https://github.com
+```
+
+**Task Lists**
+```markdown
+- [x] Completed task
+- [ ] Pending task
+```
+
+#### GitHub Alerts
+
+Create styled callout boxes using the alert syntax:
+
+```markdown
+> [!NOTE]
+> Useful information that users should know, even when skimming content.
+
+> [!TIP]
+> Helpful advice for doing things better or more easily.
+
+> [!IMPORTANT]
+> Key information users need to know to achieve their goal.
+
+> [!WARNING]
+> Urgent info that needs immediate user attention to avoid problems.
+
+> [!CAUTION]
+> Advises about risks or negative outcomes of certain actions.
+```
+
+Alerts are rendered with CSS classes (`markdown-alert`, `markdown-alert-note`, etc.) that you can style in your theme.
+
+#### Footnotes
+
+Reference-style footnotes with automatic numbering:
+
+```markdown
+Here is some text with a footnote.[^1]
+
+More text with another footnote.[^note]
+
+[^1]: This is the first footnote.
+[^note]: Named footnotes are also supported.
+```
+
+#### Emoji Shortcodes
+
+Use emoji shortcodes for easy emoji insertion:
+
+```markdown
+Hello :wave: I :heart: Markdown! :smile:
+```
+
+Common shortcodes include `:smile:`, `:heart:`, `:wave:`, `:tada:`, `:rocket:`, and many more.
+
+#### Figure with Caption
+
+Images with title attributes are automatically rendered as semantic HTML figures:
+
+```markdown
+![Alt text](image.png "This becomes the caption")
+```
+
+Renders as:
+```html
+<figure>
+  <img src="image.png" alt="Alt text" title="This becomes the caption" />
+  <figcaption>This becomes the caption</figcaption>
+</figure>
+```
+
+### Raw HTML
+
+Raw HTML is allowed in Markdown and will be rendered as-is. This enables you to use custom HTML elements when needed:
+
+```markdown
+This is **markdown** with <span class="custom">HTML elements</span>.
+
+<div class="callout">
+  Custom HTML blocks are also supported.
+</div>
+```
+
+### Code Blocks
+
+Fenced code blocks with syntax highlighting support:
+
+````markdown
+```rust
+fn main() {
+    println!("Hello, world!");
+}
+```
+````
+
+The language identifier is included in the HTML output as `lang="rust"` on the `<pre>` tag for syntax highlighting by your theme's JavaScript.

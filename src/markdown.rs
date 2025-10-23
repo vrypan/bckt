@@ -1,5 +1,5 @@
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{Arena, ComrakOptions, format_html, parse_document};
+use comrak::{Arena, Options, format_html, parse_document};
 
 const EXCERPT_LIMIT: usize = 280;
 
@@ -15,23 +15,25 @@ pub fn render_markdown(markdown: &str) -> MarkdownRender {
 
     let excerpt = extract_excerpt(root, EXCERPT_LIMIT);
 
-    let mut html = Vec::new();
-    format_html(root, &options, &mut html).expect("writing to Vec cannot fail");
-    let html = String::from_utf8(html).expect("comrak emits utf-8");
+    let mut html = String::new();
+    format_html(root, &options, &mut html).expect("writing to String cannot fail");
 
     MarkdownRender { html, excerpt }
 }
 
-fn options() -> ComrakOptions {
-    let mut options = ComrakOptions::default();
+fn options() -> Options<'static> {
+    let mut options = Options::default();
     options.extension.table = true;
     options.extension.autolink = true;
     options.extension.tasklist = true;
     options.extension.strikethrough = true;
     options.extension.footnotes = true;
+    options.extension.alerts = true;
+    options.extension.shortcodes = true;
     options.render.hardbreaks = false;
     options.render.github_pre_lang = true;
-    options.render.unsafe_ = true;
+    options.render.r#unsafe = true;
+    options.render.figure_with_caption = true;
     options.render.width = 0;
     options
 }
@@ -134,5 +136,43 @@ mod tests {
         let rendered = render_markdown(&text);
         assert_eq!(rendered.excerpt.len(), EXCERPT_LIMIT + 3);
         assert!(rendered.excerpt.ends_with("..."));
+    }
+
+    #[test]
+    fn renders_github_alerts() {
+        let markdown = "> [!NOTE]\n> This is a note alert\n\n> [!WARNING]\n> This is a warning";
+        let rendered = render_markdown(markdown);
+        assert!(
+            rendered.html.contains("markdown-alert"),
+            "{}",
+            rendered.html
+        );
+        assert!(
+            rendered.html.contains("markdown-alert-note"),
+            "{}",
+            rendered.html
+        );
+        assert!(
+            rendered.html.contains("markdown-alert-warning"),
+            "{}",
+            rendered.html
+        );
+    }
+
+    #[test]
+    fn renders_emoji_shortcodes() {
+        let markdown = "Hello :smile: and :heart: world!";
+        let rendered = render_markdown(markdown);
+        assert!(rendered.html.contains("😄"), "{}", rendered.html);
+        assert!(rendered.html.contains("❤"), "{}", rendered.html);
+    }
+
+    #[test]
+    fn renders_figure_with_caption() {
+        let markdown = "![alt text](https://example.com/image.png \"Image caption\")";
+        let rendered = render_markdown(markdown);
+        assert!(rendered.html.contains("<figure>"), "{}", rendered.html);
+        assert!(rendered.html.contains("<figcaption>"), "{}", rendered.html);
+        assert!(rendered.html.contains("Image caption"), "{}", rendered.html);
     }
 }
