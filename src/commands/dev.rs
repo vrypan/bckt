@@ -95,7 +95,12 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
     let server_url = if base_path.is_empty() {
         format!("http://{}:{}/", listener_addr.ip(), listener_addr.port())
     } else {
-        format!("http://{}:{}{}/", listener_addr.ip(), listener_addr.port(), base_path)
+        format!(
+            "http://{}:{}{}/",
+            listener_addr.ip(),
+            listener_addr.port(),
+            base_path
+        )
     };
     println!("bckt dev server running at {}", server_url);
 
@@ -501,7 +506,10 @@ mod tests {
     fn extract_base_path_from_full_url() {
         assert_eq!(extract_base_path("https://vrypan.net/blog/"), "/blog");
         assert_eq!(extract_base_path("https://vrypan.net/blog"), "/blog");
-        assert_eq!(extract_base_path("https://example.com/foo/bar/"), "/foo/bar");
+        assert_eq!(
+            extract_base_path("https://example.com/foo/bar/"),
+            "/foo/bar"
+        );
     }
 
     #[test]
