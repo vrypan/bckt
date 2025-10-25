@@ -28,21 +28,21 @@
             rel="icon"
             type="image/png"
             sizes="32x32"
-            href="/favicon-32x32.png"
+            href="{{ base_url }}/favicon-32x32.png"
         />
         <link
             rel="icon"
             type="image/png"
             sizes="16x16"
-            href="/favicon-16x16.png"
+            href="{{ base_url }}/favicon-16x16.png"
         />
         <link
             rel="apple-touch-icon"
             sizes="180x180"
-            href="/apple-touch-icon.png"
+            href="{{ base_url }}/apple-touch-icon.png"
         />
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="stylesheet" href="/style.css" />
+        <link rel="icon" href="{{ base_url }}/favicon.ico" />
+        <link rel="stylesheet" href="{{ base_url }}/style.css" />
 
 	{% block page_meta %}
         <meta name="description" content="{{ config.description }}">
@@ -56,8 +56,8 @@
         <meta name="twitter:title" content="{{ config.title | default("bckt") | trim }}">
         <meta name="twitter:description" content="{{ config.description | trim }}">
         {% if config.open_graph_image %}
-        <meta property="og:image" content="{{ config.open_graph_image | safe}}"/>
-        <meta name="twitter:image" content="{{ config.open_graph_image | safe }}"/>
+        <meta property="og:image" content="{{ base_url }}{{ config.open_graph_image | safe}}"/>
+        <meta name="twitter:image" content="{{ base_url }}{{ config.open_graph_image | safe }}"/>
         {% endif %}
         {% endblock page_meta %}
 
@@ -68,18 +68,18 @@
                 <div class="site-brand">
                     <a
                         class="site-brand__badge"
-                        href="/"
+                        href="{{ base_url }}/"
                         aria-label="Home"
                     >
                         <img
                             class="site-brand__avatar"
-                            src="/img/site-avatar.png"
+                            src="{{ base_url }}/img/site-avatar.png"
                             alt="{{ config.title | default('bckt') }} avatar"
                         />
                     </a>
                     <div class="site-brand__text">
                         <h1 class="site-title">
-                            <a href="/"
+                            <a href="{{ base_url }}/"
                                 >{{ config.title | default("bckt") }}</a
                             >
                         </h1>
@@ -89,9 +89,9 @@
                     </div>
                 </div>
                 <nav class="site-nav" aria-label="Primary navigation">
-                    <a class="site-nav__link" href="/">home</a>
-                    <a class="site-nav__link" href="/about/">about</a>
-                    <a class="site-nav__link" href="/search/">search</a>
+                    <a class="site-nav__link" href="{{ base_url }}/">home</a>
+                    <a class="site-nav__link" href="{{ base_url }}/about/">about</a>
+                    <a class="site-nav__link" href="{{ base_url }}/search/">search</a>
                    <a class="site-nav__link" href="{{ base_url }}/rss.xml">rss</a
                     >
                 </nav>

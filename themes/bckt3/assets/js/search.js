@@ -20,7 +20,8 @@
     year: root.querySelector('[data-search-filter="year"]'),
   };
 
-  const indexUrl = root.getAttribute('data-search-index') || '/assets/search/search-index.json';
+  const baseUrl = root.getAttribute('data-base-url') || '';
+  const indexUrl = root.getAttribute('data-search-index') || baseUrl + '/assets/search/search-index.json';
   let miniSearch = null;
   let documents = [];
   let lastBaseResults = [];
@@ -370,7 +371,7 @@
       for (const tag of result.tags) {
         const item = document.createElement('li');
         const link = document.createElement('a');
-        link.href = `/tags/${tagSlug(tag)}/`;
+        link.href = `${baseUrl}/tags/${tagSlug(tag)}/`;
         link.textContent = `#${tag}`;
         item.appendChild(link);
         list.appendChild(item);
@@ -412,7 +413,7 @@
       for (const tag of tags) {
         const item = document.createElement('li');
         const link = document.createElement('a');
-        link.href = `/tags/${tagSlug(tag)}/`;
+        link.href = `${baseUrl}/tags/${tagSlug(tag)}/`;
         link.textContent = `#${tag}`;
         item.appendChild(link);
         target.appendChild(item);

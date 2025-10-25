@@ -10,7 +10,8 @@
   <section
     class="page-section search-page"
     data-search-root
-    data-search-index="/assets/search/search-index.json"
+    data-search-index="{{ base_url }}/assets/search/search-index.json"
+    data-base-url="{{ base_url }}"
   >
     <header class="search-header">
       <h1 class="page-title">Search</h1>
@@ -74,6 +75,6 @@
 {% endblock content %}
 
 {% block page_scripts %}
-  <script defer src="/assets/js/minisearch.js"></script>
-  <script defer src="/assets/js/search.js"></script>
+  <script defer src="{{ base_url }}/assets/js/minisearch.js"></script>
+  <script defer src="{{ base_url }}/assets/js/search.js"></script>
 {% endblock page_scripts %}
