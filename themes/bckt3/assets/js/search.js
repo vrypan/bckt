@@ -325,12 +325,17 @@
       }
       const attrTarget = element.getAttribute('data-search-payload-attr');
       if (attrTarget) {
-        element.setAttribute(attrTarget, String(value));
+        const strValue = String(value);
+        const finalValue = (typeof value === 'string' && strValue.startsWith('/'))
+          ? baseUrl + strValue
+          : strValue;
+        element.setAttribute(attrTarget, finalValue);
         element.removeAttribute('hidden');
         return;
       }
       if (element.tagName === 'IMG' && typeof value === 'string') {
-        element.setAttribute('src', value);
+        const imgSrc = (value.startsWith('/')) ? baseUrl + value : value;
+        element.setAttribute('src', imgSrc);
         element.removeAttribute('hidden');
         return;
       }

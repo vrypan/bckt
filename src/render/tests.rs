@@ -541,7 +541,7 @@ fn generates_tag_rss_feeds_when_configured() {
 }
 
 #[test]
-fn rewrites_relative_asset_urls_to_absolute() {
+fn keeps_relative_paths_in_html_and_absolute_in_feeds() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();
     fs::create_dir_all(root.join("posts/media/images")).unwrap();
@@ -566,10 +566,15 @@ fn rewrites_relative_asset_urls_to_absolute() {
     .unwrap();
 
     let post_page = fs::read_to_string(root.join("html/2024/01/01/media/index.html")).unwrap();
-    assert!(post_page.contains("/2024/01/01/media/images/pic.png"));
-    assert!(post_page.contains("/2024/01/01/media/notes.txt"));
+    // HTML pages use relative paths (works regardless of base_url)
+    assert!(post_page.contains("images/pic.png"));
+    assert!(post_page.contains("notes.txt"));
+    // Should not contain absolute paths
+    assert!(!post_page.contains("/2024/01/01/media/images/pic.png"));
+    assert!(!post_page.contains("/2024/01/01/media/notes.txt"));
 
     let feed = fs::read_to_string(root.join("html/rss.xml")).unwrap();
+    // RSS feeds use absolute URLs (required for feed readers)
     assert!(feed.contains("/2024/01/01/media/images/pic.png"));
     assert!(feed.contains("/2024/01/01/media/notes.txt"));
 }

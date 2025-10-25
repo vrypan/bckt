@@ -524,17 +524,22 @@ fn rewrite_if_attached(
         return None;
     }
 
-    let base = join_permalink(permalink, path_part);
-    let joined = if suffix.is_empty() {
-        base
-    } else {
-        format!("{}{}", base, suffix)
-    };
-
     if return_absolute {
+        let base = join_permalink(permalink, path_part);
+        let joined = if suffix.is_empty() {
+            base
+        } else {
+            format!("{}{}", base, suffix)
+        };
         Some(absolute_url(base_url, &joined))
     } else {
-        Some(joined)
+        // Keep as relative path for HTML rendering - this works regardless of base_url
+        // because the file structure matches the URL structure
+        if suffix.is_empty() {
+            Some(path_part.to_string())
+        } else {
+            Some(format!("{}{}", path_part, suffix))
+        }
     }
 }
 
