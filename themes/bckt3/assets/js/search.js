@@ -251,7 +251,9 @@
       }
     }
 
-    const url = result.url || result.id || '#';
+    const url = (result.url && result.url.startsWith('/'))
+      ? baseUrl + result.url
+      : (result.url || result.id || '#');
 
     const titleNode = clone.querySelector('[data-search-title]');
     if (titleNode) {
@@ -358,7 +360,8 @@
       meta.appendChild(createDivider('·'));
       const titleLink = document.createElement('a');
       titleLink.className = 'post-card__title';
-      titleLink.href = result.url || result.id;
+      const titleUrl = result.url || result.id;
+      titleLink.href = (titleUrl && titleUrl.startsWith('/')) ? baseUrl + titleUrl : titleUrl;
       titleLink.innerHTML = highlightText(result.title, tokens);
       titleLink.rel = 'bookmark';
       meta.appendChild(titleLink);
@@ -389,7 +392,8 @@
       summary.appendChild(document.createTextNode('['));
       const continueLink = document.createElement('a');
       continueLink.className = 'post-card__continue';
-      continueLink.href = result.url || result.id;
+      const continueUrl = result.url || result.id;
+      continueLink.href = (continueUrl && continueUrl.startsWith('/')) ? baseUrl + continueUrl : continueUrl;
       continueLink.setAttribute('aria-label', 'Read full post');
       continueLink.textContent = 'Read→';
       summary.appendChild(continueLink);
