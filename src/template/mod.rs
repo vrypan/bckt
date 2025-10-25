@@ -15,6 +15,10 @@ pub fn environment(config: &Config) -> Result<Environment<'static>> {
         "base_url",
         Value::from_safe_string(normalize_base_url(&config.base_url)),
     );
+    env.add_global(
+        "base_path",
+        Value::from_safe_string(extract_base_path(&config.base_url)),
+    );
 
     let default_format = config.date_format.clone();
     env.add_function(
@@ -60,6 +64,28 @@ fn normalize_base_url(value: &str) -> String {
         return String::new();
     }
     trimmed.trim_end_matches('/').to_string()
+}
+
+fn extract_base_path(base_url: &str) -> String {
+    // Extract path component from base_url
+    // Examples:
+    //   "https://vrypan.net/blog/" -> "/blog"
+    //   "https://vrypan.net/" -> ""
+    //   "https://example.com" -> ""
+
+    if let Some(idx) = base_url.find("://") {
+        let after_scheme = &base_url[idx + 3..];
+        if let Some(slash_idx) = after_scheme.find('/') {
+            let path = &after_scheme[slash_idx..];
+            // Remove trailing slash
+            path.trim_end_matches('/').to_string()
+        } else {
+            String::new()
+        }
+    } else {
+        // No scheme, treat as path
+        base_url.trim_end_matches('/').to_string()
+    }
 }
 
 #[cfg(test)]
@@ -130,5 +156,44 @@ mod tests {
 
         let rendered = env.get_template("theme").unwrap().render(()).unwrap();
         assert_eq!(rendered, "solarized");
+    }
+
+    #[test]
+    fn base_path_extracts_path_from_base_url() {
+        let config = Config {
+            base_url: "https://vrypan.net/blog/".to_string(),
+            ..Default::default()
+        };
+        let mut env = environment(&config).unwrap();
+        env.add_template("path", "{{ base_path }}").unwrap();
+
+        let rendered = env.get_template("path").unwrap().render(()).unwrap();
+        assert_eq!(rendered, "/blog");
+    }
+
+    #[test]
+    fn base_path_empty_for_root_url() {
+        let config = Config {
+            base_url: "https://vrypan.net/".to_string(),
+            ..Default::default()
+        };
+        let mut env = environment(&config).unwrap();
+        env.add_template("path", "{{ base_path }}").unwrap();
+
+        let rendered = env.get_template("path").unwrap().render(()).unwrap();
+        assert_eq!(rendered, "");
+    }
+
+    #[test]
+    fn base_path_handles_nested_paths() {
+        let config = Config {
+            base_url: "https://example.com/foo/bar/".to_string(),
+            ..Default::default()
+        };
+        let mut env = environment(&config).unwrap();
+        env.add_template("path", "{{ base_path }}").unwrap();
+
+        let rendered = env.get_template("path").unwrap().render(()).unwrap();
+        assert_eq!(rendered, "/foo/bar");
     }
 }

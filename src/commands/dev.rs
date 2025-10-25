@@ -22,8 +22,12 @@ const LIVE_RELOAD_SNIPPET: &str = r#"<script id=\"__bckt_live_reload__\">(functi
 pub fn run_dev_command(args: DevArgs) -> Result<()> {
     let start_dir = resolve_root(args.root.as_deref())?;
     let root = config::find_project_root(&start_dir)?;
+    let config = config::Config::load(root.join("bckt.yaml"))?;
     let html_root = root.join("html");
     fs::create_dir_all(&html_root).context("failed to create html directory")?;
+
+    // Extract base path from base_url (e.g., "/blog" from "https://vrypan.net/blog/")
+    let base_path = extract_base_path(&config.base_url);
 
     let initial_plan = RenderPlan {
         posts: true,
@@ -87,11 +91,13 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
         .context("invalid host/port combination")?
         .next()
         .context("failed to resolve dev server address")?;
-    println!(
-        "bckt dev server running at http://{}:{}",
-        listener_addr.ip(),
-        listener_addr.port()
-    );
+
+    let server_url = if base_path.is_empty() {
+        format!("http://{}:{}/", listener_addr.ip(), listener_addr.port())
+    } else {
+        format!("http://{}:{}{}/", listener_addr.ip(), listener_addr.port(), base_path)
+    };
+    println!("bckt dev server running at {}", server_url);
 
     let server = Server::http(listener_addr)
         .map_err(|err| anyhow::anyhow!("failed to start HTTP server: {err}"))?;
@@ -99,6 +105,8 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
     for request in server.incoming_requests() {
         let url = request.url().to_string();
         let (path, query) = split_url(&url);
+
+        // Special endpoint for live reload polling
         if path == "/__bckt__/poll" {
             let response = handle_poll(query, &latest_change);
             if let Err(err) = request.respond(response) {
@@ -107,13 +115,26 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
             continue;
         }
 
+        // Strip base_path prefix from incoming requests
+        let stripped_path = if !base_path.is_empty() && path.starts_with(&base_path) {
+            &path[base_path.len()..]
+        } else if !base_path.is_empty() {
+            // Request doesn't match base_path - return 404
+            if let Err(err) = request.respond(not_found()) {
+                eprintln!("[bckt::dev] respond error: {err}");
+            }
+            continue;
+        } else {
+            path
+        };
+
         let range = request
             .headers()
             .iter()
             .find(|header| header.field.equiv("Range"))
             .map(|header| header.value.as_str().to_string());
 
-        let response = serve_path(&html_root, path, range.as_deref(), &latest_change);
+        let response = serve_path(&html_root, stripped_path, range.as_deref(), &latest_change);
         if let Err(err) = request.respond(response) {
             eprintln!("[bckt::dev] respond error: {err}");
         }
@@ -411,6 +432,28 @@ fn now_timestamp() -> u64 {
         .as_millis() as u64
 }
 
+fn extract_base_path(base_url: &str) -> String {
+    // Extract path component from base_url
+    // Examples:
+    //   "https://vrypan.net/blog/" -> "/blog"
+    //   "https://vrypan.net/" -> ""
+    //   "https://example.com" -> ""
+
+    if let Some(idx) = base_url.find("://") {
+        let after_scheme = &base_url[idx + 3..];
+        if let Some(slash_idx) = after_scheme.find('/') {
+            let path = &after_scheme[slash_idx..];
+            // Remove trailing slash
+            path.trim_end_matches('/').to_string()
+        } else {
+            String::new()
+        }
+    } else {
+        // No scheme, treat as path
+        base_url.trim_end_matches('/').to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -452,5 +495,25 @@ mod tests {
     #[test]
     fn parse_since_fails_without_value() {
         assert!(parse_since("foo=bar").is_err());
+    }
+
+    #[test]
+    fn extract_base_path_from_full_url() {
+        assert_eq!(extract_base_path("https://vrypan.net/blog/"), "/blog");
+        assert_eq!(extract_base_path("https://vrypan.net/blog"), "/blog");
+        assert_eq!(extract_base_path("https://example.com/foo/bar/"), "/foo/bar");
+    }
+
+    #[test]
+    fn extract_base_path_from_root_url() {
+        assert_eq!(extract_base_path("https://vrypan.net/"), "");
+        assert_eq!(extract_base_path("https://vrypan.net"), "");
+        assert_eq!(extract_base_path("http://example.com"), "");
+    }
+
+    #[test]
+    fn extract_base_path_from_path_only() {
+        assert_eq!(extract_base_path("/blog/"), "/blog");
+        assert_eq!(extract_base_path("/blog"), "/blog");
     }
 }

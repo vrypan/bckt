@@ -14,35 +14,35 @@
             rel="alternate"
             type="application/rss+xml"
             title="RSS"
-            href="{{ base_url }}/rss.xml"
+            href="{{ base_path }}/rss.xml"
         />
         {% for tag in config.rss_tags %}
         <link
             rel="alternate"
             type="application/rss+xml"
             title="RSS for {{ tag }}"
-            href="{{ base_url }}/rss-{{ tag }}.xml"
+            href="{{ base_path }}/rss-{{ tag }}.xml"
         />
         {% endfor %}
         <link
             rel="icon"
             type="image/png"
             sizes="32x32"
-            href="{{ base_url }}/favicon-32x32.png"
+            href="{{ base_path }}/favicon-32x32.png"
         />
         <link
             rel="icon"
             type="image/png"
             sizes="16x16"
-            href="{{ base_url }}/favicon-16x16.png"
+            href="{{ base_path }}/favicon-16x16.png"
         />
         <link
             rel="apple-touch-icon"
             sizes="180x180"
-            href="{{ base_url }}/apple-touch-icon.png"
+            href="{{ base_path }}/apple-touch-icon.png"
         />
-        <link rel="icon" href="{{ base_url }}/favicon.ico" />
-        <link rel="stylesheet" href="{{ base_url }}/style.css" />
+        <link rel="icon" href="{{ base_path }}/favicon.ico" />
+        <link rel="stylesheet" href="{{ base_path }}/style.css" />
 
 	{% block page_meta %}
         <meta name="description" content="{{ config.description }}">
@@ -68,18 +68,18 @@
                 <div class="site-brand">
                     <a
                         class="site-brand__badge"
-                        href="{{ base_url }}/"
+                        href="{{ base_path }}/"
                         aria-label="Home"
                     >
                         <img
                             class="site-brand__avatar"
-                            src="{{ base_url }}/img/site-avatar.png"
+                            src="{{ base_path }}/img/site-avatar.png"
                             alt="{{ config.title | default('bckt') }} avatar"
                         />
                     </a>
                     <div class="site-brand__text">
                         <h1 class="site-title">
-                            <a href="{{ base_url }}/"
+                            <a href="{{ base_path }}/"
                                 >{{ config.title | default("bckt") }}</a
                             >
                         </h1>
@@ -89,10 +89,10 @@
                     </div>
                 </div>
                 <nav class="site-nav" aria-label="Primary navigation">
-                    <a class="site-nav__link" href="{{ base_url }}/">home</a>
-                    <a class="site-nav__link" href="{{ base_url }}/about/">about</a>
-                    <a class="site-nav__link" href="{{ base_url }}/search/">search</a>
-                   <a class="site-nav__link" href="{{ base_url }}/rss.xml">rss</a
+                    <a class="site-nav__link" href="{{ base_path }}/">home</a>
+                    <a class="site-nav__link" href="{{ base_path }}/about/">about</a>
+                    <a class="site-nav__link" href="{{ base_path }}/search/">search</a>
+                   <a class="site-nav__link" href="{{ base_path }}/rss.xml">rss</a
                     >
                 </nav>
             </div>
