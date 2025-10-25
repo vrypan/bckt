@@ -37,10 +37,44 @@ Create new views by extending `base.html` and overriding the blocks you need:
 Most templates receive:
 
 - `config` — parsed values from `bckt.yaml` (including `config.extra`).
-- `base_url` — site base URL that always ends with a trailing slash.
+- `base_url` — site base URL without trailing slash (e.g., `https://example.com/blog`).
+- `base_path` — path component of `base_url` without trailing slash (e.g., `/blog`), empty string for root deployments.
 - `posts` — list of `PostSummary` objects (varies by view).
 - `pagination` — pagination metadata where applicable.
 - `tag`, `year`, `month` — extra values specific to tag or archive templates.
+
+#### Using base_url vs base_path
+
+**Use `base_url` for:**
+- Absolute URLs in RSS feeds, canonical links, and Open Graph tags
+- External references that need the full domain
+
+```jinja
+<!-- RSS feed -->
+<link>{{ base_url }}{{ item.permalink }}</link>
+
+<!-- Canonical URL -->
+<link rel="canonical" href="{{ base_url }}{{ post.permalink }}">
+```
+
+**Use `base_path` for:**
+- Internal navigation links
+- Asset references (CSS, JS, images)
+- Links to other pages within your site
+
+```jinja
+<!-- Navigation -->
+<a href="{{ base_path }}/">Home</a>
+<a href="{{ base_path }}/search/">Search</a>
+
+<!-- Assets -->
+<link rel="stylesheet" href="{{ base_path }}/assets/css/style.css">
+
+<!-- Post images when referenced from other pages -->
+<img src="{{ base_path }}{{ post.permalink }}cover.jpg">
+```
+
+**Note:** Within individual post pages, attached images use relative paths automatically and work regardless of `base_path`.
 
 #### PostSummary and PostTemplate Objects
 
