@@ -28,7 +28,7 @@ chmod +x /usr/local/bin/bckt-new
 If you're on macOS and use Homebrew:
 
 ```bash
-brew tap vrypan/bckt
+brew tap vrypan/tap
 brew install bckt
 ```
 
