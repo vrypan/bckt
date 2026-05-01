@@ -37,7 +37,7 @@ notify = "8.2"
 mime_guess = "2.0"
 percent-encoding = "2.3"
 isolang = "2.3"
-whatlang = "0.16"
+whatlang = "0.18"
 ureq = { version = "2.9", default-features = false, features = ["tls", "json"] }
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
 tempfile = "3.12"
