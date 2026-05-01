@@ -609,8 +609,8 @@ fn cleanup_year_archives(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String
     let mut stale: Vec<String> = Vec::new();
     for entry in db.scan_prefix(YEAR_ARCHIVE_PREFIX.as_bytes()) {
         let (key, _) = entry.context("failed to iterate year archive cache entries")?;
-        let key_str = String::from_utf8(key.to_vec())
-            .context("year archive cache key is not valid utf-8")?;
+        let key_str =
+            String::from_utf8(key.to_vec()).context("year archive cache key is not valid utf-8")?;
         if !keep.contains(&key_str) {
             stale.push(key_str);
         }
