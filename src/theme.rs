@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use tempfile::NamedTempFile;
-use ureq::Response;
 use zip::ZipArchive;
 
 #[derive(Debug, Clone)]
@@ -103,8 +102,8 @@ pub fn download_theme(destination: &Path, source: ThemeSource) -> Result<()> {
 }
 
 fn download_to_file(url: &str, mut target: &mut File) -> Result<()> {
-    let response = ureq::get(url)
-        .set(
+    let mut response = ureq::get(url)
+        .header(
             "User-Agent",
             concat!(
                 "bckt/",
@@ -112,20 +111,16 @@ fn download_to_file(url: &str, mut target: &mut File) -> Result<()> {
                 " (https://github.com/vrypan/bckt)"
             ),
         )
-        .set("Accept", "application/octet-stream")
-        .call();
-    let response: Response = match response {
-        Ok(resp) => resp,
-        Err(ureq::Error::Status(code, resp)) => {
-            let status_text = resp.status_text().to_string();
-            return Err(anyhow!(
-                "download request failed with status {code} ({status_text}) for {url}"
-            ));
-        }
-        Err(err) => return Err(anyhow!("failed to download {url}: {err}")),
-    };
+        .header("Accept", "application/octet-stream")
+        .call()
+        .map_err(|err| match err {
+            ureq::Error::StatusCode(code) => {
+                anyhow!("download request failed with status {code} for {url}")
+            }
+            err => anyhow!("failed to download {url}: {err}"),
+        })?;
 
-    let mut reader = response.into_reader();
+    let mut reader = response.body_mut().as_reader();
     io::copy(&mut reader, &mut target)
         .with_context(|| format!("failed to write downloaded archive from {url}"))?;
     target

@@ -260,12 +260,13 @@ fn resolve_fid(hub: &Url, username: &str) -> Result<u64> {
         .extend(&["v1", "userNameProofByName"]);
     url.query_pairs_mut().append_pair("name", username);
 
-    let response = ureq::get(url.as_str())
+    let mut response = ureq::get(url.as_str())
         .call()
         .map_err(|err| anyhow!("failed to resolve username '{username}': {err}"))?;
 
     let json: Value = response
-        .into_json()
+        .body_mut()
+        .read_json()
         .map_err(|err| anyhow!("failed to decode username lookup response: {err}"))?;
 
     extract_integer(&json, FID_PATHS)
@@ -283,12 +284,13 @@ fn fetch_cast(hub: &Url, fid: u64, hash: &str) -> Result<Value> {
         .append_pair("fid", &fid.to_string())
         .append_pair("hash", hash);
 
-    let response = ureq::get(url.as_str())
+    let mut response = ureq::get(url.as_str())
         .call()
         .map_err(|err| anyhow!("failed to fetch cast: {err}"))?;
 
     response
-        .into_json()
+        .body_mut()
+        .read_json()
         .map_err(|err| anyhow!("failed to decode cast response: {err}"))
 }
 
@@ -600,11 +602,11 @@ fn fetch_fname_handle(hub: &Url, fid: u64) -> Result<String> {
         .extend(&["v1", "userNameProofsByFid"]);
     url.query_pairs_mut().append_pair("fid", &fid.to_string());
 
-    let response = ureq::get(url.as_str())
+    let mut response = ureq::get(url.as_str())
         .call()
         .map_err(|err| anyhow!("failed to fetch username proofs for fid {}: {}", fid, err))?;
 
-    let json: Value = response.into_json().map_err(|err| {
+    let json: Value = response.body_mut().read_json().map_err(|err| {
         anyhow!(
             "failed to decode username proofs response for fid {}: {}",
             fid,
@@ -702,8 +704,11 @@ fn ensure_handle(input: &str) -> String {
 
 fn fetch_content_type(url: &str) -> Option<String> {
     match ureq::head(url).call() {
-        Ok(resp) => resp.header("content-type").map(|s| s.to_string()),
-        Err(ureq::Error::Status(_, resp)) => resp.header("content-type").map(|s| s.to_string()),
+        Ok(resp) => resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()),
         Err(_) => None,
     }
 }
@@ -726,10 +731,10 @@ fn image_extension_from_mime(mime: &str) -> Option<&str> {
 }
 
 fn download_image(url: &str, destination: &Path) -> Result<()> {
-    let mut reader = ureq::get(url)
+    let mut response = ureq::get(url)
         .call()
-        .map_err(|err| anyhow!("failed to download {url}: {err}"))?
-        .into_reader();
+        .map_err(|err| anyhow!("failed to download {url}: {err}"))?;
+    let mut reader = response.body_mut().as_reader();
 
     let mut buffer = Vec::new();
     reader
