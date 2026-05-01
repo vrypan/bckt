@@ -1,7 +1,9 @@
+use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, bail};
 use minijinja::value::Value as TemplateValue;
@@ -72,6 +74,7 @@ pub(super) fn load_templates(root: &Path, env: &mut Environment<'static>) -> Res
     files.sort();
 
     let mut hasher = blake3::Hasher::new();
+    let mut store: HashMap<String, String> = HashMap::new();
 
     for path in files {
         let template_body = fs::read_to_string(&path)
@@ -80,11 +83,11 @@ pub(super) fn load_templates(root: &Path, env: &mut Environment<'static>) -> Res
         let relative_name = normalize_path(relative_path);
         hasher.update(relative_name.as_bytes());
         hasher.update(template_body.as_bytes());
-        let name_static = Box::leak(relative_name.clone().into_boxed_str());
-        let template_static = Box::leak(template_body.into_boxed_str());
-        env.add_template(name_static, template_static)
-            .with_context(|| format!("failed to register template {}", relative_name))?;
+        store.insert(relative_name, template_body);
     }
+
+    let store = Arc::new(store);
+    env.set_loader(move |name| Ok(store.get(name).cloned()));
 
     Ok(hasher.finalize().to_hex().to_string())
 }

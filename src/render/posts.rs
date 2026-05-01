@@ -144,6 +144,22 @@ pub(super) fn post_key(post: &Post) -> String {
     format!("{}-{}", post.date.unix_timestamp(), post.slug)
 }
 
+fn build_attachments_meta(post: &Post) -> Result<HashMap<String, AttachmentMeta>> {
+    let mut attachments = HashMap::new();
+    for relative_path in &post.attached {
+        let normalized = normalize_path(relative_path);
+        let asset_path = post.source_dir.join(relative_path);
+        let metadata = fs::metadata(&asset_path)
+            .with_context(|| format!("missing attachment {}", asset_path.display()))?;
+        let size = metadata.len();
+        let mime_type = mime_guess::from_path(&asset_path)
+            .first_or_octet_stream()
+            .to_string();
+        attachments.insert(normalized, AttachmentMeta { size, mime_type });
+    }
+    Ok(attachments)
+}
+
 fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
     let date = format_date(config, &post.date)?;
     let date_iso = post
@@ -160,22 +176,6 @@ fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
         false,
     );
 
-    // Build attachments metadata map
-    let mut attachments = HashMap::new();
-    for relative_path in &post.attached {
-        let normalized = normalize_path(relative_path);
-        let asset_path = post.source_dir.join(relative_path);
-
-        if let Ok(metadata) = fs::metadata(&asset_path) {
-            let size = metadata.len();
-            let mime_type = mime_guess::from_path(&asset_path)
-                .first_or_octet_stream()
-                .to_string();
-
-            attachments.insert(normalized, AttachmentMeta { size, mime_type });
-        }
-    }
-
     Ok(PostTemplate {
         title: post.title.clone(),
         slug: post.slug.clone(),
@@ -189,7 +189,7 @@ fn build_post_context(config: &Config, post: &Post) -> Result<PostTemplate> {
         body,
         excerpt: post.excerpt.clone(),
         permalink: post.permalink.clone(),
-        attachments,
+        attachments: build_attachments_meta(post)?,
         extra: post.extra.clone(),
     })
 }
@@ -209,22 +209,6 @@ pub(super) fn build_post_summary(config: &Config, post: &Post) -> Result<PostSum
         false,
     );
 
-    // Build attachments metadata map
-    let mut attachments = HashMap::new();
-    for relative_path in &post.attached {
-        let normalized = normalize_path(relative_path);
-        let asset_path = post.source_dir.join(relative_path);
-
-        if let Ok(metadata) = fs::metadata(&asset_path) {
-            let size = metadata.len();
-            let mime_type = mime_guess::from_path(&asset_path)
-                .first_or_octet_stream()
-                .to_string();
-
-            attachments.insert(normalized, AttachmentMeta { size, mime_type });
-        }
-    }
-
     Ok(PostSummary {
         title: post.title.clone(),
         slug: post.slug.clone(),
@@ -237,7 +221,7 @@ pub(super) fn build_post_summary(config: &Config, post: &Post) -> Result<PostSum
         body,
         excerpt: post.excerpt.clone(),
         permalink: post.permalink.clone(),
-        attachments,
+        attachments: build_attachments_meta(post)?,
         extra: post.extra.clone(),
     })
 }
@@ -329,11 +313,10 @@ fn cleanup_post_hashes(db: &sled::Db, keep: &BTreeSet<String>) -> Result<()> {
     let mut stale: Vec<Vec<u8>> = Vec::new();
     for entry in db.scan_prefix(POST_HASH_PREFIX.as_bytes()) {
         let (key, _) = entry.context("failed to iterate post cache entries")?;
-        let key_vec = key.to_vec();
         let key_str =
-            String::from_utf8(key_vec.clone()).context("post cache key is not valid utf-8")?;
+            String::from_utf8(key.to_vec()).context("post cache key is not valid utf-8")?;
         if !keep.contains(&key_str) {
-            stale.push(key_vec);
+            stale.push(key_str.into_bytes());
         }
     }
 
@@ -426,27 +409,22 @@ pub(super) fn att_to_absolute(
     }
 
     let mut output = String::with_capacity(body.len());
-    let mut i = 0;
-    let bytes = body.as_bytes();
+    let mut rest = body;
 
-    while i < bytes.len() {
-        if let Some((quote, prefix_len)) = match_attribute(&body[i..]) {
-            output.push_str(&body[i..i + prefix_len]);
-            let mut value_end = i + prefix_len;
-            while value_end < bytes.len() {
-                let ch = body[value_end..].chars().next().unwrap();
-                if ch == quote {
+    while !rest.is_empty() {
+        if let Some((quote, prefix_len)) = match_attribute(rest) {
+            output.push_str(&rest[..prefix_len]);
+            rest = &rest[prefix_len..];
+
+            let end = match rest.find(quote) {
+                Some(pos) => pos,
+                None => {
+                    output.push_str(rest);
                     break;
                 }
-                value_end += ch.len_utf8();
-            }
+            };
 
-            if value_end >= bytes.len() {
-                output.push_str(&body[i + prefix_len..]);
-                break;
-            }
-
-            let value = &body[i + prefix_len..value_end];
+            let value = &rest[..end];
             if let Some(rewritten) =
                 rewrite_if_attached(value, permalink, base_url, &attached_paths, return_absolute)
             {
@@ -456,11 +434,11 @@ pub(super) fn att_to_absolute(
             }
 
             output.push(quote);
-            i = value_end + quote.len_utf8();
+            rest = &rest[end + quote.len_utf8()..];
         } else {
-            let ch = body[i..].chars().next().unwrap();
+            let ch = rest.chars().next().unwrap();
             output.push(ch);
-            i += ch.len_utf8();
+            rest = &rest[ch.len_utf8()..];
         }
     }
 

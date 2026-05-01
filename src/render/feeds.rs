@@ -30,8 +30,8 @@ pub(super) fn render_feeds(
         let slug = tag_slug(&tag);
         let tag_posts: Vec<&Post> = posts
             .iter()
-            .rev()
             .filter(|post| post.tags.iter().any(|t| t.eq(&tag)))
+            .rev()
             .collect();
         let output_path = html_root.join(format!("rss-{}.xml", slug));
         let title = config.title.clone().unwrap_or_else(|| "bckt".to_string());

@@ -2,6 +2,27 @@ use anyhow::Result;
 use std::env;
 use std::path::{Path, PathBuf};
 
+pub(crate) fn slugify(value: &str) -> String {
+    let mut slug = String::new();
+    let mut previous_dash = false;
+
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+            previous_dash = false;
+        } else if !previous_dash && !slug.is_empty() {
+            slug.push('-');
+            previous_dash = true;
+        }
+    }
+
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+
+    slug
+}
+
 pub fn absolute_url(base: &str, path: &str) -> String {
     let trimmed_base = base.trim_end_matches('/');
     let trimmed_path = path.trim_start_matches('/');

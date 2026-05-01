@@ -1,19 +1,19 @@
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use isolang::Language;
 use serde::Deserialize;
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use serde_yaml::Mapping;
 use time::format_description::{self, well_known::Rfc3339};
 use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 use walkdir::WalkDir;
+use whatlang::detect;
 
 use crate::config::Config;
+use crate::language::{build_lookup, canonical_language, sanitize_language};
 use crate::markdown::{MarkdownRender, render_markdown};
-use isolang::Language;
-use whatlang::detect;
 
 const MAIN_EXTENSIONS: &[&str] = &["md", "html"];
 
@@ -227,7 +227,7 @@ fn parse_post_date(date_str: &str, config: &Config, origin: &Path) -> Result<Off
 }
 
 fn determine_language(value: Option<&str>, body_text: &str, config: &Config) -> String {
-    let languages = language_lookup(config);
+    let languages = build_lookup(&config.search.languages);
 
     if let Some(explicit) = value
         && let Some(tag) = canonical_language(explicit, &languages)
@@ -243,65 +243,6 @@ fn determine_language(value: Option<&str>, body_text: &str, config: &Config) -> 
 
     canonical_language(&config.search.default_language, &languages)
         .unwrap_or_else(|| sanitize_language(&config.search.default_language))
-}
-
-fn language_lookup(config: &Config) -> BTreeMap<String, String> {
-    let mut map = BTreeMap::new();
-    for entry in &config.search.languages {
-        let canonical = sanitize_language(&entry.id);
-        if canonical.is_empty() {
-            continue;
-        }
-
-        map.insert(canonical.clone(), entry.id.clone());
-        for alias in language_aliases(&canonical) {
-            map.entry(alias).or_insert_with(|| entry.id.clone());
-        }
-    }
-    map
-}
-
-fn language_aliases(id: &str) -> Vec<String> {
-    let mut aliases = Vec::new();
-    let primary = id.split('-').next().unwrap_or(id);
-
-    let language = match primary.len() {
-        2 => Language::from_639_1(primary),
-        3 => Language::from_639_3(primary),
-        _ => None,
-    };
-
-    if let Some(lang) = language {
-        if let Some(code) = lang.to_639_1() {
-            aliases.push(code.to_lowercase());
-        }
-        aliases.push(lang.to_639_3().to_lowercase());
-    }
-
-    aliases
-}
-
-fn canonical_language(value: &str, map: &BTreeMap<String, String>) -> Option<String> {
-    let sanitized = sanitize_language(value);
-    if sanitized.is_empty() {
-        return None;
-    }
-
-    if let Some(found) = map.get(&sanitized) {
-        return Some(found.clone());
-    }
-
-    if let Some((primary, _rest)) = sanitized.split_once('-')
-        && let Some(found) = map.get(primary)
-    {
-        return Some(found.clone());
-    }
-
-    Some(sanitized)
-}
-
-fn sanitize_language(value: &str) -> String {
-    value.trim().replace('_', "-").to_ascii_lowercase()
 }
 
 fn guess_language(body_text: &str) -> Option<String> {
@@ -408,7 +349,7 @@ fn determine_slug(dir: &Path, provided: Option<&str>) -> Result<String> {
             .with_context(|| format!("{}: directory name not valid utf-8", dir.display()))?
     };
 
-    let candidate = slugify(raw);
+    let candidate = crate::utils::slugify(raw);
     if candidate.is_empty() {
         bail!("{}: slug cannot be empty", dir.display());
     }
@@ -451,27 +392,6 @@ fn parse_front_matter(raw: &str) -> Result<(FrontMatter, String)> {
     }
 
     bail!("front matter not terminated with ---")
-}
-
-fn slugify(value: &str) -> String {
-    let mut slug = String::new();
-    let mut previous_dash = false;
-
-    for ch in value.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-            previous_dash = false;
-        } else if !previous_dash && !slug.is_empty() {
-            slug.push('-');
-            previous_dash = true;
-        }
-    }
-
-    while slug.ends_with('-') {
-        slug.pop();
-    }
-
-    slug
 }
 
 fn deserialize_string_or_list<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>

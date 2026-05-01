@@ -297,6 +297,7 @@ fn short_content_falls_back_to_default_language() {
 
 #[test]
 fn slugify_directory_name() {
+    use crate::utils::slugify;
     assert_eq!(slugify("Hello World"), "hello-world");
     assert_eq!(slugify("  Multi   Spaces  "), "multi-spaces");
 }

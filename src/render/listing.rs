@@ -473,23 +473,7 @@ pub(super) fn page_url(page_number: usize) -> String {
 }
 
 pub(super) fn tag_slug(tag: &str) -> String {
-    let mut slug = String::new();
-    let mut previous_dash = false;
-
-    for ch in tag.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-            previous_dash = false;
-        } else if !previous_dash && !slug.is_empty() {
-            slug.push('-');
-            previous_dash = true;
-        }
-    }
-
-    while slug.ends_with('-') {
-        slug.pop();
-    }
-
+    let slug = crate::utils::slugify(tag);
     if slug.is_empty() {
         "untagged".to_string()
     } else {
@@ -567,9 +551,8 @@ fn cleanup_tag_cache(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -
     let mut stale: Vec<String> = Vec::new();
     for entry in db.scan_prefix(TAG_CACHE_PREFIX.as_bytes()) {
         let (key, _) = entry.context("failed to iterate tag cache entries")?;
-        let key_vec = key.to_vec();
         let key_str =
-            String::from_utf8(key_vec.clone()).context("tag cache key is not valid utf-8")?;
+            String::from_utf8(key.to_vec()).context("tag cache key is not valid utf-8")?;
         if !keep.contains(&key_str) {
             stale.push(key_str);
         }
@@ -597,8 +580,7 @@ fn cleanup_month_archives(db: &sled::Db, html_root: &Path, keep: &BTreeSet<Strin
     let mut stale: Vec<String> = Vec::new();
     for entry in db.scan_prefix(MONTH_ARCHIVE_PREFIX.as_bytes()) {
         let (key, _) = entry.context("failed to iterate month archive cache entries")?;
-        let key_vec = key.to_vec();
-        let key_str = String::from_utf8(key_vec.clone())
+        let key_str = String::from_utf8(key.to_vec())
             .context("month archive cache key is not valid utf-8")?;
         if !keep.contains(&key_str) {
             stale.push(key_str);
@@ -627,8 +609,7 @@ fn cleanup_year_archives(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String
     let mut stale: Vec<String> = Vec::new();
     for entry in db.scan_prefix(YEAR_ARCHIVE_PREFIX.as_bytes()) {
         let (key, _) = entry.context("failed to iterate year archive cache entries")?;
-        let key_vec = key.to_vec();
-        let key_str = String::from_utf8(key_vec.clone())
+        let key_str = String::from_utf8(key.to_vec())
             .context("year archive cache key is not valid utf-8")?;
         if !keep.contains(&key_str) {
             stale.push(key_str);
