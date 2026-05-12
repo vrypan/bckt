@@ -16,7 +16,9 @@ use crate::utils::absolute_url;
 use super::listing::{page_url, tag_index_url, tag_slug};
 use super::posts::{PostSummary, att_to_absolute, build_post_summary};
 use super::templates::render_template_with_scope;
-use super::utils::{compute_pagination_layout, format_rfc2822, format_rfc3339, sanitize_cdata, xml_escape};
+use super::utils::{
+    compute_pagination_layout, format_rfc2822, format_rfc3339, sanitize_cdata, xml_escape,
+};
 
 pub(super) fn render_feeds(
     posts: &[Post],

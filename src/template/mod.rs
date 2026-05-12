@@ -208,11 +208,8 @@ mod tests {
     fn html_templates_escape_quotes_in_attributes() {
         let config = Config::default();
         let mut env = environment(&config).unwrap();
-        env.add_template(
-            "t.html",
-            r#"<meta content="{{ title }}">"#,
-        )
-        .unwrap();
+        env.add_template("t.html", r#"<meta content="{{ title }}">"#)
+            .unwrap();
         let ctx = minijinja::context! { title => r#"Say "hello""# };
         let rendered = env.get_template("t.html").unwrap().render(ctx).unwrap();
         assert_eq!(rendered, r#"<meta content="Say &quot;hello&quot;">"#);

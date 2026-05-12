@@ -12,7 +12,10 @@ use crate::content::Post;
 use super::cache::{read_cached_string, store_cached_string};
 use super::posts::{PostSummary, build_post_summary, post_key};
 use super::templates::render_template_with_scope;
-use super::utils::{compute_cache_digest, compute_pagination_layout, log_status, remove_dir_if_empty, remove_file_if_exists};
+use super::utils::{
+    compute_cache_digest, compute_pagination_layout, log_status, remove_dir_if_empty,
+    remove_file_if_exists,
+};
 use super::{
     BuildMode, HOME_PAGES_KEY, MONTH_ARCHIVE_PREFIX, TAG_CACHE_PREFIX, YEAR_ARCHIVE_PREFIX,
 };
