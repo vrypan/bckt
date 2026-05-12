@@ -1,6 +1,6 @@
 [package]
 name = "bckt"
-version = "0.6.7"
+version = "0.6.8"
 edition = "2024"
 repository = "https://github.com/vrypan/bckt"
 description = "bckt is an opinionated but flexible static site generator for blogs"
@@ -21,7 +21,7 @@ path = "src/extras/bckt_new.rs"
 
 [dependencies]
 anyhow = "1"
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 minijinja = { version = "2.12", features = ["loader"] }
