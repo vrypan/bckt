@@ -79,7 +79,13 @@ pub(super) fn load_templates(root: &Path, env: &mut Environment<'static>) -> Res
     for path in files {
         let template_body = fs::read_to_string(&path)
             .with_context(|| format!("failed to read template {}", path.display()))?;
-        let relative_path = path.strip_prefix(&templates_dir).unwrap();
+        let relative_path = path.strip_prefix(&templates_dir).with_context(|| {
+            format!(
+                "path {} is not under {}",
+                path.display(),
+                templates_dir.display()
+            )
+        })?;
         let relative_name = normalize_path(relative_path);
         hasher.update(relative_name.as_bytes());
         hasher.update(template_body.as_bytes());

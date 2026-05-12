@@ -96,16 +96,15 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
         let language = canonical_language(&post.language, &language_lookup)
             .unwrap_or_else(|| default_language.clone());
 
-        // More efficient tag processing - avoid cloning unless necessary
+        let mut seen_tags = std::collections::HashSet::new();
         let mut tag_list = Vec::with_capacity(post.tags.len());
         for tag in &post.tags {
-            if !tag.is_empty() {
+            if !tag.is_empty() && seen_tags.insert(tag.as_str()) {
                 tag_list.push(tag.clone());
                 tags.insert(tag.clone());
             }
         }
         tag_list.sort_unstable();
-        tag_list.dedup();
 
         if let Some(kind) = &post.post_type {
             let trimmed = kind.trim();

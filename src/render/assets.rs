@@ -30,7 +30,13 @@ pub(super) fn compute_static_digest(root: &Path) -> Result<String> {
 
     let mut hasher = Hasher::new();
     for path in files {
-        let relative = path.strip_prefix(&skel_dir).unwrap();
+        let relative = path.strip_prefix(&skel_dir).with_context(|| {
+            format!(
+                "path {} is not under {}",
+                path.display(),
+                skel_dir.display()
+            )
+        })?;
         let normalized = normalize_path(relative);
         hasher.update(normalized.as_bytes());
         let data = fs::read(&path)
@@ -67,7 +73,13 @@ pub(super) fn copy_static_assets(root: &Path, html_root: &Path) -> Result<usize>
         if entry.file_type().is_dir() {
             continue;
         }
-        let relative = entry.path().strip_prefix(&skel_dir).unwrap();
+        let relative = entry.path().strip_prefix(&skel_dir).with_context(|| {
+            format!(
+                "path {} is not under {}",
+                entry.path().display(),
+                skel_dir.display()
+            )
+        })?;
         let destination = html_root.join(relative);
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent)
@@ -106,7 +118,13 @@ pub(super) fn compute_theme_asset_digest(root: &Path, theme: &str) -> Result<Str
     hasher.update(theme.as_bytes());
 
     for path in files {
-        let relative = path.strip_prefix(&assets_dir).unwrap();
+        let relative = path.strip_prefix(&assets_dir).with_context(|| {
+            format!(
+                "path {} is not under {}",
+                path.display(),
+                assets_dir.display()
+            )
+        })?;
         let normalized = normalize_path(relative);
         hasher.update(normalized.as_bytes());
         let data = fs::read(&path)
@@ -148,7 +166,13 @@ pub(super) fn copy_theme_assets(
         if entry.file_type().is_dir() {
             continue;
         }
-        let relative = entry.path().strip_prefix(&assets_dir).unwrap();
+        let relative = entry.path().strip_prefix(&assets_dir).with_context(|| {
+            format!(
+                "path {} is not under {}",
+                entry.path().display(),
+                assets_dir.display()
+            )
+        })?;
         let destination = destination_root.join(relative);
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent)

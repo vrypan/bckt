@@ -16,7 +16,7 @@ use crate::utils::absolute_url;
 use super::listing::{page_url, tag_index_url, tag_slug};
 use super::posts::{PostSummary, att_to_absolute, build_post_summary};
 use super::templates::render_template_with_scope;
-use super::utils::{format_rfc2822, format_rfc3339, sanitize_cdata, xml_escape};
+use super::utils::{compute_pagination_layout, format_rfc2822, format_rfc3339, sanitize_cdata, xml_escape};
 
 pub(super) fn render_feeds(
     posts: &[Post],
@@ -117,22 +117,10 @@ fn render_feed(
 }
 
 fn render_sitemap(posts: &[Post], html_root: &Path, config: &Config) -> Result<()> {
-    let per_page = std::cmp::max(1, config.homepage_posts);
+    let layout = compute_pagination_layout(posts.len(), config.homepage_posts);
+    let per_page = layout.per_page;
+    let regular_page_count = layout.regular_page_count;
     let mut entries: Vec<SitemapEntry> = Vec::new();
-
-    // Posts are sorted ASCENDING (oldest first, newest last)
-    // Calculate pagination structure (must match listing.rs logic)
-    let remainder = posts.len() % per_page;
-    let home_page_size = if posts.len() < per_page {
-        posts.len()
-    } else if remainder == 0 {
-        per_page
-    } else if remainder < per_page {
-        remainder + per_page
-    } else {
-        per_page
-    };
-    let regular_page_count = (posts.len() - home_page_size) / per_page;
 
     // Homepage entry (most recent posts = end of array)
     let homepage_date = posts
@@ -150,8 +138,13 @@ fn render_sitemap(posts: &[Post], html_root: &Path, config: &Config) -> Result<(
         let start = (page_num - 1) * per_page;
         let end = start + per_page;
         let path = page_url(page_num);
-        // The newest post on this page is at end-1 (since sorted ascending)
-        let page_date = format_rfc3339(&posts[end - 1].date)?;
+        let post = posts.get(end - 1).with_context(|| {
+            format!(
+                "sitemap: page {page_num} index out of range (end={end}, posts={})",
+                posts.len()
+            )
+        })?;
+        let page_date = format_rfc3339(&post.date)?;
         entries.push(SitemapEntry {
             loc: absolute_url(&config.base_url, &path),
             lastmod: Some(page_date),
@@ -219,10 +212,13 @@ fn collect_tag_sitemap_entries(posts: &[Post], config: &Config) -> Result<Vec<Si
     let mut entries = Vec::new();
 
     for bucket in buckets.values() {
-        let first = &posts[bucket.indices[0]];
+        let Some(&newest_idx) = bucket.indices.last() else {
+            continue;
+        };
+        let newest = &posts[newest_idx];
         entries.push(SitemapEntry {
             loc: absolute_url(&config.base_url, &tag_index_url(&bucket.slug)),
-            lastmod: Some(format_rfc3339(&first.date)?),
+            lastmod: Some(format_rfc3339(&newest.date)?),
         });
     }
 

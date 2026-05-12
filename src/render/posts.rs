@@ -435,8 +435,7 @@ pub(super) fn att_to_absolute(
 
             output.push(quote);
             rest = &rest[end + quote.len_utf8()..];
-        } else {
-            let ch = rest.chars().next().unwrap();
+        } else if let Some(ch) = rest.chars().next() {
             output.push(ch);
             rest = &rest[ch.len_utf8()..];
         }

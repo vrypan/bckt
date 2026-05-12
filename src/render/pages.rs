@@ -38,7 +38,13 @@ pub(super) fn render_pages(
 
     let mut rendered_pages = 0usize;
     for path in files {
-        let relative = path.strip_prefix(&pages_dir).unwrap();
+        let relative = path.strip_prefix(&pages_dir).with_context(|| {
+            format!(
+                "path {} is not under {}",
+                path.display(),
+                pages_dir.display()
+            )
+        })?;
         let output_path = html_root.join(relative);
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)

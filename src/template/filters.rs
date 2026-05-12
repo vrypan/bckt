@@ -1,7 +1,7 @@
 use minijinja::value::Value;
 use minijinja::{Environment, Error, ErrorKind};
 use std::collections::HashMap;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 use time::OffsetDateTime;
 use time::format_description::modifier::{
     Day, Hour, Minute, Month, MonthRepr, OffsetHour, OffsetMinute, Period, Second, Weekday,
@@ -10,20 +10,18 @@ use time::format_description::modifier::{
 use time::format_description::well_known::Rfc3339;
 use time::format_description::{Component, OwnedFormatItem};
 
-// Cache for common format patterns to avoid re-parsing
-static FORMAT_CACHE: LazyLock<HashMap<&'static str, Vec<OwnedFormatItem>>> = LazyLock::new(|| {
+static FORMAT_CACHE: LazyLock<Mutex<HashMap<String, Vec<OwnedFormatItem>>>> = LazyLock::new(|| {
     let mut cache = HashMap::new();
-    // Pre-populate common patterns
     if let Ok(items) = translate_strftime_uncached("%Y-%m-%d") {
-        cache.insert("%Y-%m-%d", items);
+        cache.insert("%Y-%m-%d".to_string(), items);
     }
     if let Ok(items) = translate_strftime_uncached("%H:%M:%S") {
-        cache.insert("%H:%M:%S", items);
+        cache.insert("%H:%M:%S".to_string(), items);
     }
     if let Ok(items) = translate_strftime_uncached("%H:%M") {
-        cache.insert("%H:%M", items);
+        cache.insert("%H:%M".to_string(), items);
     }
-    cache
+    Mutex::new(cache)
 });
 
 pub fn register(env: &mut Environment<'static>) -> Result<(), Error> {
@@ -64,11 +62,18 @@ fn format_date(value: Value, format: String) -> Result<Value, Error> {
 }
 
 fn translate_strftime(format: &str) -> Result<Vec<OwnedFormatItem>, Error> {
-    // Check cache for common patterns
-    if let Some(cached) = FORMAT_CACHE.get(format) {
-        return Ok(cached.clone());
+    {
+        let cache = FORMAT_CACHE.lock().unwrap();
+        if let Some(cached) = cache.get(format) {
+            return Ok(cached.clone());
+        }
     }
-    translate_strftime_uncached(format)
+    let items = translate_strftime_uncached(format)?;
+    FORMAT_CACHE
+        .lock()
+        .unwrap()
+        .insert(format.to_string(), items.clone());
+    Ok(items)
 }
 
 fn translate_strftime_uncached(format: &str) -> Result<Vec<OwnedFormatItem>, Error> {

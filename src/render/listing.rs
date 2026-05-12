@@ -12,7 +12,7 @@ use crate::content::Post;
 use super::cache::{read_cached_string, store_cached_string};
 use super::posts::{PostSummary, build_post_summary, post_key};
 use super::templates::render_template_with_scope;
-use super::utils::{compute_cache_digest, log_status, remove_dir_if_empty, remove_file_if_exists};
+use super::utils::{compute_cache_digest, compute_pagination_layout, log_status, remove_dir_if_empty, remove_file_if_exists};
 use super::{
     BuildMode, HOME_PAGES_KEY, MONTH_ARCHIVE_PREFIX, TAG_CACHE_PREFIX, YEAR_ARCHIVE_PREFIX,
 };
@@ -67,29 +67,9 @@ pub(super) fn render_homepage(
         .get_template("index.html")
         .context("index.html template missing")?;
 
-    let per_page = std::cmp::max(1, config.homepage_posts);
-
-    // Posts are now sorted ASCENDING (oldest first, newest last)
-    // posts[0] = oldest, posts[len-1] = newest
-    // Page 1 gets posts[0..per_page-1], Page 2 gets posts[per_page..2*per_page-1], etc.
-    // Homepage gets the last per_page to per_page*2-1 posts (newest)
-    // Posts within each page are displayed in reverse (newest first)
-
-    let remainder = posts.len() % per_page;
-
-    // Determine homepage size: between per_page and per_page*2-1 posts
-    let home_page_size = if posts.len() < per_page {
-        posts.len()
-    } else if remainder == 0 {
-        per_page
-    } else if remainder < per_page {
-        remainder + per_page
-    } else {
-        per_page
-    };
-
-    // Number of regular pages
-    let regular_page_count = (posts.len() - home_page_size) / per_page;
+    let layout = compute_pagination_layout(posts.len(), config.homepage_posts);
+    let per_page = layout.per_page;
+    let regular_page_count = layout.regular_page_count;
     let total_pages = regular_page_count + 1;
 
     let mut new_records = Vec::new();
@@ -475,7 +455,8 @@ pub(super) fn page_url(page_number: usize) -> String {
 pub(super) fn tag_slug(tag: &str) -> String {
     let slug = crate::utils::slugify(tag);
     if slug.is_empty() {
-        "untagged".to_string()
+        let hash = blake3::hash(tag.as_bytes());
+        format!("tag-{}", &hash.to_hex().to_string()[..8])
     } else {
         slug
     }

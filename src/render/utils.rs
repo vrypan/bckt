@@ -43,6 +43,33 @@ pub(super) fn remove_dir_if_empty(path: &Path) -> Result<()> {
     }
 }
 
+pub(super) struct PaginationLayout {
+    pub per_page: usize,
+    pub regular_page_count: usize,
+}
+
+pub(super) fn compute_pagination_layout(
+    post_count: usize,
+    homepage_posts: usize,
+) -> PaginationLayout {
+    let per_page = std::cmp::max(1, homepage_posts);
+    let remainder = post_count % per_page;
+    let home_page_size = if post_count < per_page {
+        post_count
+    } else if remainder == 0 {
+        per_page
+    } else if remainder < per_page {
+        remainder + per_page
+    } else {
+        per_page
+    };
+    let regular_page_count = (post_count - home_page_size) / per_page;
+    PaginationLayout {
+        per_page,
+        regular_page_count,
+    }
+}
+
 pub(super) fn normalize_path(path: &Path) -> String {
     path.components()
         .map(|comp| comp.as_os_str().to_string_lossy())
