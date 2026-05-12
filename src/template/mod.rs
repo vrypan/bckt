@@ -10,6 +10,13 @@ use crate::config::Config;
 
 pub fn environment(config: &Config) -> Result<Environment<'static>> {
     let mut env = Environment::new();
+    env.set_auto_escape_callback(|name| {
+        if name.ends_with(".html") {
+            minijinja::AutoEscape::Html
+        } else {
+            minijinja::AutoEscape::None
+        }
+    });
     env.add_global("config", Value::from_serialize(config));
     env.add_global(
         "base_url",
@@ -195,5 +202,30 @@ mod tests {
 
         let rendered = env.get_template("path").unwrap().render(()).unwrap();
         assert_eq!(rendered, "/foo/bar");
+    }
+
+    #[test]
+    fn html_templates_escape_quotes_in_attributes() {
+        let config = Config::default();
+        let mut env = environment(&config).unwrap();
+        env.add_template(
+            "t.html",
+            r#"<meta content="{{ title }}">"#,
+        )
+        .unwrap();
+        let ctx = minijinja::context! { title => r#"Say "hello""# };
+        let rendered = env.get_template("t.html").unwrap().render(ctx).unwrap();
+        assert_eq!(rendered, r#"<meta content="Say &quot;hello&quot;">"#);
+    }
+
+    #[test]
+    fn non_html_templates_do_not_escape() {
+        let config = Config::default();
+        let mut env = environment(&config).unwrap();
+        env.add_template("t.xml", r#"<title>{{ title }}</title>"#)
+            .unwrap();
+        let ctx = minijinja::context! { title => r#"Say "hello""# };
+        let rendered = env.get_template("t.xml").unwrap().render(ctx).unwrap();
+        assert_eq!(rendered, r#"<title>Say "hello"</title>"#);
     }
 }
