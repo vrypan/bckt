@@ -172,6 +172,7 @@ fn renders_pages_from_pages_directory() {
     let root = temp.path();
     setup_markdown_templates(root);
     fs::create_dir_all(root.join("pages/about")).unwrap();
+    fs::create_dir_all(root.join("pages/features/page1/assets")).unwrap();
     fs::write(
         root.join("pages/404.html"),
         "{% extends \"base.html\" %}{% block content %}<h1>Missing</h1>{% endblock %}",
@@ -182,6 +183,17 @@ fn renders_pages_from_pages_directory() {
             "{% extends \"base.html\" %}{% block content %}<p>About {{ config.title | default('site') }}</p>{% endblock %}",
         )
         .unwrap();
+    fs::write(
+        root.join("pages/features/page1/index.html"),
+        "{% extends \"base.html\" %}{% block content %}<p>Feature</p>{% endblock %}",
+    )
+    .unwrap();
+    fs::write(root.join("pages/features/page1/diagram.svg"), "<svg></svg>").unwrap();
+    fs::write(
+        root.join("pages/features/page1/assets/data.json"),
+        r#"{"ok":true}"#,
+    )
+    .unwrap();
 
     render_site(
         root,
@@ -199,6 +211,17 @@ fn renders_pages_from_pages_directory() {
 
     let about = fs::read_to_string(root.join("html/about/index.html")).unwrap();
     assert!(about.contains("About"));
+
+    let feature = fs::read_to_string(root.join("html/features/page1/index.html")).unwrap();
+    assert!(feature.contains("Feature"));
+    assert_eq!(
+        fs::read_to_string(root.join("html/features/page1/diagram.svg")).unwrap(),
+        "<svg></svg>"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("html/features/page1/assets/data.json")).unwrap(),
+        r#"{"ok":true}"#
+    );
 }
 
 #[test]

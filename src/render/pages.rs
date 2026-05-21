@@ -23,14 +23,7 @@ pub(super) fn render_pages(
     for entry in WalkDir::new(&pages_dir) {
         let entry = entry?;
         if entry.file_type().is_file() {
-            let path = entry.into_path();
-            if path
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
-            {
-                files.push(path);
-            }
+            files.push(entry.into_path());
         }
     }
 
@@ -49,6 +42,22 @@ pub(super) fn render_pages(
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create directory {}", parent.display()))?;
+        }
+
+        if !is_html_file(&path) {
+            fs::copy(&path, &output_path).with_context(|| {
+                format!(
+                    "failed to copy page asset from {} to {}",
+                    path.display(),
+                    output_path.display()
+                )
+            })?;
+            super::utils::log_status(
+                verbose,
+                "PAGE",
+                format!("Copied {}", normalize_path(relative)),
+            );
+            continue;
         }
 
         let source = fs::read_to_string(&path)
@@ -72,4 +81,10 @@ pub(super) fn render_pages(
     }
 
     Ok(rendered_pages)
+}
+
+fn is_html_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
 }
