@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.1] - 2026-06-17
+
+### Changed
+
+- `bckt themes install` now resolves bare theme names (e.g. `bckt themes
+  install microx`) via the theme search path (`BCKT_THEME_PATH`, executable
+  directory, `<prefix>/share/bckt`), in addition to explicit `.zip` and
+  directory paths.
+
 ## [0.7.0] - 2026-06-16
 
 ### Removed
