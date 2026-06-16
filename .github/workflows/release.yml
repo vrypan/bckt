@@ -221,14 +221,38 @@ jobs:
           path: |
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
+
+  # Package the bundled themes into platform-agnostic .zip artifacts.
+  # These are uploaded alongside the dist artifacts and attached to the
+  # GitHub release, so users can `bckt themes install <name>.zip`.
+  build-theme-artifacts:
+    needs:
+      - plan
+    if: ${{ needs.plan.outputs.publishing == 'true' }}
+    runs-on: "ubuntu-22.04"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          ref: ${{ needs.plan.outputs.tag || github.ref }}
+          submodules: recursive
+      - name: Package themes
+        run: ./scripts/package-themes.sh "$GITHUB_WORKSPACE/theme-artifacts"
+      - name: "Upload theme artifacts"
+        uses: actions/upload-artifact@v7
+        with:
+          name: artifacts-themes
+          path: theme-artifacts/*.zip
+
   # Determines if we should publish/announce
   host:
     needs:
       - plan
       - build-local-artifacts
       - build-global-artifacts
+      - build-theme-artifacts
     # Only run if we're "publishing", and only if plan, local and global didn't fail (skipped is fine)
-    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') && (needs.build-theme-artifacts.result == 'skipped' || needs.build-theme-artifacts.result == 'success') }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     runs-on: "ubuntu-22.04"
