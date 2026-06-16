@@ -7,7 +7,7 @@ use walkdir::WalkDir;
 
 use crate::cli::{ThemeInstallArgs, ThemesArgs, ThemesSubcommand};
 use crate::config::Config;
-use crate::theme::install_theme_source;
+use crate::theme::{install_theme_source, resolve_theme};
 use crate::utils::resolve_root;
 
 pub fn run_themes_command(args: ThemesArgs) -> Result<()> {
@@ -83,10 +83,10 @@ fn use_theme(root: &Path, name: &str, force: bool) -> Result<()> {
 }
 
 fn install_theme(root: &Path, args: ThemeInstallArgs) -> Result<()> {
-    let source = Path::new(&args.path);
-    if !source.exists() {
-        bail!("theme source '{}' not found", args.path);
-    }
+    // Accept a .zip/directory path or a bare theme name resolved across the
+    // theme search path (BCKT_THEME_PATH, the executable's directory, and
+    // <prefix>/share/bckt).
+    let source = resolve_theme(&args.path)?;
 
     let name = match args.name {
         Some(name) => name,
@@ -105,7 +105,7 @@ fn install_theme(root: &Path, args: ThemeInstallArgs) -> Result<()> {
         bail!("theme '{name}' already exists. Use --force to overwrite");
     }
 
-    install_theme_source(source, &destination)?;
+    install_theme_source(&source, &destination)?;
     println!("Installed theme '{name}'");
     Ok(())
 }

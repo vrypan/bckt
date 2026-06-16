@@ -193,15 +193,15 @@ pub enum ThemesSubcommand {
         force: bool,
     },
     #[command(
-        about = "Install a theme from a local .zip archive or directory into themes/",
-        long_about = "Install a local theme into themes/<name> by extracting a .zip archive or copying a theme directory. The source should contain the theme directories (templates/, skel/, pages/) at its root."
+        about = "Install a theme (a .zip/directory path or a theme name) into themes/",
+        long_about = "Install a theme into themes/<name> by extracting a .zip archive or copying a theme directory. Provide a path to a .zip or directory, or a bare theme name resolved across the theme search path (BCKT_THEME_PATH, the directory containing the bckt executable, and <prefix>/share/bckt). The source should contain the theme directories (templates/, skel/, pages/) at its root."
     )]
     Install(ThemeInstallArgs),
 }
 
 #[derive(Args, Clone, Debug)]
 pub struct ThemeInstallArgs {
-    #[arg(help = "Path to a .zip archive or a theme directory")]
+    #[arg(help = "A .zip/directory path or a theme name resolved via the search path")]
     pub path: String,
     #[arg(
         long,
