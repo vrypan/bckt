@@ -72,8 +72,8 @@ pub struct InitArgs {
     pub root: Option<String>,
     #[arg(
         long,
-        help = "Theme to initialise the project with (a .zip path or a theme name)",
-        long_help = "Theme to install into the new project. Provide either a path to a .zip archive or a theme name resolved as <name>.zip across the theme search path (BCKT_THEME_PATH and the directory containing the bckt executable). Defaults to 'bckt3'."
+        help = "Theme to initialise the project with (a .zip/directory path or a theme name)",
+        long_help = "Theme to install into the new project. Provide a path to a .zip archive or a theme directory, or a bare theme name resolved across the theme search path (BCKT_THEME_PATH and the directory containing the bckt executable), preferring <name>.zip and falling back to a <name>/ directory. Defaults to 'bckt3'."
     )]
     pub theme: Option<String>,
 }
@@ -193,15 +193,15 @@ pub enum ThemesSubcommand {
         force: bool,
     },
     #[command(
-        about = "Install a theme from a local .zip archive into themes/",
-        long_about = "Extract a local theme .zip archive into themes/<name>. The archive should contain the theme directories (templates/, skel/, pages/) at its root."
+        about = "Install a theme from a local .zip archive or directory into themes/",
+        long_about = "Install a local theme into themes/<name> by extracting a .zip archive or copying a theme directory. The source should contain the theme directories (templates/, skel/, pages/) at its root."
     )]
     Install(ThemeInstallArgs),
 }
 
 #[derive(Args, Clone, Debug)]
 pub struct ThemeInstallArgs {
-    #[arg(help = "Path to a .zip archive containing the theme")]
+    #[arg(help = "Path to a .zip archive or a theme directory")]
     pub path: String,
     #[arg(
         long,

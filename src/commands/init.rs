@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use walkdir::WalkDir;
 
 use crate::cli::InitArgs;
-use crate::theme::{install_theme_archive, resolve_theme_archive};
+use crate::theme::{install_theme_source, resolve_theme};
 use crate::utils::resolve_root;
 
 const DIRECTORIES: &[&str] = &["html", "posts", "templates", "skel", "themes", "pages"];
@@ -95,9 +95,9 @@ fn ensure_theme(theme_dir: &Path, spec: &str) -> Result<bool> {
         return Ok(true);
     }
 
-    match resolve_theme_archive(spec) {
-        Ok(archive) => {
-            install_theme_archive(&archive, theme_dir)?;
+    match resolve_theme(spec) {
+        Ok(source) => {
+            install_theme_source(&source, theme_dir)?;
             Ok(true)
         }
         Err(err) => {

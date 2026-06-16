@@ -4,15 +4,17 @@ use std::io::{self, Read, Seek};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
+use walkdir::WalkDir;
 use zip::ZipArchive;
 
 /// Environment variable holding additional directories to search for bundled
-/// theme archives (`<name>.zip`). Uses the platform path separator.
+/// themes (`<name>.zip` or a `<name>/` directory). Uses the platform path
+/// separator.
 pub const THEME_PATH_ENV: &str = "BCKT_THEME_PATH";
 
-/// Directories searched for bundled theme archives, in priority order: entries
-/// from `BCKT_THEME_PATH` first, then the directory containing the executable
-/// (so a distribution bundle can ship `bckt` and `bckt3.zip` side by side).
+/// Directories searched for bundled themes, in priority order: entries from
+/// `BCKT_THEME_PATH` first, then the directory containing the executable (so a
+/// distribution bundle can ship `bckt` and `bckt3.zip` side by side).
 pub fn theme_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if let Some(value) = env::var_os(THEME_PATH_ENV) {
@@ -30,45 +32,98 @@ pub fn theme_search_paths() -> Vec<PathBuf> {
     paths
 }
 
-/// Resolve a theme spec to a local `.zip` archive. A spec ending in `.zip` is
-/// treated as a direct filesystem path; otherwise it is treated as a theme name
-/// and looked up as `<name>.zip` across the theme search paths.
-pub fn resolve_theme_archive(spec: &str) -> Result<PathBuf> {
-    if spec.ends_with(".zip") {
+/// Resolve a theme spec to a local source: either a `.zip` archive or a theme
+/// directory. A spec that ends in `.zip` or contains a path separator is treated
+/// as a direct filesystem path; a bare name is looked up across the theme search
+/// paths, preferring `<name>.zip` and falling back to a `<name>/` directory.
+pub fn resolve_theme(spec: &str) -> Result<PathBuf> {
+    if spec.ends_with(".zip") || spec.contains('/') || spec.contains(std::path::MAIN_SEPARATOR) {
         let candidate = Path::new(spec);
-        if candidate.is_file() {
+        if candidate.is_dir() || candidate.is_file() {
             return Ok(candidate.to_path_buf());
         }
-        bail!("theme archive '{}' not found", spec);
+        bail!("theme '{}' not found", spec);
     }
 
     let file_name = format!("{spec}.zip");
-    let search_paths = theme_search_paths();
-    for dir in &search_paths {
-        let path = dir.join(&file_name);
-        if path.is_file() {
-            return Ok(path);
+    for dir in theme_search_paths() {
+        let archive = dir.join(&file_name);
+        if archive.is_file() {
+            return Ok(archive);
+        }
+        let theme_dir = dir.join(spec);
+        if theme_dir.is_dir() {
+            return Ok(theme_dir);
         }
     }
     bail!(
-        "theme '{spec}' not found in theme search path (set {THEME_PATH_ENV}, or pass a path to a .zip archive)"
+        "theme '{spec}' not found in theme search path (set {THEME_PATH_ENV}, or pass a path to a .zip archive or theme directory)"
     )
 }
 
-/// Install a theme from a local `.zip` archive into `destination`, replacing any
-/// existing contents. The archive is expected to contain the theme directories
-/// (`templates/`, `skel/`, `pages/`) at its root.
-pub fn install_theme_archive(archive_path: &Path, destination: &Path) -> Result<()> {
-    if destination.exists() {
-        fs::remove_dir_all(destination).with_context(|| {
+/// Install a theme into `destination`, replacing any existing contents. The
+/// source may be a `.zip` archive (whose contents are extracted) or a theme
+/// directory (whose contents are copied). Either way the theme directories
+/// (`templates/`, `skel/`, `pages/`) are expected at the source root.
+pub fn install_theme_source(source: &Path, destination: &Path) -> Result<()> {
+    if source.is_dir() {
+        return install_theme_dir(source, destination);
+    }
+    install_theme_archive(source, destination)
+}
+
+fn install_theme_dir(source: &Path, destination: &Path) -> Result<()> {
+    let source = source
+        .canonicalize()
+        .with_context(|| format!("failed to resolve theme directory {}", source.display()))?;
+    let target = canonical_target(destination)?;
+    if target == source || target.starts_with(&source) || source.starts_with(&target) {
+        bail!(
+            "theme source and destination overlap: {} -> {}",
+            source.display(),
+            destination.display()
+        );
+    }
+
+    prepare_destination(destination)?;
+
+    let mut copied = false;
+    for entry in WalkDir::new(&source) {
+        let entry = entry
+            .with_context(|| format!("failed to read theme directory {}", source.display()))?;
+        if entry.file_type().is_dir() {
+            continue;
+        }
+        let relative = entry.path().strip_prefix(&source).with_context(|| {
             format!(
-                "failed to remove existing directory {}",
-                destination.display()
+                "path {} is not under {}",
+                entry.path().display(),
+                source.display()
             )
         })?;
+        let out_path = destination.join(relative);
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", parent.display()))?;
+        }
+        fs::copy(entry.path(), &out_path).with_context(|| {
+            format!(
+                "failed to copy {} to {}",
+                entry.path().display(),
+                out_path.display()
+            )
+        })?;
+        copied = true;
     }
-    fs::create_dir_all(destination)
-        .with_context(|| format!("failed to create directory {}", destination.display()))?;
+
+    if !copied {
+        bail!("theme directory {} is empty", source.display());
+    }
+    Ok(())
+}
+
+fn install_theme_archive(archive_path: &Path, destination: &Path) -> Result<()> {
+    prepare_destination(destination)?;
 
     let file = File::open(archive_path)
         .with_context(|| format!("failed to open theme archive {}", archive_path.display()))?;
@@ -121,6 +176,47 @@ fn extract_archive<R: Read + Seek>(archive: &mut ZipArchive<R>, destination: &Pa
     Ok(())
 }
 
+/// Remove `destination` if it exists and recreate it as an empty directory.
+fn prepare_destination(destination: &Path) -> Result<()> {
+    if destination.exists() {
+        fs::remove_dir_all(destination).with_context(|| {
+            format!(
+                "failed to remove existing directory {}",
+                destination.display()
+            )
+        })?;
+    }
+    fs::create_dir_all(destination)
+        .with_context(|| format!("failed to create directory {}", destination.display()))?;
+    Ok(())
+}
+
+/// Canonical path a destination *will* have, even when it (and some of its
+/// parents) do not exist yet: walk up to the nearest existing ancestor,
+/// canonicalise it, then re-append the trailing components. Used to detect
+/// source/destination overlap before clobbering the destination.
+fn canonical_target(destination: &Path) -> Result<PathBuf> {
+    let mut suffix: Vec<std::ffi::OsString> = Vec::new();
+    let mut current = destination;
+    loop {
+        if let Ok(canon) = current.canonicalize() {
+            let mut result = canon;
+            for part in suffix.iter().rev() {
+                result.push(part);
+            }
+            return Ok(result);
+        }
+        match (current.parent(), current.file_name()) {
+            (Some(parent), Some(name)) => {
+                suffix.push(name.to_os_string());
+                current = parent;
+            }
+            // No existing ancestor (e.g. a relative path); use it as-is.
+            _ => return Ok(destination.to_path_buf()),
+        }
+    }
+}
+
 /// Sanitise an archive entry name into a relative path, rejecting absolute paths
 /// and any `..` components to guard against zip-slip.
 fn safe_relative_path(name: &str) -> Option<PathBuf> {
@@ -170,7 +266,7 @@ mod tests {
         );
 
         let destination = dir.path().join("themes/theme");
-        install_theme_archive(&archive, &destination).unwrap();
+        install_theme_source(&archive, &destination).unwrap();
 
         assert!(destination.join("templates/post.html").is_file());
         assert!(destination.join("skel/assets/js/search.js").is_file());
@@ -189,31 +285,79 @@ mod tests {
         );
 
         let destination = dir.path().join("themes/evil");
-        install_theme_archive(&archive, &destination).unwrap();
+        install_theme_source(&archive, &destination).unwrap();
 
         assert!(!dir.path().join("escape.txt").exists());
         assert!(destination.join("templates/post.html").is_file());
     }
 
     #[test]
-    fn resolve_named_theme_uses_search_path() {
+    fn installs_directory_source() {
         let dir = TempDir::new().unwrap();
-        let archive = dir.path().join("bckt3.zip");
-        write_archive(&archive, &[("templates/post.html", "<html></html>")]);
+        let source = dir.path().join("src-theme");
+        fs::create_dir_all(source.join("templates")).unwrap();
+        fs::create_dir_all(source.join("skel/assets/js")).unwrap();
+        fs::write(source.join("templates/post.html"), "<html></html>").unwrap();
+        fs::write(source.join("skel/assets/js/search.js"), "// search").unwrap();
 
-        // SAFETY: tests in this module run single-threaded for this env var.
-        unsafe { env::set_var(THEME_PATH_ENV, dir.path()) };
-        let resolved = resolve_theme_archive("bckt3").unwrap();
-        unsafe { env::remove_var(THEME_PATH_ENV) };
+        let destination = dir.path().join("themes/theme");
+        install_theme_source(&source, &destination).unwrap();
 
-        assert_eq!(resolved, archive);
+        assert!(destination.join("templates/post.html").is_file());
+        assert!(destination.join("skel/assets/js/search.js").is_file());
     }
 
     #[test]
-    fn resolve_missing_theme_errors() {
-        unsafe { env::set_var(THEME_PATH_ENV, "/nonexistent-theme-dir") };
-        let result = resolve_theme_archive("does-not-exist");
-        unsafe { env::remove_var(THEME_PATH_ENV) };
+    fn rejects_overlapping_source_and_destination() {
+        let dir = TempDir::new().unwrap();
+        let source = dir.path().join("themes/bckt3");
+        fs::create_dir_all(source.join("templates")).unwrap();
+        fs::write(source.join("templates/post.html"), "<html></html>").unwrap();
+
+        // Installing a directory onto itself must not delete the source.
+        let result = install_theme_source(&source, &source);
         assert!(result.is_err());
+        assert!(source.join("templates/post.html").is_file());
+    }
+
+    #[test]
+    fn resolve_direct_paths() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("theme.zip");
+        write_archive(&archive, &[("templates/post.html", "<html></html>")]);
+        assert_eq!(resolve_theme(archive.to_str().unwrap()).unwrap(), archive);
+
+        let theme_dir = dir.path().join("a/themedir");
+        fs::create_dir_all(&theme_dir).unwrap();
+        assert_eq!(
+            resolve_theme(theme_dir.to_str().unwrap()).unwrap(),
+            theme_dir
+        );
+
+        let missing = dir.path().join("missing.zip");
+        assert!(resolve_theme(missing.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn resolve_named_theme_searches_path() {
+        let dir = TempDir::new().unwrap();
+        // A .zip is preferred for one name...
+        let archive = dir.path().join("bckt3.zip");
+        write_archive(&archive, &[("templates/post.html", "<html></html>")]);
+        // ...and a directory is the fallback for another.
+        let other_dir = dir.path().join("plain");
+        fs::create_dir_all(&other_dir).unwrap();
+
+        // SAFETY: env-dependent assertions are consolidated into this single
+        // test so the global var is not mutated by concurrent tests.
+        unsafe { env::set_var(THEME_PATH_ENV, dir.path()) };
+        let zip = resolve_theme("bckt3");
+        let dir_theme = resolve_theme("plain");
+        let missing = resolve_theme("does-not-exist");
+        unsafe { env::remove_var(THEME_PATH_ENV) };
+
+        assert_eq!(zip.unwrap(), archive);
+        assert_eq!(dir_theme.unwrap(), other_dir);
+        assert!(missing.is_err());
     }
 }
