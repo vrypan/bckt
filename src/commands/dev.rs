@@ -479,5 +479,4 @@ mod tests {
     fn parse_since_fails_without_value() {
         assert!(parse_since("foo=bar").is_err());
     }
-
 }

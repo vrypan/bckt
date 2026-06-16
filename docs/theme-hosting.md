@@ -1,11 +1,12 @@
-# Hosting bckt Themes
+# Sharing bckt Themes
 
-You can share bckt themes by hosting a zip archive and letting users download it
-with `bckt themes download` or `bckt init --theme-url`.
+bckt themes are distributed as plain `.zip` archives. Share the archive however
+you like (a release page, your own site, email), and users install it from a
+local file with `bckt themes install`.
 
 ## Structure your archive
 
-A theme archive should contain the usual directories:
+A theme archive should contain the theme directories at its **root**:
 
 ```
 templates/
@@ -13,41 +14,46 @@ skel/
 pages/
 ```
 
-and
+`templates/` and `skel/` define the look (skel holds static files such as CSS
+and JavaScript, e.g. `skel/assets/js/`). `pages/` holds optional starter pages.
 
-```
-theme.yaml
-```
-
-Zip up the folder so the theme lives at the root of the archive:
+Zip the contents so they live at the root of the archive:
 
 ```bash
-zip -r minimal-theme.zip templates skel pages
+cd my-theme
+zip -r ../my-theme.zip templates skel pages
 ```
 
-## Host the zip
+The archive's file name (without `.zip`) becomes the default theme name on
+install, so name it after the theme (for example `my-theme.zip`).
 
-Upload the archive to any HTTP(S) location (e.g. GitHub Releases, S3, your own
-site) and note the public URL.
-
-## Users download and install
+## Users install the theme
 
 ```bash
-bckt themes download theme --url https://example.com/minimal-theme.zip
-bckt themes use mytheme
+bckt themes install path/to/my-theme.zip
+bckt themes use my-theme
 ```
 
-`--subdir` can be used if the zip contains extra path components, but when downloading from GitHub you can also append the base path to the `owner/repo` string (for example `owner/repo/themes`).
+`bckt themes install` extracts the archive into `themes/<name>/` (override the
+name with `--name`, overwrite an existing one with `--force`). `bckt themes use`
+copies `templates/` and `skel/` into the project and records the theme in
+`bckt.yaml`; your `pages/` are left untouched.
 
-## GitHub convenience
+## Theme search path and `bckt init`
 
-To share a theme from a GitHub repo, tag a release and instruct users to run:
+`bckt init` installs a default theme (`bckt3`) by looking for `bckt3.zip` across
+the theme search path:
+
+1. directories listed in the `BCKT_THEME_PATH` environment variable, then
+2. the directory containing the `bckt` executable.
+
+A distribution bundle can therefore ship `bckt` and `bckt3.zip` side by side, or
+a package manager can install theme archives into a shared location and point
+`BCKT_THEME_PATH` at it (for example `$(brew --prefix)/share/bckt`).
+
+You can also initialise from an explicit archive or a named theme:
 
 ```bash
-bckt themes download mytheme \
-  --github your-name/your-theme/themes \
-  --tag v1.0.0
+bckt init --theme path/to/my-theme.zip
+bckt init --theme my-theme   # resolved as my-theme.zip via the search path
 ```
-
-`bckt init` accepts the same flags so a new project can bootstrap directly from a
-remote theme.

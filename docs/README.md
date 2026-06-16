@@ -21,19 +21,19 @@ context variables.
 integration.
 - [Hosting Themes](theme-hosting.md) — package and distribute reusable theme zips.
 
-## Themes are downloaded on demand
+## Themes are installed from local archives
 
-When you run `bckt init`, the CLI downloads the default `bckt3` theme from
-[github.com/vrypan/bckt](https://github.com/vrypan/bckt) and unpacks it under
-`themes/bckt3/`. 
+When you run `bckt init`, the CLI installs the default `bckt3` theme by locating
+`bckt3.zip` on the theme search path (`BCKT_THEME_PATH`, then the directory
+containing the `bckt` executable) and unpacking it under `themes/bckt3/`.
 
-If you prefer to start from a custom source you can override the defaults:
+You can start from a different archive or a named theme instead:
 
 ```bash
-bckt init --theme-github your-name/your-theme --theme-subdir themes/minimal
-# or
-bckt init --theme-url https://example.com/theme.zip --theme-name mytheme
+bckt init --theme path/to/your-theme.zip
+# or, resolved as <name>.zip via the search path
+bckt init --theme your-theme
 ```
 
-See [theme-hosting.md](theme-hosting.md) for details on packaging themes and
-hosting archives.
+See [theme-hosting.md](theme-hosting.md) for details on packaging and sharing
+theme archives.

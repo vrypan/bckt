@@ -262,7 +262,6 @@ fn language_from_front_matter_is_normalized() {
     assert_eq!(posts[0].language, "el");
 }
 
-
 #[test]
 fn short_content_falls_back_to_default_language() {
     let dir = TempDir::new().unwrap();

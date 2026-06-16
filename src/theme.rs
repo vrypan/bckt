@@ -1,34 +1,64 @@
+use std::env;
 use std::fs::{self, File};
-use std::io::{self, Read, Seek, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, Read, Seek};
+use std::path::{Component, Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow};
-use tempfile::NamedTempFile;
+use anyhow::{Context, Result, anyhow, bail};
 use zip::ZipArchive;
 
-#[derive(Debug, Clone)]
-pub enum GithubReference {
-    Tag(String),
-    Branch(String),
+/// Environment variable holding additional directories to search for bundled
+/// theme archives (`<name>.zip`). Uses the platform path separator.
+pub const THEME_PATH_ENV: &str = "BCKT_THEME_PATH";
+
+/// Directories searched for bundled theme archives, in priority order: entries
+/// from `BCKT_THEME_PATH` first, then the directory containing the executable
+/// (so a distribution bundle can ship `bckt` and `bckt3.zip` side by side).
+pub fn theme_search_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Some(value) = env::var_os(THEME_PATH_ENV) {
+        for part in env::split_paths(&value) {
+            if !part.as_os_str().is_empty() {
+                paths.push(part);
+            }
+        }
+    }
+    if let Ok(exe) = env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        paths.push(dir.to_path_buf());
+    }
+    paths
 }
 
-#[derive(Debug, Clone)]
-pub enum ThemeSource {
-    Github {
-        owner: String,
-        repo: String,
-        reference: GithubReference,
-        subdir: Option<String>,
-        strip_components: Option<usize>,
-    },
-    Url {
-        url: String,
-        subdir: Option<String>,
-        strip_components: Option<usize>,
-    },
+/// Resolve a theme spec to a local `.zip` archive. A spec ending in `.zip` is
+/// treated as a direct filesystem path; otherwise it is treated as a theme name
+/// and looked up as `<name>.zip` across the theme search paths.
+pub fn resolve_theme_archive(spec: &str) -> Result<PathBuf> {
+    if spec.ends_with(".zip") {
+        let candidate = Path::new(spec);
+        if candidate.is_file() {
+            return Ok(candidate.to_path_buf());
+        }
+        bail!("theme archive '{}' not found", spec);
+    }
+
+    let file_name = format!("{spec}.zip");
+    let search_paths = theme_search_paths();
+    for dir in &search_paths {
+        let path = dir.join(&file_name);
+        if path.is_file() {
+            return Ok(path);
+        }
+    }
+    bail!(
+        "theme '{spec}' not found in theme search path (set {THEME_PATH_ENV}, or pass a path to a .zip archive)"
+    )
 }
 
-pub fn download_theme(destination: &Path, source: ThemeSource) -> Result<()> {
+/// Install a theme from a local `.zip` archive into `destination`, replacing any
+/// existing contents. The archive is expected to contain the theme directories
+/// (`templates/`, `skel/`, `pages/`) at its root.
+pub fn install_theme_archive(archive_path: &Path, destination: &Path) -> Result<()> {
     if destination.exists() {
         fs::remove_dir_all(destination).with_context(|| {
             format!(
@@ -40,117 +70,27 @@ pub fn download_theme(destination: &Path, source: ThemeSource) -> Result<()> {
     fs::create_dir_all(destination)
         .with_context(|| format!("failed to create directory {}", destination.display()))?;
 
-    let mut temp =
-        NamedTempFile::new().context("failed to create temporary file for theme download")?;
+    let file = File::open(archive_path)
+        .with_context(|| format!("failed to open theme archive {}", archive_path.display()))?;
+    let mut archive = ZipArchive::new(file)
+        .with_context(|| format!("failed to read theme archive {}", archive_path.display()))?;
 
-    let (archive_url, subdir, strip_components) = match &source {
-        ThemeSource::Github {
-            owner,
-            repo,
-            reference,
-            subdir,
-            strip_components,
-        } => {
-            let (url, default_strip) = match reference {
-                GithubReference::Tag(tag) => (
-                    format!(
-                        "https://codeload.github.com/{owner}/{repo}/zip/refs/tags/{tag}",
-                        owner = owner,
-                        repo = repo,
-                        tag = tag
-                    ),
-                    1usize,
-                ),
-                GithubReference::Branch(branch) => (
-                    format!(
-                        "https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{branch}",
-                        owner = owner,
-                        repo = repo,
-                        branch = branch
-                    ),
-                    1usize,
-                ),
-            };
-            (
-                url,
-                subdir.clone(),
-                strip_components.unwrap_or(default_strip),
-            )
-        }
-        ThemeSource::Url {
-            url,
-            subdir,
-            strip_components,
-        } => (
-            url.clone(),
-            subdir.clone(),
-            strip_components.unwrap_or(0usize),
-        ),
-    };
-
-    download_to_file(&archive_url, temp.as_file_mut())?;
-
-    let file = File::open(temp.path()).context("failed to reopen downloaded theme archive")?;
-    let mut archive = ZipArchive::new(file).context("failed to read theme archive")?;
-
-    extract_theme_archive(
-        &mut archive,
-        destination,
-        strip_components,
-        subdir.as_deref(),
-    )
+    extract_archive(&mut archive, destination)
 }
 
-fn download_to_file(url: &str, mut target: &mut File) -> Result<()> {
-    let mut response = ureq::get(url)
-        .header(
-            "User-Agent",
-            concat!(
-                "bckt/",
-                env!("CARGO_PKG_VERSION"),
-                " (https://github.com/vrypan/bckt)"
-            ),
-        )
-        .header("Accept", "application/octet-stream")
-        .call()
-        .map_err(|err| match err {
-            ureq::Error::StatusCode(code) => {
-                anyhow!("download request failed with status {code} for {url}")
-            }
-            err => anyhow!("failed to download {url}: {err}"),
-        })?;
-
-    let mut reader = response.body_mut().as_reader();
-    io::copy(&mut reader, &mut target)
-        .with_context(|| format!("failed to write downloaded archive from {url}"))?;
-    target
-        .flush()
-        .context("failed to flush downloaded archive to temporary file")?;
-    Ok(())
-}
-
-fn extract_theme_archive<R: Read + Seek>(
-    archive: &mut ZipArchive<R>,
-    destination: &Path,
-    strip_components: usize,
-    subdir: Option<&str>,
-) -> Result<()> {
+fn extract_archive<R: Read + Seek>(archive: &mut ZipArchive<R>, destination: &Path) -> Result<()> {
     let mut extracted_any = false;
-    let subdir_path = subdir.map(PathBuf::from);
 
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)
             .with_context(|| format!("failed to read archive entry #{i}"))?;
-        let name = entry.name().to_string();
         if entry.is_dir() {
             continue;
         }
 
-        let relative = match compute_relative_path(&name, strip_components, subdir_path.as_deref())
-        {
-            Some(rel) if !rel.as_os_str().is_empty() => rel,
-            _ => continue,
+        let Some(relative) = safe_relative_path(entry.name()) else {
+            continue;
         };
 
         let out_path = destination.join(&relative);
@@ -181,29 +121,99 @@ fn extract_theme_archive<R: Read + Seek>(
     Ok(())
 }
 
-fn compute_relative_path(
-    entry_name: &str,
-    strip_components: usize,
-    subdir: Option<&Path>,
-) -> Option<PathBuf> {
-    let entry_path = Path::new(entry_name);
-    let total_components = entry_path.iter().count();
-
-    if total_components <= strip_components {
-        return None;
-    }
-
-    let mut stripped = PathBuf::new();
-    for component in entry_path.iter().skip(strip_components) {
-        stripped.push(component);
-    }
-
-    if let Some(prefix) = subdir {
-        if !stripped.starts_with(prefix) {
-            return None;
+/// Sanitise an archive entry name into a relative path, rejecting absolute paths
+/// and any `..` components to guard against zip-slip.
+fn safe_relative_path(name: &str) -> Option<PathBuf> {
+    let mut out = PathBuf::new();
+    for component in Path::new(name).components() {
+        match component {
+            Component::Normal(segment) => out.push(segment),
+            Component::CurDir => {}
+            _ => return None,
         }
-        return stripped.strip_prefix(prefix).ok().map(|p| p.to_path_buf());
+    }
+    if out.as_os_str().is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::TempDir;
+    use zip::write::SimpleFileOptions;
+
+    fn write_archive(path: &Path, files: &[(&str, &str)]) {
+        let file = File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+        for (name, contents) in files {
+            zip.start_file(*name, options).unwrap();
+            zip.write_all(contents.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
     }
 
-    Some(stripped)
+    #[test]
+    fn installs_archive_contents_at_root() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("theme.zip");
+        write_archive(
+            &archive,
+            &[
+                ("templates/post.html", "<html></html>"),
+                ("skel/assets/js/search.js", "// search"),
+            ],
+        );
+
+        let destination = dir.path().join("themes/theme");
+        install_theme_archive(&archive, &destination).unwrap();
+
+        assert!(destination.join("templates/post.html").is_file());
+        assert!(destination.join("skel/assets/js/search.js").is_file());
+    }
+
+    #[test]
+    fn rejects_zip_slip_entries() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("evil.zip");
+        write_archive(
+            &archive,
+            &[
+                ("../escape.txt", "nope"),
+                ("templates/post.html", "<html></html>"),
+            ],
+        );
+
+        let destination = dir.path().join("themes/evil");
+        install_theme_archive(&archive, &destination).unwrap();
+
+        assert!(!dir.path().join("escape.txt").exists());
+        assert!(destination.join("templates/post.html").is_file());
+    }
+
+    #[test]
+    fn resolve_named_theme_uses_search_path() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("bckt3.zip");
+        write_archive(&archive, &[("templates/post.html", "<html></html>")]);
+
+        // SAFETY: tests in this module run single-threaded for this env var.
+        unsafe { env::set_var(THEME_PATH_ENV, dir.path()) };
+        let resolved = resolve_theme_archive("bckt3").unwrap();
+        unsafe { env::remove_var(THEME_PATH_ENV) };
+
+        assert_eq!(resolved, archive);
+    }
+
+    #[test]
+    fn resolve_missing_theme_errors() {
+        unsafe { env::set_var(THEME_PATH_ENV, "/nonexistent-theme-dir") };
+        let result = resolve_theme_archive("does-not-exist");
+        unsafe { env::remove_var(THEME_PATH_ENV) };
+        assert!(result.is_err());
+    }
 }

@@ -21,10 +21,7 @@ use crate::config::Config;
 use crate::search;
 use crate::template;
 
-use assets::{
-    ThemeAssetCopy, compute_static_digest, compute_theme_asset_digest, copy_static_assets,
-    copy_theme_assets,
-};
+use assets::{compute_static_digest, copy_static_assets};
 use cache::{open_cache_db, read_cached_string, store_cached_string};
 use feeds::render_feeds;
 use listing::{HomePageCache, render_archives, render_homepage, render_tag_archives};
@@ -42,7 +39,6 @@ pub(super) const MONTH_ARCHIVE_PREFIX: &str = "archive_month:";
 const SITE_INPUTS_KEY: &str = "site_inputs_hash";
 const STATIC_HASH_KEY: &str = "static_hash";
 const SEARCH_INDEX_KEY: &str = "search_index_hash";
-const THEME_ASSET_HASH_KEY: &str = "theme_asset_hash";
 
 #[derive(Clone, Copy, Debug)]
 pub struct RenderPlan {
@@ -65,7 +61,6 @@ struct RenderStats {
     pages_rendered: usize,
     search_documents: usize,
     static_assets_copied: usize,
-    theme_assets_copied: usize,
 }
 
 pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
@@ -216,43 +211,9 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
             stats.static_assets_copied = 0;
         }
         store_cached_string(&cache_db, STATIC_HASH_KEY, &static_hash)?;
-
-        if let Some(theme_name) = config.theme.as_deref() {
-            let theme_hash = compute_theme_asset_digest(root, theme_name)?;
-            let stored_theme_hash = read_cached_string(&cache_db, THEME_ASSET_HASH_KEY)?;
-            let theme_changed = stored_theme_hash.as_deref() != Some(theme_hash.as_str());
-            let should_copy_theme = matches!(effective_mode, BuildMode::Full) || theme_changed;
-
-            if should_copy_theme {
-                match copy_theme_assets(root, &html_root, theme_name)? {
-                    ThemeAssetCopy::Copied(count) => {
-                        stats.theme_assets_copied = count;
-                        log_status(
-                            plan.verbose,
-                            "THEME",
-                            format!("Copied {count} theme asset(s) for {theme_name}"),
-                        );
-                    }
-                    ThemeAssetCopy::SkippedMissing => {
-                        stats.theme_assets_copied = 0;
-                        log_status(
-                            plan.verbose,
-                            "THEME",
-                            format!("Theme {theme_name} has no assets directory"),
-                        );
-                    }
-                }
-            } else {
-                stats.theme_assets_copied = 0;
-                log_status(plan.verbose, "THEME", "Theme assets unchanged");
-            }
-
-            store_cached_string(&cache_db, THEME_ASSET_HASH_KEY, &theme_hash)?;
-        }
     } else {
         log_status(plan.verbose, "STATIC", "Skipping static assets");
         stats.static_assets_copied = 0;
-        stats.theme_assets_copied = 0;
     }
 
     cache_db.flush().context("failed to flush cache database")?;
@@ -262,14 +223,13 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
     let total_posts = stats.posts_rendered + stats.posts_skipped;
     let elapsed = started.elapsed();
     println!(
-        "[SUMMARY] posts rendered: {}/{} (skipped {}); pages: {}; search docs: {}; static assets copied: {}; theme assets copied: {}; elapsed: {:.2?}",
+        "[SUMMARY] posts rendered: {}/{} (skipped {}); pages: {}; search docs: {}; static assets copied: {}; elapsed: {:.2?}",
         stats.posts_rendered,
         total_posts,
         stats.posts_skipped,
         stats.pages_rendered,
         stats.search_documents,
         stats.static_assets_copied,
-        stats.theme_assets_copied,
         elapsed
     );
 

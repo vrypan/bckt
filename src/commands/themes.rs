@@ -5,9 +5,9 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use walkdir::WalkDir;
 
-use crate::cli::{ThemeDownloadArgs, ThemesArgs, ThemesSubcommand};
+use crate::cli::{ThemeInstallArgs, ThemesArgs, ThemesSubcommand};
 use crate::config::Config;
-use crate::theme::{GithubReference, ThemeSource, download_theme};
+use crate::theme::install_theme_archive;
 use crate::utils::resolve_root;
 
 pub fn run_themes_command(args: ThemesArgs) -> Result<()> {
@@ -16,7 +16,7 @@ pub fn run_themes_command(args: ThemesArgs) -> Result<()> {
     match args.command {
         ThemesSubcommand::List => list_themes(&root),
         ThemesSubcommand::Use { name, force } => use_theme(&root, &name, force),
-        ThemesSubcommand::Download(download_args) => download_theme_into(&root, download_args),
+        ThemesSubcommand::Install(install_args) => install_theme(&root, install_args),
     }
 }
 
@@ -82,51 +82,31 @@ fn use_theme(root: &Path, name: &str, force: bool) -> Result<()> {
     Ok(())
 }
 
-fn download_theme_into(root: &Path, args: ThemeDownloadArgs) -> Result<()> {
+fn install_theme(root: &Path, args: ThemeInstallArgs) -> Result<()> {
+    let archive_path = Path::new(&args.path);
+    if !archive_path.is_file() {
+        bail!("theme archive '{}' not found", args.path);
+    }
+
+    let name = match args.name {
+        Some(name) => name,
+        None => archive_path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .map(|stem| stem.to_string())
+            .with_context(|| format!("could not derive a theme name from '{}'", args.path))?,
+    };
+
     let themes_dir = root.join("themes");
     fs::create_dir_all(&themes_dir).context("failed to create themes directory")?;
 
-    let destination = themes_dir.join(&args.name);
-    if destination.exists() {
-        if args.force {
-            fs::remove_dir_all(&destination).with_context(|| {
-                format!("failed to remove existing theme {}", destination.display())
-            })?;
-        } else {
-            bail!(
-                "theme '{}' already exists. Use --force to overwrite",
-                args.name
-            );
-        }
+    let destination = themes_dir.join(&name);
+    if destination.exists() && !args.force {
+        bail!("theme '{name}' already exists. Use --force to overwrite");
     }
 
-    let repo_spec_info = args
-        .github
-        .as_ref()
-        .map(|spec| parse_github_spec(spec))
-        .transpose()?;
-
-    let source = if let Some(url) = &args.url {
-        ThemeSource::Url {
-            url: url.clone(),
-            subdir: args.subdir.clone(),
-            strip_components: args.strip_components,
-        }
-    } else if let Some((owner, repo, repo_path)) = repo_spec_info {
-        let reference = select_github_reference(args.tag.clone(), args.branch.clone());
-        ThemeSource::Github {
-            owner,
-            repo,
-            reference,
-            subdir: derive_subdir(args.subdir.clone(), repo_path, &args.name),
-            strip_components: Some(args.strip_components.unwrap_or(1)),
-        }
-    } else {
-        bail!("either --url or --github must be provided");
-    };
-
-    download_theme(&destination, source)?;
-    println!("Downloaded theme '{}'", args.name);
+    install_theme_archive(archive_path, &destination)?;
+    println!("Installed theme '{name}'");
     Ok(())
 }
 
@@ -176,38 +156,11 @@ fn directory_has_contents(path: &Path) -> Result<bool> {
     Ok(entries.next().is_some())
 }
 
-fn parse_github_spec(spec: &str) -> Result<(String, String, Option<String>)> {
-    let mut segments = spec.split('/').collect::<Vec<_>>();
-    if segments.len() < 2 {
-        bail!("invalid GitHub specification '{spec}' (expected owner/repo[/path])");
-    }
-
-    let owner = segments.remove(0);
-    let repo = segments.remove(0);
-
-    if owner.is_empty() || repo.is_empty() {
-        bail!("invalid GitHub specification '{spec}'");
-    }
-
-    let subdir = if segments.is_empty() {
-        None
-    } else {
-        Some(segments.join("/"))
-    };
-
-    Ok((owner.to_string(), repo.to_string(), subdir))
-}
-
-fn select_github_reference(tag: Option<String>, branch: Option<String>) -> GithubReference {
-    match (tag, branch) {
-        (Some(tag), _) => GithubReference::Tag(tag),
-        (None, Some(branch)) => GithubReference::Branch(branch),
-        (None, None) => GithubReference::Branch("main".to_string()),
-    }
-}
-
 fn apply_theme(theme_root: &Path, project_root: &Path) -> Result<()> {
-    for name in ["templates", "skel", "pages"] {
+    // Only templates/ and skel/ define the theme's look and are replaced.
+    // pages/ holds user content (e.g. an About page) and is left untouched;
+    // run `bckt init` once to seed a theme's starter pages.
+    for name in ["templates", "skel"] {
         let source_path = theme_root.join(name);
         if source_path.exists() {
             let destination_path = project_root.join(name);
@@ -252,79 +205,86 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-fn derive_subdir(
-    explicit: Option<String>,
-    repo_path: Option<String>,
-    theme_name: &str,
-) -> Option<String> {
-    if let Some(explicit) = explicit {
-        return Some(explicit);
-    }
-
-    let repo_path = repo_path?;
-    let mut components: Vec<String> = repo_path
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .map(|segment| segment.to_string())
-        .collect();
-
-    match components.last() {
-        Some(last) if last == theme_name => {}
-        _ => components.push(theme_name.to_string()),
-    }
-
-    Some(components.join("/"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use tempfile::TempDir;
+    use zip::write::SimpleFileOptions;
 
-    #[test]
-    fn parse_github_spec_handles_owner_repo() {
-        let (owner, repo, path) = parse_github_spec("vrypan/bckt").unwrap();
-        assert_eq!(owner, "vrypan");
-        assert_eq!(repo, "bckt");
-        assert!(path.is_none());
+    fn write_theme_archive(path: &Path) {
+        let file = fs::File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+        zip.start_file("templates/post.html", options).unwrap();
+        zip.write_all(b"<html></html>").unwrap();
+        zip.finish().unwrap();
     }
 
     #[test]
-    fn parse_github_spec_handles_nested_path() {
-        let (owner, repo, path) = parse_github_spec("vrypan/bckt/themes").unwrap();
-        assert_eq!(owner, "vrypan");
-        assert_eq!(repo, "bckt");
-        assert_eq!(path.as_deref(), Some("themes"));
-    }
+    fn install_theme_extracts_into_named_directory() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("bckt3.zip");
+        write_theme_archive(&archive);
 
-    #[test]
-    fn parse_github_spec_requires_owner_repo() {
-        assert!(parse_github_spec("vrypan").is_err());
-    }
+        install_theme(
+            dir.path(),
+            ThemeInstallArgs {
+                path: archive.to_string_lossy().into_owned(),
+                name: None,
+                force: false,
+            },
+        )
+        .unwrap();
 
-    #[test]
-    fn derive_subdir_prefers_explicit_value() {
-        let result = derive_subdir(
-            Some("custom/path".to_string()),
-            Some("themes".to_string()),
-            "bckt3",
+        assert!(
+            dir.path()
+                .join("themes/bckt3/templates/post.html")
+                .is_file()
         );
-        assert_eq!(result.as_deref(), Some("custom/path"));
     }
 
     #[test]
-    fn derive_subdir_appends_theme_name_when_missing() {
-        let result = derive_subdir(None, Some("themes".to_string()), "bckt3");
-        assert_eq!(result.as_deref(), Some("themes/bckt3"));
+    fn install_theme_rejects_existing_without_force() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("bckt3.zip");
+        write_theme_archive(&archive);
+        fs::create_dir_all(dir.path().join("themes/bckt3")).unwrap();
+
+        let result = install_theme(
+            dir.path(),
+            ThemeInstallArgs {
+                path: archive.to_string_lossy().into_owned(),
+                name: None,
+                force: false,
+            },
+        );
+        assert!(result.is_err());
     }
 
     #[test]
-    fn derive_subdir_respects_existing_theme_name() {
-        let result = derive_subdir(None, Some("themes/bckt3".to_string()), "bckt3");
-        assert_eq!(result.as_deref(), Some("themes/bckt3"));
-    }
+    fn apply_theme_leaves_pages_untouched() {
+        let dir = TempDir::new().unwrap();
+        let theme_root = dir.path().join("themes/bckt3");
+        fs::create_dir_all(theme_root.join("templates")).unwrap();
+        fs::create_dir_all(theme_root.join("pages/about")).unwrap();
+        fs::write(theme_root.join("templates/post.html"), "theme").unwrap();
+        fs::write(theme_root.join("pages/about/index.html"), "theme about").unwrap();
 
-    #[test]
-    fn derive_subdir_returns_none_without_repo_path() {
-        assert!(derive_subdir(None, None, "bckt3").is_none());
+        let project_root = dir.path();
+        fs::create_dir_all(project_root.join("pages/about")).unwrap();
+        fs::write(project_root.join("pages/about/index.html"), "my about").unwrap();
+
+        apply_theme(&theme_root, project_root).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(project_root.join("templates/post.html")).unwrap(),
+            "theme"
+        );
+        // The user's own page survives applying a theme.
+        assert_eq!(
+            fs::read_to_string(project_root.join("pages/about/index.html")).unwrap(),
+            "my about"
+        );
     }
 }

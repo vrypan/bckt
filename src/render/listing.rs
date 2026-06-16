@@ -563,7 +563,11 @@ fn cleanup_cache_entries(
 fn cleanup_tag_cache(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -> Result<()> {
     cleanup_cache_entries(db, TAG_CACHE_PREFIX, keep, |key| {
         let slug = key.strip_prefix(TAG_CACHE_PREFIX)?;
-        if slug.is_empty() { None } else { Some(tag_index_path(html_root, slug)) }
+        if slug.is_empty() {
+            None
+        } else {
+            Some(tag_index_path(html_root, slug))
+        }
     })
 }
 

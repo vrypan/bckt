@@ -54,7 +54,7 @@ Guidelines:
 
 ## Theme integration checklist
 
-The `bckt3` theme provides a ready-to-use wiring in `themes/bckt3/templates/search.html` and `themes/bckt3/assets/js/search.js`. To port these hooks into another theme:
+The `bckt3` theme provides a ready-to-use wiring in `themes/bckt3/templates/search.html` and `themes/bckt3/skel/assets/js/search.js`. To port these hooks into another theme:
 
 1. **Navigation link** – add a link to `/search/` in the primary navigation so visitors can reach the search page.
 2. **Search page template** – create a template (e.g. `templates/search.html`) that:
@@ -64,10 +64,10 @@ The `bckt3` theme provides a ready-to-use wiring in `themes/bckt3/templates/sear
 3. **Client scripts** – include two scripts at the bottom of the page (deferred):
    - `assets/js/minisearch.js`: a vendored MiniSearch-compatible indexer.
    - `assets/js/search.js`: the theme controller that fetches the JSON index, builds the in-memory MiniSearch instance, and binds filters.
-4. **Static assets** – place all JavaScript assets under `themes/<theme>/assets/`. The renderer copies this directory to `html/assets/` during the static-assets stage, keeping filenames stable for caching.
+4. **Static assets** – place JavaScript assets under the theme's `skel/assets/js/` (so they end up at `html/assets/js/` once `skel/` is copied during the static-assets stage), keeping filenames stable for caching.
 5. **Styling** – add CSS for the search page (`search-page`, `search-field__input`, `search-card`, etc.) so that the results match the rest of the theme.
 
-The search controller exposes filters for language, tag, type, and publication year. Facet values come from the generated JSON. Update `themes/bckt3/assets/js/search.js` if you need bespoke behaviour (for example, additional filters or custom result rendering).
+The search controller exposes filters for language, tag, type, and publication year. Facet values come from the generated JSON. Update `themes/bckt3/skel/assets/js/search.js` if you need bespoke behaviour (for example, additional filters or custom result rendering).
 
 ## Custom payload fields
 
@@ -91,7 +91,7 @@ Expose arbitrary metadata alongside each search result by opting into payload fi
 
 3. Re-render (`bckt render`) to rebuild `search-index.json`. Each document will now contain a `payload` object with the requested keys.
 
-The renderer only copies the keys declared in `payload_fields`, reads them from top-level front matter, and ignores `null` values. Complex JSON values are preserved as-is, enabling themes to consume strings, numbers, booleans, or nested objects. Use JavaScript in your theme (for example, `themes/bckt3/assets/js/search.js`) to read `result.payload` and render the additional metadata.
+The renderer only copies the keys declared in `payload_fields`, reads them from top-level front matter, and ignores `null` values. Complex JSON values are preserved as-is, enabling themes to consume strings, numbers, booleans, or nested objects. Use JavaScript in your theme (for example, `themes/bckt3/skel/assets/js/search.js`) to read `result.payload` and render the additional metadata.
 
 ## Incremental builds
 

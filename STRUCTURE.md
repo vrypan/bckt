@@ -7,7 +7,7 @@ This document summarises the core modules under `src/` and the responsibilities 
 - `cli.rs`: defines the `bckt` command-line interface (arguments, subcommands, and shared option structs) using `clap`.
 - `markdown.rs`: wraps `comrak` to render Markdown into HTML while extracting short excerpts for listings.
 - `search.rs`: builds the JSON search index from rendered posts, including facet aggregation and digest computation.
-- `theme.rs`: downloads and extracts theme archives (zip or GitHub) and provides source descriptors used by commands.
+- `theme.rs`: installs themes from local `.zip` archives and resolves theme names against the search path (`BCKT_THEME_PATH` plus the executable's directory).
 - `utils.rs`: helpers that are broadly useful across the crate (absolute URL resolution, base-path extraction, CSV splitting, slug generation, and path expansion).
 
 ## Module: `config` (`src/config/`)
@@ -23,9 +23,9 @@ This document summarises the core modules under `src/` and the responsibilities 
 - `clean.rs`: implements the `bckt clean` command (removes `html/` output and cache directories, recreates scaffolding).
 - `config.rs`: implements the `bckt config` command (queries configuration values from `bckt.yaml` or returns the project root path).
 - `dev.rs`: implements the file-watching development server, including initial render, live-reload polling endpoint, and static file serving.
-- `init.rs`: initialises a new workspace (creates directories, downloads a theme when required, seeds config/templates/assets/sample post).
+- `init.rs`: initialises a new workspace (creates directories, installs a theme from a local archive when required, seeds config/templates/assets/sample post).
 - `render.rs`: turns CLI render flags into a `RenderPlan` and invokes the renderer.
-- `themes.rs`: implements `bckt themes` subcommands for listing, switching, and downloading themes (including GitHub parsing).
+- `themes.rs`: implements `bckt themes` subcommands for listing, switching, and installing themes from local archives.
 
 ## Module: `content` (`src/content/`)
 - `mod.rs`: discovers posts, parses front matter, renders bodies via Markdown, normalises metadata (language, tags, attachments), and exposes the `Post` model consumed by downstream pipelines.

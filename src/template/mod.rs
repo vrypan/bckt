@@ -74,7 +74,6 @@ fn normalize_base_url(value: &str) -> String {
     trimmed.trim_end_matches('/').to_string()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

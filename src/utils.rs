@@ -107,7 +107,10 @@ mod tests {
     fn extract_base_path_from_full_url() {
         assert_eq!(extract_base_path("https://vrypan.net/blog/"), "/blog");
         assert_eq!(extract_base_path("https://vrypan.net/blog"), "/blog");
-        assert_eq!(extract_base_path("https://example.com/foo/bar/"), "/foo/bar");
+        assert_eq!(
+            extract_base_path("https://example.com/foo/bar/"),
+            "/foo/bar"
+        );
     }
 
     #[test]

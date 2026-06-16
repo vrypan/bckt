@@ -32,11 +32,10 @@ tiny_http = "0.12"
 notify = "8.2"
 mime_guess = "2.0"
 percent-encoding = "2.3"
-ureq = { version = "3.3", features = ["json"] }
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
-tempfile = "3.12"
 
 [dev-dependencies]
+tempfile = "3.12"
 
 # The profile that 'dist' will build with
 [profile.dist]

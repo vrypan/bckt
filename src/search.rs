@@ -277,8 +277,6 @@ mod tests {
         assert!(tags.iter().any(|value| value == "rust"));
     }
 
-
-
     #[test]
     fn payload_fields_are_emitted() {
         let mut config = Config::default();

@@ -28,16 +28,14 @@ The `html/` directory will be created when you first build your site.
 
 ## Using a Custom Theme
 
-By default, `bckt init` uses the `bckt3` theme. To start with a different theme:
+By default, `bckt init` installs the `bckt3` theme. To start with a different
+theme, pass a `.zip` archive (or a theme name resolved against the theme search
+path) to `--theme`:
 
 ```bash
-bckt init --theme-github owner/repo --theme-subdir path/to/theme
-```
-
-For example, this will re-install the default theme:
-
-```bash
-bckt init --theme-github vrypan/bckt --theme-subdir themes/bckt3
+bckt init --theme path/to/your-theme.zip
+# or, resolved as <name>.zip via BCKT_THEME_PATH / the executable's directory
+bckt init --theme your-theme
 ```
 
 ## Configure Your Blog

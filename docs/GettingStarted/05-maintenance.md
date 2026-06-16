@@ -98,22 +98,14 @@ bckt render --force
 
 ### Installing New Themes
 
-Download a theme from GitHub:
+Install a theme from a local `.zip` archive:
 
 ```bash
-bckt themes download my-theme \
-  --github owner/repo \
-  --subdir themes/my-theme \
-  --tag v1.0.0
+bckt themes install path/to/my-theme.zip
 ```
 
-Or from a direct URL:
-
-```bash
-bckt themes download my-theme --url https://example.com/theme.zip
-```
-
-Then activate it:
+The archive file name (without `.zip`) becomes the theme name; override it with
+`--name`, and overwrite an existing theme with `--force`. Then activate it:
 
 ```bash
 bckt themes use my-theme
@@ -281,7 +273,7 @@ Always version control:
 No need to version control:
 - `html/` - Generated output
 - `.bckt/` - Build cache
-- `themes/` - Can be re-downloaded
+- `themes/` - Can be re-installed from the theme archive
 
 ## Performance Optimization
 
