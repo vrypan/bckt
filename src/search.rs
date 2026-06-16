@@ -11,7 +11,7 @@ use time::format_description::well_known::Rfc3339;
 
 use crate::config::Config;
 use crate::content::Post;
-use crate::language::{build_lookup, canonical_language, sanitize_language};
+use crate::language::sanitize_language;
 
 #[derive(Debug)]
 pub struct SearchIndexArtifact {
@@ -69,9 +69,7 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
         .format(&Rfc3339)
         .context("failed to format generated_at timestamp")?;
 
-    let language_lookup = build_lookup(&config.search.languages);
-    let default_language = canonical_language(&config.search.default_language, &language_lookup)
-        .unwrap_or_else(|| sanitize_language(&config.search.default_language));
+    let default_language = sanitize_language(&config.search.default_language);
 
     let mut documents = Vec::with_capacity(posts.len());
     let mut tags = BTreeSet::new();
@@ -93,8 +91,11 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
     };
 
     for post in posts {
-        let language = canonical_language(&post.language, &language_lookup)
-            .unwrap_or_else(|| default_language.clone());
+        let language = if post.language.is_empty() {
+            default_language.clone()
+        } else {
+            post.language.clone()
+        };
 
         let mut seen_tags = std::collections::HashSet::new();
         let mut tag_list = Vec::with_capacity(post.tags.len());
@@ -276,15 +277,7 @@ mod tests {
         assert!(tags.iter().any(|value| value == "rust"));
     }
 
-    #[test]
-    fn language_aliases_map_to_configured_ids() {
-        let config = Config::default();
-        let posts = vec![build_post("beta", "eng", &[])];
-        let artifact = build_index(&config, &posts).unwrap();
-        let payload: JsonValue = serde_json::from_slice(&artifact.bytes).unwrap();
-        let document_language = payload["documents"][0]["language"].as_str().unwrap();
-        assert_eq!(document_language, "en");
-    }
+
 
     #[test]
     fn payload_fields_are_emitted() {

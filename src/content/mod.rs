@@ -2,17 +2,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use isolang::Language;
 use serde::Deserialize;
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use serde_yaml::Mapping;
 use time::format_description::{self, well_known::Rfc3339};
 use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 use walkdir::WalkDir;
-use whatlang::detect;
 
 use crate::config::Config;
-use crate::language::{build_lookup, canonical_language, sanitize_language};
+use crate::language::sanitize_language;
 use crate::markdown::{MarkdownRender, render_markdown};
 use crate::utils::split_csv;
 
@@ -140,7 +138,7 @@ fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
 
     let post_type = normalize_post_type(front.post_type.as_deref(), &content_path)?;
 
-    let language = determine_language(front.language.as_deref(), &plain_text, config);
+    let language = determine_language(front.language.as_deref(), config);
 
     let extras = mapping_to_json_map(&front.extra).with_context(|| {
         format!(
@@ -227,45 +225,14 @@ fn parse_post_date(date_str: &str, config: &Config, origin: &Path) -> Result<Off
     )
 }
 
-fn determine_language(value: Option<&str>, body_text: &str, config: &Config) -> String {
-    let languages = build_lookup(&config.search.languages);
-
-    if let Some(explicit) = value
-        && let Some(tag) = canonical_language(explicit, &languages)
-    {
-        return tag;
-    }
-
-    if let Some(guessed) = guess_language(body_text)
-        && let Some(tag) = canonical_language(&guessed, &languages)
-    {
-        return tag;
-    }
-
-    canonical_language(&config.search.default_language, &languages)
-        .unwrap_or_else(|| sanitize_language(&config.search.default_language))
-}
-
-fn guess_language(body_text: &str) -> Option<String> {
-    let trimmed = body_text.trim();
-    if trimmed.chars().count() < 24 {
-        return None;
-    }
-
-    let info = detect(trimmed)?;
-    if !info.is_reliable() {
-        return None;
-    }
-
-    let iso3 = info.lang().code();
-    if let Some(lang) = Language::from_639_3(iso3) {
-        if let Some(code) = lang.to_639_1() {
-            return Some(code.to_lowercase());
+fn determine_language(value: Option<&str>, config: &Config) -> String {
+    if let Some(explicit) = value {
+        let sanitized = sanitize_language(explicit);
+        if !sanitized.is_empty() {
+            return sanitized;
         }
-        return Some(lang.to_639_3().to_lowercase());
     }
-
-    Some(iso3.to_lowercase())
+    sanitize_language(&config.search.default_language)
 }
 
 fn to_plain_text(html: &str) -> String {

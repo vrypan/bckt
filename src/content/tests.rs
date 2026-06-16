@@ -262,21 +262,6 @@ fn language_from_front_matter_is_normalized() {
     assert_eq!(posts[0].language, "el");
 }
 
-#[test]
-fn language_is_detected_when_missing() {
-    let dir = TempDir::new().unwrap();
-    let root = dir.path().join("posts/detect");
-    fs::create_dir_all(&root).unwrap();
-    fs::write(
-        root.join("post.md"),
-        "---\ndate: 2024-01-01T00:00:00Z\n---\nΑυτό είναι ένα παράδειγμα ελληνικού κειμένου για την ανίχνευση γλώσσας.",
-    )
-    .unwrap();
-
-    let config = Config::default();
-    let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
-    assert_eq!(posts[0].language, "el");
-}
 
 #[test]
 fn short_content_falls_back_to_default_language() {
