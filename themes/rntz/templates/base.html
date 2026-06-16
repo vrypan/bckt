@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block page_title %}{{ config.title | default("bckt") }}{% endblock page_title %}</title>
+    <link rel="alternate" type="application/rss+xml" title="RSS" href="{{ base_path }}/rss.xml">
+    {% for tag in config.rss_tags %}
+    <link rel="alternate" type="application/rss+xml" title="RSS for {{ tag }}" href="{{ base_path }}/rss-{{ tag }}.xml">
+    {% endfor %}
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ base_path }}/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ base_path }}/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ base_path }}/apple-touch-icon.png">
+    <link rel="icon" href="{{ base_path }}/favicon.ico">
+    <link rel="stylesheet" href="{{ base_path }}/style.css">
+    {% block page_meta %}
+    <meta name="description" content="{{ config.description }}">
+    <meta property="og:site_name" content="{{ config.title | default("bckt") }}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{ config.title | default("bckt") | trim }}">
+    <meta property="og:url" content="{{ base_url | safe }}">
+    <meta property="og:description" content="{{ config.description | trim }}">
+    <link rel="canonical" href="{{ base_url | safe }}">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ config.title | default("bckt") | trim }}">
+    <meta name="twitter:description" content="{{ config.description | trim }}">
+    {% if config.open_graph_image %}
+    <meta property="og:image" content="{{ base_url }}{{ config.open_graph_image | safe }}">
+    <meta name="twitter:image" content="{{ base_url }}{{ config.open_graph_image | safe }}">
+    {% endif %}
+    {% endblock page_meta %}
+    {% block head %}{% endblock head %}
+  </head>
+  <body>
+    <div id="body">
+      <nav id="menu" aria-label="Primary navigation">
+        <ul>
+          <li><a href="{{ base_path }}/">home</a></li>
+          <li><a href="{{ base_path }}/about/">about</a></li>
+          <li><a href="{{ base_path }}/search/">search</a></li>
+          <li><a href="{{ base_path }}/rss.xml">rss</a></li>
+        </ul>
+      </nav>
+
+      <svg id="bowtie" class="ornament" viewBox="0 0 64 24" aria-hidden="true">
+        <path d="M2 2l24 10L2 22zM62 2L38 12l24 10zM29 8h6v8h-6z"/>
+      </svg>
+
+      <main id="content">
+        {% block content %}{% endblock content %}
+      </main>
+
+      <footer id="footer">
+        <p>Theme inspired by <a href="https://www.rntz.net/">https://www.rntz.net/</a></p>
+      </footer>
+    </div>
+    {% block page_scripts %}{% endblock page_scripts %}
+  </body>
+</html>

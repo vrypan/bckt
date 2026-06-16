@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if not pagination.next %}
+<section class="intro">
+  <p>{{ config.description }}</p>
+</section>
+
+<svg id="diamond" class="ornament" viewBox="0 0 32 32" aria-hidden="true">
+  <path d="M16 1l7 7-7 7-7-7zM16 17l7 7-7 7-7-7zM1 16l7-7 7 7-7 7zM17 16l7-7 7 7-7 7z"/>
+</svg>
+{% endif %}
+
+<section class="page-section">
+  {% if pagination.next %}<h1>Older posts</h1>{% endif %}
+  {% if posts %}
+  <table id="posts-by-date">
+    <tbody>
+      {% for post in posts %}
+      {% if post.type == "note" %}
+      {% include "partials/summary-note.html" %}
+      {% else %}
+      {% include "partials/summary-default.html" %}
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No posts yet.</p>
+  {% endif %}
+</section>
+
+{% if pagination.total > 1 %}
+<nav class="pager" aria-label="Pagination">
+  <div>
+    {% if pagination.next %}<a href="{{ base_path }}{{ pagination.next | safe }}" rel="next">newer posts</a>{% endif %}
+    {% if pagination.prev %}<a href="{{ base_path }}{{ pagination.prev | safe }}" rel="prev">older posts</a>{% endif %}
+  </div>
+</nav>
+{% endif %}
+{% endblock content %}
+
+{% block page_scripts %}
+{% if posts | selectattr("type", "equalto", "note") | list %}
+<script defer src="{{ base_path }}/js/carousel.js"></script>
+{% endif %}
+{% endblock page_scripts %}

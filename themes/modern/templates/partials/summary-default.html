@@ -1,0 +1,40 @@
+{% set summary_text = post.abstract | default(post.excerpt) %}
+<article class="post-summary">
+    <span class="post-summary__number" aria-label="Post number"
+        >{% if post_number < 10 %}00{{ post_number }}{% elif post_number < 100
+        %}0{{ post_number }}{% else %}{{ post_number }}{% endif %}</span
+    >
+    <div class="post-summary__body">
+        <h2>
+            <a href="{{ base_path }}{{ post.permalink | safe }}" rel="bookmark">
+                {% if post.title %}{{ post.title }}{% else %}{{ post.slug }}{%
+                endif %}
+            </a>
+        </h2>
+        <div class="post-summary__meta">
+            <time datetime="{{ post.date_iso }}"
+                >{{ post.date_iso | format_date("%b %d, %Y") }}</time
+            >
+            <a
+                class="post-permalink"
+                href="{{ base_path }}{{ post.permalink | safe }}"
+                >Permalink</a
+            >
+            {% if post.tags %}
+            <ul class="post-tags" aria-label="Tags">
+                {% for tag in post.tags %}
+                <li>
+                    <a
+                        href="{{ base_path }}/tags/{{ tag | replace(' ', '-') | lower }}/"
+                        >{{ tag }}</a
+                    >
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+        {% if summary_text %}
+        <p>{{ summary_text }}</p>
+        {% endif %}
+    </div>
+</article>

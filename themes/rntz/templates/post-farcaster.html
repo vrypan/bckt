@@ -1,0 +1,46 @@
+{% extends "post.html" %}
+
+{% block content %}
+<article class="post-article post-article--farcaster">
+  <header class="post-header">
+    {% if post.title %}
+    <h1>{{ post.title }}</h1>
+    {% endif %}
+    <div class="publishdate">
+      <time datetime="{{ post.date_iso }}">{{ post.date_iso | format_date("%b %d, %Y") }}</time>
+      {% if post.tags %}
+      <span class="meta-divider">/</span>
+      <span class="post-tags">
+        {% for tag in post.tags %}
+        <a class="tag tag-{{ tag | replace(' ', '-') | lower }}" href="{{ base_path }}/tags/{{ tag | replace(' ', '-') | lower }}/">{{ tag }}</a>
+        {% endfor %}
+      </span>
+      {% endif %}
+    </div>
+  </header>
+  <div class="post-content reading-flow">
+    {{ post.body | safe }}
+  </div>
+  {% set images = post.images | default([]) %}
+  {% if images %}
+  <div class="post-media post-media--images">
+    {% for image in images %}
+    <figure class="post-media__item">
+      <img src="{{ base_path }}{{ post.permalink | safe }}{{ image }}" alt="">
+    </figure>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% set videos = post.videos | default([]) %}
+  {% if videos %}
+  <div class="post-media post-media--videos">
+    {% for video in videos %}
+    <video controls preload="metadata" playsinline src="{{ base_path }}{{ post.permalink | safe }}{{ video }}"></video>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if post.castid %}
+  <p class="post-source"><a href="https://farcaster.xyz/{{ post.castid | safe }}">on farcaster</a></p>
+  {% endif %}
+</article>
+{% endblock content %}

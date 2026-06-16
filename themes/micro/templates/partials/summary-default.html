@@ -1,0 +1,36 @@
+{% set summary_text = post.abstract | default(post.excerpt) %}
+<article class="post-summary">
+    <a
+        class="post-summary__date"
+        href="{{ base_path }}{{ post.permalink | safe }}"
+        aria-label="Open post from {{ post.date_iso | format_date("%b %d, %Y") }}"
+        >{{ post.date_iso | format_date("%b %d") }}</a
+    >
+    <div class="post-summary__body">
+        <h2>
+            <a href="{{ base_path }}{{ post.permalink | safe }}" rel="bookmark">
+                {% if post.title %}{{ post.title }}{% else %}{{ post.slug }}{%
+                endif %}
+            </a>
+        </h2>
+        {% if summary_text %}
+        <p>{{ summary_text }}</p>
+        {% endif %}
+        {% include "partials/media-carousel.html" %}
+        <div class="post-summary__meta">
+            <a class="post-permalink" href="{{ base_path }}{{ post.permalink | safe }}">Permalink</a>
+            {% if post.tags %}
+            <ul class="post-tags" aria-label="Tags">
+                {% for tag in post.tags %}
+                <li>
+                    <a
+                        href="{{ base_path }}/tags/{{ tag | replace(' ', '-') | lower }}/"
+                        >{{ tag }}</a
+                    >
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+    </div>
+</article>

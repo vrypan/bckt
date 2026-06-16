@@ -1,0 +1,18 @@
+<article class="post-summary post-summary--note">
+  <span class="post-summary__number" aria-label="Post number">{% if post_number < 10 %}00{{ post_number }}{% elif post_number < 100 %}0{{ post_number }}{% else %}{{ post_number }}{% endif %}</span>
+  <div class="post-summary__body">
+    <div class="post-summary__meta">
+      <time datetime="{{ post.date_iso }}">{{ post.date_iso | format_date("%b %d, %Y") }}</time>
+      <a class="post-permalink" href="{{ base_path }}{{ post.permalink | safe }}">Permalink</a>
+      {% if post.tags %}
+      <ul class="post-tags" aria-label="Tags">
+        {% for tag in post.tags %}
+        <li><a href="{{ base_path }}/tags/{{ tag | replace(' ', '-') | lower }}/">{{ tag }}</a></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    <div class="post-summary__excerpt post-summary__note-body">{{ post.body | safe }}</div>
+    {% include "partials/image-carousel.html" %}
+  </div>
+</article>

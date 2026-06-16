@@ -1,0 +1,21 @@
+{% set summary_text = post.abstract | default(post.excerpt) %}
+<tr>
+  <td class="post-meta">
+    <span class="post-date">{{ post.date_iso | format_date("%b %Y") }}</span><br>
+    {% if post.tags %}
+    <small class="post-tags">
+      {% for tag in post.tags %}
+      <a class="tag tag-{{ tag | replace(' ', '-') | lower }}" href="{{ base_path }}/tags/{{ tag | replace(' ', '-') | lower }}/">{{ tag }}</a>
+      {% endfor %}
+    </small>
+    {% endif %}
+  </td>
+  <td class="post-name">
+    <a href="{{ base_path }}{{ post.permalink | safe }}" rel="bookmark">
+      {% if post.title %}{{ post.title }}{% else %}{{ post.slug }}{% endif %}
+    </a>
+    {% if summary_text %}
+    <p class="tagline">{{ summary_text }}</p>
+    {% endif %}
+  </td>
+</tr>

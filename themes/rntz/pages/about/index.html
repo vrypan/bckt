@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block page_title %}About · {{ config.title | default("bckt") }}{% endblock page_title %}
+
+{% block content %}
+<section class="page">
+  <header>
+    <h1>about</h1>
+  </header>
+  <p>{{ config.description }}</p>
+  <p>This page lives in <code>themes/rntz/pages/about/index.html</code>.</p>
+</section>
+{% endblock content %}

@@ -1,0 +1,17 @@
+<tr class="post-note">
+  <td class="post-meta">
+    <span class="post-date">{{ post.date_iso | format_date("%b %d") }}</span><br>
+    {% if post.tags %}
+    <small class="post-tags">
+      {% for tag in post.tags %}
+      <a class="tag tag-{{ tag | replace(' ', '-') | lower }}" href="{{ base_path }}/tags/{{ tag | replace(' ', '-') | lower }}/">{{ tag }}</a>
+      {% endfor %}
+    </small>
+    {% endif %}
+  </td>
+  <td class="post-name post-note-cell">
+    <div class="note-body reading-flow">{{ post.body | safe }}</div>
+    {% include "partials/media-carousel.html" %}
+    <a class="post-permalink" href="{{ base_path }}{{ post.permalink | safe }}" rel="bookmark">permalink</a>
+  </td>
+</tr>

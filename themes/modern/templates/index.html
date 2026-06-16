@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if not pagination.next %}
+<section class="home-intro" aria-labelledby="home-title">
+  <p class="eyebrow">Journal</p>
+  <h1 id="home-title">{{ config.title | default("bckt") }}</h1>
+  <p>{{ config.description | default("A clear, text-first weblog built with bckt.") }}</p>
+</section>
+{% endif %}
+
+<div class="content-with-rail">
+  <div class="content-with-rail__main">
+    <section class="post-list" aria-label="Posts">
+      {% set page_size = posts | length %}
+      {% for post in posts %}
+      {% if pagination.current == pagination.total %}
+        {% set post_number = (pagination.current - 1) * config.homepage_posts + page_size - loop.index0 %}
+      {% else %}
+        {% set post_number = pagination.current * config.homepage_posts - loop.index0 %}
+      {% endif %}
+      {% if post.type == "note" %}
+        {% include "partials/summary-note.html" %}
+      {% else %}
+        {% include "partials/summary-default.html" %}
+      {% endif %}
+      {% else %}
+      <p class="empty-state">No posts yet.</p>
+      {% endfor %}
+    </section>
+
+    {% if pagination.total > 1 %}
+    <nav class="pager" aria-label="Pagination">
+      <div>
+        {% if pagination.next %}<a href="{{ base_path }}{{ pagination.next | safe }}" rel="next">Newer posts</a>{% endif %}
+        {% if pagination.prev %}<a href="{{ base_path }}{{ pagination.prev | safe }}" rel="prev">Older posts</a>{% endif %}
+      </div>
+    </nav>
+    {% endif %}
+  </div>
+  {% include "partials/sidebar.html" %}
+</div>
+{% endblock content %}

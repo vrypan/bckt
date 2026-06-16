@@ -1,0 +1,17 @@
+<article class="post-summary post-summary--note">
+  <a class="post-summary__date" href="{{ base_path }}{{ post.permalink | safe }}" aria-label="Open note from {{ post.date_iso | format_date("%b %d, %Y") }}">{{ post.date_iso | format_date("%b %d") }}</a>
+  <div class="post-summary__body">
+    <div class="post-summary__excerpt post-summary__note-body">{{ post.body | safe }}</div>
+    {% include "partials/media-carousel.html" %}
+    <div class="post-summary__meta">
+      <a class="post-permalink" href="{{ base_path }}{{ post.permalink | safe }}">Permalink</a>
+      {% if post.tags %}
+      <ul class="post-tags" aria-label="Tags">
+        {% for tag in post.tags %}
+        <li><a href="{{ base_path }}/tags/{{ tag | replace(' ', '-') | lower }}/">{{ tag }}</a></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </div>
+</article>

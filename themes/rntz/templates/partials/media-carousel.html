@@ -1,0 +1,33 @@
+{% set images = post.images | default([]) %}
+{% set videos = post.videos | default([]) %}
+{% set image_count = images | length %}
+{% set media_count = image_count + (videos | length) %}
+{% if images or videos %}
+<div class="media-carousel image-carousel" data-image-carousel>
+  <div class="media-carousel__viewport image-carousel__viewport" tabindex="0" aria-label="Media">
+    {% for image in images %}
+    <figure class="media-carousel__item image-carousel__item">
+      <a href="{{ base_path }}{{ post.permalink | safe }}{{ image }}">
+        <img src="{{ base_path }}{{ post.permalink | safe }}{{ image }}" alt="">
+      </a>
+    </figure>
+    {% endfor %}
+    {% for video in videos %}
+    <figure class="media-carousel__item media-carousel__item--video">
+      <video controls preload="metadata" playsinline src="{{ base_path }}{{ post.permalink | safe }}{{ video }}"></video>
+    </figure>
+    {% endfor %}
+  </div>
+  {% if media_count > 1 %}
+  <div class="media-carousel__dots" aria-label="Media carousel position">
+    {% for image in images %}
+    <button type="button" class="media-carousel__dot{% if loop.index0 == 0 %} is-active{% endif %}" data-carousel-dot data-carousel-index="{{ loop.index0 }}" aria-label="Show media {{ loop.index }} of {{ media_count }}"{% if loop.index0 == 0 %} aria-current="true"{% endif %}></button>
+    {% endfor %}
+    {% for video in videos %}
+    {% set dot_index = image_count + loop.index0 %}
+    <button type="button" class="media-carousel__dot{% if dot_index == 0 %} is-active{% endif %}" data-carousel-dot data-carousel-index="{{ dot_index }}" aria-label="Show media {{ dot_index + 1 }} of {{ media_count }}"{% if dot_index == 0 %} aria-current="true"{% endif %}></button>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}

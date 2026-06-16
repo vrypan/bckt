@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block page_title %}{{ year }} · {{ config.title | default("bckt") }}{% endblock page_title %}
+
+{% block content %}
+<section class="page-section">
+  <header>
+    <h1>{{ year }}</h1>
+  </header>
+  {% if posts %}
+  <table id="posts-by-date">
+    <tbody>
+      {% for post in posts %}
+      {% include "partials/summary-default.html" %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No posts yet.</p>
+  {% endif %}
+</section>
+{% endblock content %}

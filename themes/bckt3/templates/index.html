@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="page-section">
-  {% if not pagination.prev %}<h1>Recent</h1>{% endif %}
+  {% if not pagination.next %}<h1>Recent</h1>{% endif %}
   {% for post in posts %}
-  <article class="post-card{% if post.type == 'farcaster' %} post-card--farcaster{% endif %}">
+  <article class="post-card{% if post.type == 'farcaster' %} post-card--farcaster{% elif post.type == 'note' %} post-card--note{% endif %}">
     {% if post.type == 'farcaster' %}
       {% include "partials/summary-farcaster.html" %}
+    {% elif post.type == 'note' %}
+      {% include "partials/summary-note.html" %}
     {% else %}
       {% include "partials/summary-default.html" %}
     {% endif %}
@@ -26,10 +28,16 @@
     <span class="pager__status">Page {{ pagination.current }}</span>
     <div class="pager__older">
       {% if pagination.prev %}
-      <a href="{{ base_url }}{{ pagination.prev | safe }}" rel="prev">Older Posts →</a>
+      <a href="{{ base_path }}{{ pagination.prev | safe }}" rel="prev">Older Posts →</a>
       {% endif %}
     </div>
   </div>
 </nav>
 {% endif %}
 {% endblock content %}
+
+{% block page_scripts %}
+{% if posts | selectattr("type", "equalto", "note") | list %}
+<script defer src="{{ base_path }}/js/carousel.js"></script>
+{% endif %}
+{% endblock page_scripts %}

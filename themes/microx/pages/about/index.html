@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block page_title %}About · {{ config.title | default("bckt") }}{% endblock page_title %}
+
+{% block content %}
+<div class="content-with-rail">
+  <article class="article content-with-rail__main">
+    <header class="article-header">
+      <p class="eyebrow">About</p>
+      <h1>{{ config.title | default("bckt") }}</h1>
+    </header>
+    <div class="article-body">
+    <p>{{ config.description | default("Short notes, links, and media.") }}</p>
+    <p>This page lives in <code>themes/micro/pages/about/index.html</code>.</p>
+    </div>
+  </article>
+  {% include "partials/sidebar.html" %}
+</div>
+{% endblock content %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block page_title %}Search · {{ config.title | default("bckt") }}{% endblock page_title %}
+
+{% block page_meta %}
+<meta name="robots" content="noindex">
+{% endblock page_meta %}
+
+{% block content %}
+<section
+  class="page-section search-page"
+  data-search-root
+  data-search-index="{{ base_path }}/assets/search/search-index.json"
+  data-base-url="{{ base_path }}"
+>
+  <header>
+    <h1>search</h1>
+  </header>
+
+  <div class="search-panel">
+    <label class="search-field">
+      <span class="search-field__label">Search for</span>
+      <input
+        type="search"
+        name="q"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="keywords"
+        class="search-field__input"
+        data-search-input
+      >
+    </label>
+
+    <label class="search-sort" for="search-sort">
+      <span class="search-filter__label">Sort by</span>
+      <select id="search-sort" class="search-filter__select" data-search-sort>
+        <option value="relevance" selected>Relevance</option>
+        <option value="newest">Newest</option>
+      </select>
+    </label>
+
+    <button type="button" class="search-options__toggle" data-search-toggle aria-expanded="false">more options</button>
+
+    <div class="search-filters" aria-label="Search filters" data-search-filters hidden>
+      <label class="search-filter" for="search-filter-language">
+        <span class="search-filter__label">Language</span>
+        <select id="search-filter-language" class="search-filter__select" data-search-filter="language"></select>
+      </label>
+      <label class="search-filter" for="search-filter-type">
+        <span class="search-filter__label">Type</span>
+        <select id="search-filter-type" class="search-filter__select" data-search-filter="type"></select>
+      </label>
+      <label class="search-filter" for="search-filter-tag">
+        <span class="search-filter__label">Tag</span>
+        <select id="search-filter-tag" class="search-filter__select" data-search-filter="tag"></select>
+      </label>
+      <label class="search-filter" for="search-filter-year">
+        <span class="search-filter__label">Year</span>
+        <select id="search-filter-year" class="search-filter__select" data-search-filter="year"></select>
+      </label>
+    </div>
+
+    <p class="search-status" data-search-status></p>
+  </div>
+
+  <div class="search-results" data-search-results></div>
+  {% include "partials/search-results.html" %}
+</section>
+{% endblock content %}
+
+{% block page_scripts %}
+<script defer src="{{ base_path }}/assets/js/minisearch.js"></script>
+<script defer src="{{ base_path }}/assets/js/search.js"></script>
+{% endblock page_scripts %}

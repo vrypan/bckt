@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block page_title %}{{ tag }} · {{ config.title | default("bckt") }}{% endblock page_title %}
+
+{% block content %}
+<section class="page-section">
+  <header>
+    <h1>posts tagged <span class="tag">{{ tag }}</span></h1>
+  </header>
+  {% if posts %}
+  <table id="posts-by-date">
+    <tbody>
+      {% for post in posts %}
+      {% include "partials/summary-default.html" %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No posts for this tag.</p>
+  {% endif %}
+  {% if pagination.prev or pagination.next %}
+  <nav class="pager" aria-label="Tag pagination">
+    {% if pagination.prev %}<a href="{{ base_path }}{{ pagination.prev | safe }}">newer posts</a>{% endif %}
+    {% if pagination.next %}<a href="{{ base_path }}{{ pagination.next | safe }}">older posts</a>{% endif %}
+  </nav>
+  {% endif %}
+</section>
+{% endblock content %}

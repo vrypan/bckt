@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block page_title %}{{ year }}-{{ month }} · {{ config.title | default("bckt") }}{% endblock page_title %}
+
+{% block content %}
+<section class="archive-page">
+  <header class="archive-header">
+    <p class="eyebrow">Archive</p>
+    <h1>{{ year }}-{{ month }}</h1>
+  </header>
+  <div class="content-with-rail">
+    <div class="content-with-rail__main">
+      <div class="post-list">
+        {% set page_size = posts | length %}
+        {% for post in posts %}
+        {% set post_number = page_size - loop.index0 %}
+        {% if post.type == "note" %}
+          {% include "partials/summary-note.html" %}
+        {% else %}
+          {% include "partials/summary-default.html" %}
+        {% endif %}
+        {% else %}
+        <p class="empty-state">No posts yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+    {% include "partials/sidebar.html" %}
+  </div>
+</section>
+{% endblock content %}

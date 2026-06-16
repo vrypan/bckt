@@ -1,0 +1,21 @@
+{% set images = post.images | default([]) %}
+{% if images %}
+<div class="image-carousel" data-image-carousel>
+  <div class="image-carousel__viewport" tabindex="0" aria-label="Images">
+    {% for image in images %}
+    <figure class="image-carousel__item">
+      <a href="{{ base_path }}{{ post.permalink | safe }}{{ image }}">
+        <img src="{{ base_path }}{{ post.permalink | safe }}{{ image }}" alt="">
+      </a>
+    </figure>
+    {% endfor %}
+  </div>
+  {% if images | length > 1 %}
+  <div class="image-carousel__controls" aria-label="Image carousel controls">
+    <button type="button" class="image-carousel__button" data-carousel-prev aria-label="Previous image">Prev</button>
+    <span class="image-carousel__count">{{ images | length }} images</span>
+    <button type="button" class="image-carousel__button" data-carousel-next aria-label="Next image">Next</button>
+  </div>
+  {% endif %}
+</div>
+{% endif %}

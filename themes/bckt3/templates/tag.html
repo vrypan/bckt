@@ -3,9 +3,11 @@
 <section class="page-section">
   <h1 class="page-title">Tag: {{ tag }}</h1>
   {% for post in posts %}
-  <article class="post-card{% if post.type == 'farcaster' %} post-card--farcaster{% endif %}">
+  <article class="post-card{% if post.type == 'farcaster' %} post-card--farcaster{% elif post.type == 'note' %} post-card--note{% endif %}">
     {% if post.type == 'farcaster' %}
       {% include "partials/summary-farcaster.html" %}
+    {% elif post.type == 'note' %}
+      {% include "partials/summary-note.html" %}
     {% else %}
       {% include "partials/summary-default.html" %}
     {% endif %}
@@ -24,3 +26,9 @@
   {% endif %}
 </section>
 {% endblock content %}
+
+{% block page_scripts %}
+{% if posts | selectattr("type", "equalto", "note") | list %}
+<script defer src="{{ base_path }}/js/carousel.js"></script>
+{% endif %}
+{% endblock page_scripts %}

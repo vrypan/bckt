@@ -1,0 +1,19 @@
+<div class="post-meta post-meta--inline">
+  <span class="meta-divider">◉</span>
+  <time class="post-meta__time" datetime="{{ post.date_iso }}">{{ post.date_iso | format_date("%a, %d %B %Y %H:%M") }}</time>
+  {% if post.tags %}
+  <span class="meta-divider">//</span>
+  <ul class="post-tags post-tags--compact">
+    {% for tag in post.tags %}
+    <li><a href="{{ base_path }}/tags/{{ tag | replace(' ', '-') | lower }}/">#{{ tag }}</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+<div class="post-card__body">
+  <div class="post-card__content reading-flow note-body">{{ post.body | safe }}</div>
+  {% include "partials/media-carousel.html" %}
+</div>
+<p class="post-card__actions">
+  <a class="post-card__continue" href="{{ base_path }}{{ post.permalink | safe }}" rel="bookmark">Permalink →</a>
+</p>

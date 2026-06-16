@@ -1,0 +1,5 @@
+name: "microx"
+description: "A compact microblogging theme with an X/Twitter-like timeline feel."
+version: "0.1.0"
+author: "demo-blog"
+license: "MIT"

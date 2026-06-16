@@ -1,0 +1,5 @@
+name: "micro"
+description: "A compact microblogging theme for notes and inline media."
+version: "0.1.0"
+author: "demo-blog"
+license: "MIT"
