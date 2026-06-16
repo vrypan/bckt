@@ -74,15 +74,6 @@ To rename a tag across all posts:
 2. Search for `- old-tag-name` and replace with `- new-tag-name`
 3. Rebuild: `bckt render --force`
 
-### Tag Pagination
-
-Enable pagination for tag pages in `bckt.yaml`:
-
-```yaml
-paginate_tags: true
-homepage_posts: 10  # Also controls posts per tag page
-```
-
 ## Working with Themes
 
 ### Switching Themes

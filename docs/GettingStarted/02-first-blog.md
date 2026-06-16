@@ -63,7 +63,6 @@ date_format: "[year]-[month]-[day]"
 
 ```yaml
 open_graph_image: "/og-image.png"     # Default social sharing image
-paginate_tags: true                   # Enable pagination on tag pages
 default_timezone: "+00:00"            # Timezone for posts (UTC offset)
 ```
 

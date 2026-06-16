@@ -48,9 +48,9 @@ search:
 
 Guidelines:
 
-- `id` should be a BCP-47 language tag (`en`, `en-GB`, `el`, etc.). ISO-639-3 codes (e.g. `eng`) are also accepted; the renderer normalises them using the active analyzers.
+- `id` should be a BCP-47 language tag (`en`, `en-GB`, `el`, etc.).
 - `stopwords` is optional. Provide lowercase tokens; they are de-duplicated automatically.
-- `default_language` must match one of the configured analyzers and is used whenever the language cannot be detected.
+- `default_language` must match one of the configured analyzers and is used for posts that do not have a `language:` field in their front matter.
 
 ## Theme integration checklist
 

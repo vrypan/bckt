@@ -8,7 +8,7 @@ This document summarises the core modules under `src/` and the responsibilities 
 - `markdown.rs`: wraps `comrak` to render Markdown into HTML while extracting short excerpts for listings.
 - `search.rs`: builds the JSON search index from rendered posts, including facet aggregation and digest computation.
 - `theme.rs`: downloads and extracts theme archives (zip or GitHub) and provides source descriptors used by commands.
-- `utils.rs`: helpers that are broadly useful across the crate (currently absolute URL resolution).
+- `utils.rs`: helpers that are broadly useful across the crate (absolute URL resolution, base-path extraction, CSV splitting, slug generation, and path expansion).
 
 ## Module: `config` (`src/config/`)
 - `mod.rs`: module entry point that re-exports public configuration types and functions.
