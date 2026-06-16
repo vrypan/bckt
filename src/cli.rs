@@ -300,8 +300,6 @@ pub struct ConfigArgs {
     pub homepage_posts: bool,
     #[arg(long, help = "Get the date_format configuration value")]
     pub date_format: bool,
-    #[arg(long, help = "Get the paginate_tags configuration value")]
-    pub paginate_tags: bool,
     #[arg(long, help = "Get the default_timezone configuration value")]
     pub default_timezone: bool,
     #[arg(long, help = "Get the theme configuration value")]

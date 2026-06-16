@@ -12,10 +12,6 @@ name = "bckt"
 path = "src/main.rs"
 
 [[bin]]
-name = "bckt-fc"
-path = "src/extras/bckt_fc.rs"
-
-[[bin]]
 name = "bckt-new"
 path = "src/extras/bckt_new.rs"
 

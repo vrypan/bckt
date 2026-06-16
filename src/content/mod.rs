@@ -14,6 +14,7 @@ use whatlang::detect;
 use crate::config::Config;
 use crate::language::{build_lookup, canonical_language, sanitize_language};
 use crate::markdown::{MarkdownRender, render_markdown};
+use crate::utils::split_csv;
 
 const MAIN_EXTENSIONS: &[&str] = &["md", "html"];
 
@@ -411,10 +412,7 @@ where
             .into_iter()
             .map(|item| item.trim().to_string())
             .collect(),
-        Value::One(value) => split_csv(&value)
-            .into_iter()
-            .map(|item| item.to_string())
-            .collect(),
+        Value::One(value) => split_csv(&value),
         Value::None(_) => Vec::new(),
     })
 }
@@ -436,14 +434,6 @@ where
         Value::One(value) => split_csv(&value).into_iter().map(PathBuf::from).collect(),
         Value::None(_) => Vec::new(),
     })
-}
-
-fn split_csv(input: &str) -> Vec<&str> {
-    input
-        .split(',')
-        .map(|part| part.trim())
-        .filter(|part| !part.is_empty())
-        .collect()
 }
 
 fn mapping_to_json_map(mapping: &Mapping) -> Result<JsonMap<String, JsonValue>> {

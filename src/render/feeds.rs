@@ -11,7 +11,7 @@ use time::OffsetDateTime;
 
 use crate::config::Config;
 use crate::content::Post;
-use crate::utils::absolute_url;
+use crate::utils::{absolute_url, split_csv};
 
 use super::listing::{page_url, tag_index_url, tag_slug};
 use super::posts::{PostSummary, att_to_absolute, build_post_summary};
@@ -250,18 +250,10 @@ fn build_feed_item(config: &Config, post: &Post) -> Result<PostSummary> {
 }
 
 fn config_tag_feeds(config: &Config) -> Vec<String> {
-    fn split_list(value: &str) -> Vec<String> {
-        value
-            .split(',')
-            .map(|part| part.trim().to_string())
-            .filter(|part| !part.is_empty())
-            .collect()
-    }
-
     let mut tags = Vec::new();
     if let Some(value) = config.extra.get("rss_tags") {
         match value {
-            JsonValue::String(s) => tags.extend(split_list(s)),
+            JsonValue::String(s) => tags.extend(split_csv(s)),
             JsonValue::Array(items) => {
                 for item in items {
                     if let JsonValue::String(s) = item {

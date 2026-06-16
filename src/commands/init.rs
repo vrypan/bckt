@@ -23,7 +23,6 @@ open_graph_image: "/open-graph.png"
 base_url: "https://example.com"
 homepage_posts: 10
 date_format: "[year]-[month]-[day]"
-paginate_tags: true
 default_timezone: "+00:00"
 theme: {theme}
 "#;

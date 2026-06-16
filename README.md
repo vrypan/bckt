@@ -68,10 +68,6 @@ Issues and pull requests are welcome.
 
 ## Extras
 
-### bckt-fc
-
-The companion `bckt-fc` command shows how different types of content can be integrated in a bckt blog in practice: run it to fetch a Farcaster cast (and its attached images and videos) and drop them straight into your blog, then render as usual (the default theme includes templates to render farcaster posts).
-
 ### bckt-blog-template
 [bckt-blog-template](https://github.com/vrypan/bckt-blog-template) is a ready-to-use GitHub repo template. Create a new repo and start blogging. No need to install anything.
 

@@ -14,7 +14,7 @@ use tiny_http::{Header, Response, Server, StatusCode};
 use crate::cli::DevArgs;
 use crate::config;
 use crate::render::{BuildMode, RenderPlan, render_site};
-use crate::utils::resolve_root;
+use crate::utils::{extract_base_path, resolve_root};
 
 const LIVE_RELOAD_ID: &str = "__bckt_live_reload__";
 const LIVE_RELOAD_SNIPPET: &str = r#"<script id=\"__bckt_live_reload__\">(function(){if(window.__bcktLiveReload){return;}window.__bcktLiveReload=true;let last=0;async function poll(){try{const res=await fetch('/__bckt__/poll?since='+last+'&_='+(Date.now()),{cache:'no-store'});if(res.ok){const data=await res.json();if(typeof data.timestamp==='number'){last=data.timestamp;}if(data.reload){window.location.reload();return;}}}catch(e){}setTimeout(poll,1000);}poll();})();</script>"#;
@@ -437,28 +437,6 @@ fn now_timestamp() -> u64 {
         .as_millis() as u64
 }
 
-fn extract_base_path(base_url: &str) -> String {
-    // Extract path component from base_url
-    // Examples:
-    //   "https://vrypan.net/blog/" -> "/blog"
-    //   "https://vrypan.net/" -> ""
-    //   "https://example.com" -> ""
-
-    if let Some(idx) = base_url.find("://") {
-        let after_scheme = &base_url[idx + 3..];
-        if let Some(slash_idx) = after_scheme.find('/') {
-            let path = &after_scheme[slash_idx..];
-            // Remove trailing slash
-            path.trim_end_matches('/').to_string()
-        } else {
-            String::new()
-        }
-    } else {
-        // No scheme, treat as path
-        base_url.trim_end_matches('/').to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,26 +480,4 @@ mod tests {
         assert!(parse_since("foo=bar").is_err());
     }
 
-    #[test]
-    fn extract_base_path_from_full_url() {
-        assert_eq!(extract_base_path("https://vrypan.net/blog/"), "/blog");
-        assert_eq!(extract_base_path("https://vrypan.net/blog"), "/blog");
-        assert_eq!(
-            extract_base_path("https://example.com/foo/bar/"),
-            "/foo/bar"
-        );
-    }
-
-    #[test]
-    fn extract_base_path_from_root_url() {
-        assert_eq!(extract_base_path("https://vrypan.net/"), "");
-        assert_eq!(extract_base_path("https://vrypan.net"), "");
-        assert_eq!(extract_base_path("http://example.com"), "");
-    }
-
-    #[test]
-    fn extract_base_path_from_path_only() {
-        assert_eq!(extract_base_path("/blog/"), "/blog");
-        assert_eq!(extract_base_path("/blog"), "/blog");
-    }
 }

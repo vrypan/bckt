@@ -531,12 +531,16 @@ fn render_page(template: &minijinja::Template<'_, '_>, plan: PagePlan) -> Result
     Ok(())
 }
 
-fn cleanup_tag_cache(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -> Result<()> {
+fn cleanup_cache_entries(
+    db: &sled::Db,
+    prefix: &str,
+    keep: &BTreeSet<String>,
+    key_to_path: impl Fn(&str) -> Option<PathBuf>,
+) -> Result<()> {
     let mut stale: Vec<String> = Vec::new();
-    for entry in db.scan_prefix(TAG_CACHE_PREFIX.as_bytes()) {
-        let (key, _) = entry.context("failed to iterate tag cache entries")?;
-        let key_str =
-            String::from_utf8(key.to_vec()).context("tag cache key is not valid utf-8")?;
+    for entry in db.scan_prefix(prefix.as_bytes()) {
+        let (key, _) = entry.context("failed to iterate cache entries")?;
+        let key_str = String::from_utf8(key.to_vec()).context("cache key is not valid utf-8")?;
         if !keep.contains(&key_str) {
             stale.push(key_str);
         }
@@ -544,12 +548,8 @@ fn cleanup_tag_cache(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -
 
     for key in stale {
         db.remove(key.as_bytes())
-            .context("failed to remove stale tag cache entry")?;
-        if let Some(slug) = key.strip_prefix(TAG_CACHE_PREFIX) {
-            if slug.is_empty() {
-                continue;
-            }
-            let output = tag_index_path(html_root, slug);
+            .context("failed to remove stale cache entry")?;
+        if let Some(output) = key_to_path(&key) {
             remove_file_if_exists(&output)?;
             if let Some(parent) = output.parent() {
                 remove_dir_if_empty(parent)?;
@@ -558,63 +558,31 @@ fn cleanup_tag_cache(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -
     }
 
     Ok(())
+}
+
+fn cleanup_tag_cache(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -> Result<()> {
+    cleanup_cache_entries(db, TAG_CACHE_PREFIX, keep, |key| {
+        let slug = key.strip_prefix(TAG_CACHE_PREFIX)?;
+        if slug.is_empty() { None } else { Some(tag_index_path(html_root, slug)) }
+    })
 }
 
 fn cleanup_month_archives(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -> Result<()> {
-    let mut stale: Vec<String> = Vec::new();
-    for entry in db.scan_prefix(MONTH_ARCHIVE_PREFIX.as_bytes()) {
-        let (key, _) = entry.context("failed to iterate month archive cache entries")?;
-        let key_str = String::from_utf8(key.to_vec())
-            .context("month archive cache key is not valid utf-8")?;
-        if !keep.contains(&key_str) {
-            stale.push(key_str);
-        }
-    }
-
-    for key in stale {
-        db.remove(key.as_bytes())
-            .context("failed to remove stale month archive cache entry")?;
-        if let Some(suffix) = key.strip_prefix(MONTH_ARCHIVE_PREFIX)
-            && let Some((year_str, month_str)) = suffix.split_once('-')
-            && let (Ok(year), Ok(month)) = (year_str.parse::<i32>(), month_str.parse::<u8>())
-        {
-            let output = archive_month_path(html_root, year, month);
-            remove_file_if_exists(&output)?;
-            if let Some(parent) = output.parent() {
-                remove_dir_if_empty(parent)?;
-            }
-        }
-    }
-
-    Ok(())
+    cleanup_cache_entries(db, MONTH_ARCHIVE_PREFIX, keep, |key| {
+        let suffix = key.strip_prefix(MONTH_ARCHIVE_PREFIX)?;
+        let (year_str, month_str) = suffix.split_once('-')?;
+        let year = year_str.parse::<i32>().ok()?;
+        let month = month_str.parse::<u8>().ok()?;
+        Some(archive_month_path(html_root, year, month))
+    })
 }
 
 fn cleanup_year_archives(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -> Result<()> {
-    let mut stale: Vec<String> = Vec::new();
-    for entry in db.scan_prefix(YEAR_ARCHIVE_PREFIX.as_bytes()) {
-        let (key, _) = entry.context("failed to iterate year archive cache entries")?;
-        let key_str =
-            String::from_utf8(key.to_vec()).context("year archive cache key is not valid utf-8")?;
-        if !keep.contains(&key_str) {
-            stale.push(key_str);
-        }
-    }
-
-    for key in stale {
-        db.remove(key.as_bytes())
-            .context("failed to remove stale year archive cache entry")?;
-        if let Some(year_str) = key.strip_prefix(YEAR_ARCHIVE_PREFIX)
-            && let Ok(year) = year_str.parse::<i32>()
-        {
-            let output = archive_year_path(html_root, year);
-            remove_file_if_exists(&output)?;
-            if let Some(parent) = output.parent() {
-                remove_dir_if_empty(parent)?;
-            }
-        }
-    }
-
-    Ok(())
+    cleanup_cache_entries(db, YEAR_ARCHIVE_PREFIX, keep, |key| {
+        let year_str = key.strip_prefix(YEAR_ARCHIVE_PREFIX)?;
+        let year = year_str.parse::<i32>().ok()?;
+        Some(archive_year_path(html_root, year))
+    })
 }
 
 fn cleanup_homepage_pages(html_root: &Path, keep: &[StoredPage]) -> Result<()> {

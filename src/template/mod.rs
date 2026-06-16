@@ -7,6 +7,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::config::Config;
+use crate::utils::extract_base_path;
 
 pub fn environment(config: &Config) -> Result<Environment<'static>> {
     let mut env = Environment::new();
@@ -73,27 +74,6 @@ fn normalize_base_url(value: &str) -> String {
     trimmed.trim_end_matches('/').to_string()
 }
 
-fn extract_base_path(base_url: &str) -> String {
-    // Extract path component from base_url
-    // Examples:
-    //   "https://vrypan.net/blog/" -> "/blog"
-    //   "https://vrypan.net/" -> ""
-    //   "https://example.com" -> ""
-
-    if let Some(idx) = base_url.find("://") {
-        let after_scheme = &base_url[idx + 3..];
-        if let Some(slash_idx) = after_scheme.find('/') {
-            let path = &after_scheme[slash_idx..];
-            // Remove trailing slash
-            path.trim_end_matches('/').to_string()
-        } else {
-            String::new()
-        }
-    } else {
-        // No scheme, treat as path
-        base_url.trim_end_matches('/').to_string()
-    }
-}
 
 #[cfg(test)]
 mod tests {

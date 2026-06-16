@@ -47,6 +47,5 @@ This document summarises the core modules under `src/` and the responsibilities 
 - `filters.rs`: implements custom Jinja filters (currently `format_date`) with strftime-style format support and caching.
 
 ## Module: `extras` (`src/extras/`)
-- `bckt_fc.rs`: standalone helper binary that fetches Farcaster casts and scaffolds posts (handles API calls, attachment downloads, and mention resolution).
 - `bckt_new.rs`: standalone helper binary that interactively scaffolds new posts (prompts for metadata, validates input, and writes front matter files).
 

@@ -25,7 +25,6 @@ pub fn run_config_command(args: ConfigArgs) -> Result<()> {
         args.title,
         args.homepage_posts,
         args.date_format,
-        args.paginate_tags,
         args.default_timezone,
         args.theme,
         args.search_asset_path,
@@ -54,8 +53,6 @@ pub fn run_config_command(args: ConfigArgs) -> Result<()> {
         println!("{}", config.homepage_posts);
     } else if args.date_format {
         println!("{}", config.date_format);
-    } else if args.paginate_tags {
-        println!("{}", config.paginate_tags);
     } else if args.default_timezone {
         println!("{}", config.default_timezone);
     } else if args.theme {

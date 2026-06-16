@@ -23,6 +23,27 @@ pub(crate) fn slugify(value: &str) -> String {
     slug
 }
 
+pub fn extract_base_path(base_url: &str) -> String {
+    if let Some(idx) = base_url.find("://") {
+        let after_scheme = &base_url[idx + 3..];
+        if let Some(slash_idx) = after_scheme.find('/') {
+            after_scheme[slash_idx..].trim_end_matches('/').to_string()
+        } else {
+            String::new()
+        }
+    } else {
+        base_url.trim_end_matches('/').to_string()
+    }
+}
+
+pub fn split_csv(input: &str) -> Vec<String> {
+    input
+        .split(',')
+        .map(|part| part.trim().to_string())
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
 pub fn absolute_url(base: &str, path: &str) -> String {
     let trimmed_base = base.trim_end_matches('/');
     let trimmed_path = path.trim_start_matches('/');
@@ -80,6 +101,33 @@ mod tests {
     fn trims_trailing_slash() {
         let url = absolute_url("https://example.com/", "/page/2/");
         assert_eq!(url, "https://example.com/page/2/");
+    }
+
+    #[test]
+    fn extract_base_path_from_full_url() {
+        assert_eq!(extract_base_path("https://vrypan.net/blog/"), "/blog");
+        assert_eq!(extract_base_path("https://vrypan.net/blog"), "/blog");
+        assert_eq!(extract_base_path("https://example.com/foo/bar/"), "/foo/bar");
+    }
+
+    #[test]
+    fn extract_base_path_from_root_url() {
+        assert_eq!(extract_base_path("https://vrypan.net/"), "");
+        assert_eq!(extract_base_path("https://vrypan.net"), "");
+    }
+
+    #[test]
+    fn extract_base_path_from_path_only() {
+        assert_eq!(extract_base_path("/blog/"), "/blog");
+        assert_eq!(extract_base_path("/blog"), "/blog");
+    }
+
+    #[test]
+    fn split_csv_basic() {
+        assert_eq!(split_csv("a, b, c"), vec!["a", "b", "c"]);
+        assert_eq!(split_csv("rust"), vec!["rust"]);
+        assert_eq!(split_csv(""), Vec::<String>::new());
+        assert_eq!(split_csv(",, ,"), Vec::<String>::new());
     }
 
     #[test]
