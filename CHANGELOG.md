@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.7.0] - 2026-06-16
+
+### Removed
+
+- **`bckt-fc` binary**: the Farcaster companion command was removed. Theme
+  rendering of `type: farcaster` posts is unchanged.
+- **Remote theme download**: `bckt themes download` and the `--theme-url` /
+  `--theme-github` / `--theme-tag` / `--theme-branch` / `--theme-subdir`
+  flags are gone. Themes are now installed from local `.zip` archives or
+  directories. All network code (and the `ureq` dependency) was removed.
+- **`paginate_tags`** config key: it was never read by the renderer.
+- **Automatic language detection**: language now comes from the `language:`
+  front-matter field, falling back to `search.default_language`. Dropped the
+  `whatlang` and `isolang` dependencies.
+- **`theme.yaml`** theme metadata files (were never read).
+
+### Added
+
+- **`bckt themes install <path>`**: install a theme from a local `.zip` or
+  directory.
+- **`bckt init --theme <zip|dir|name>`**: choose the starter theme.
+- **Theme search path**: `BCKT_THEME_PATH`, the executable's directory, and
+  `<prefix>/share/bckt` (so Homebrew/prefix installs are auto-discovered).
+- Theme archives for every bundled theme are attached to releases, and the
+  themes are bundled into the release archives.
+
+### Fixed
+
+- **`bckt themes use` no longer destroys `pages/`**: only `templates/` and
+  `skel/` are replaced; user pages are preserved.
+
+### Changed
+
+- Theme `assets/` were folded into `skel/assets/`; the renderer no longer
+  treats theme assets specially.
+- Consolidated `extract_base_path` and `split_csv` into `utils`, and the three
+  cache-cleanup functions into one helper.
+
+### Dependencies
+
+- Removed `ureq` and `whatlang`/`isolang`.
+- `tempfile` moved to dev-dependencies.
+
 ## [0.6.5] - 2026-05-01
 
 ### Fixed
