@@ -12,9 +12,15 @@ use zip::ZipArchive;
 /// separator.
 pub const THEME_PATH_ENV: &str = "BCKT_THEME_PATH";
 
-/// Directories searched for bundled themes, in priority order: entries from
-/// `BCKT_THEME_PATH` first, then the directory containing the executable (so a
-/// distribution bundle can ship `bckt` and `bckt3.zip` side by side).
+/// Directories searched for bundled themes, in priority order:
+/// 1. entries from `BCKT_THEME_PATH`;
+/// 2. the directory containing the executable (so a distribution bundle or an
+///    extracted tarball can ship `bckt` and `bckt3.zip` side by side);
+/// 3. `../share/bckt` relative to the resolved executable, the conventional
+///    `<prefix>/bin` + `<prefix>/share/<pkg>` layout. This covers Homebrew
+///    (where the binary resolves into the Cellar and themes are installed via
+///    `share.install`) and other prefix-style installs, with no need to know
+///    or shell out for the prefix.
 pub fn theme_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if let Some(value) = env::var_os(THEME_PATH_ENV) {
@@ -24,10 +30,17 @@ pub fn theme_search_paths() -> Vec<PathBuf> {
             }
         }
     }
-    if let Ok(exe) = env::current_exe()
-        && let Some(dir) = exe.parent()
-    {
-        paths.push(dir.to_path_buf());
+    if let Ok(exe) = env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            paths.push(dir.to_path_buf());
+        }
+        // Resolve symlinks (e.g. Homebrew's bin symlink into the Cellar) before
+        // deriving the prefix's share/bckt directory.
+        if let Ok(real) = exe.canonicalize()
+            && let Some(prefix_root) = real.parent().and_then(|bin| bin.parent())
+        {
+            paths.push(prefix_root.join("share").join("bckt"));
+        }
     }
     paths
 }
