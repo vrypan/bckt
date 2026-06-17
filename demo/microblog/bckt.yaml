@@ -1,0 +1,8 @@
+title: "My Microblog"
+description: "Short thoughts and observations."
+open_graph_image: "/open-graph.png"
+base_url: "https://example.com"
+homepage_posts: 20
+date_format: "[year]-[month]-[day]"
+default_timezone: "+00:00"
+theme: micro

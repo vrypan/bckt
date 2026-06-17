@@ -76,6 +76,12 @@ pub struct InitArgs {
         long_help = "Theme to install into the new project. Provide a path to a .zip archive or a theme directory, or a bare theme name resolved across the theme search path (BCKT_THEME_PATH and the directory containing the bckt executable), preferring <name>.zip and falling back to a <name>/ directory. Defaults to 'bckt3'."
     )]
     pub theme: Option<String>,
+    #[arg(
+        long,
+        help = "Populate the project with demo posts and pages (e.g. 'microblog', 'articles')",
+        long_help = "Copy a set of demo posts and pages into the new project to illustrate how the chosen theme looks with real content. The demo name is resolved across the theme search path inside a 'demo/' subdirectory."
+    )]
+    pub demo: Option<String>,
 }
 
 #[derive(Args, Clone, Debug)]

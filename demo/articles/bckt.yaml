@@ -1,0 +1,8 @@
+title: "My Blog"
+description: "Articles on things I find worth writing about."
+open_graph_image: "/open-graph.png"
+base_url: "https://example.com"
+homepage_posts: 5
+date_format: "[year]-[month]-[day]"
+default_timezone: "+00:00"
+theme: modern

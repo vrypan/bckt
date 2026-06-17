@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use walkdir::WalkDir;
 
 use crate::cli::InitArgs;
-use crate::theme::{install_theme_source, resolve_theme};
+use crate::theme::{install_theme_source, resolve_demo, resolve_theme};
 use crate::utils::resolve_root;
 
 const DIRECTORIES: &[&str] = &["html", "posts", "templates", "skel", "themes", "pages"];
@@ -53,7 +53,18 @@ pub fn run_init_command(args: InitArgs) -> Result<()> {
         seed_templates(&root, &theme_dir)?;
         seed_static_assets(&root, &theme_dir)?;
     }
-    seed_sample_post(&root)?;
+
+    if let Some(demo_name) = args.demo.as_deref() {
+        match resolve_demo(demo_name) {
+            Ok(demo_path) => {
+                apply_demo(&demo_path, &root)?;
+                println!("Populated project with demo '{demo_name}'");
+            }
+            Err(err) => eprintln!("Warning: {err}"),
+        }
+    } else {
+        seed_sample_post(&root)?;
+    }
 
     if theme_available {
         println!("Initialized project with theme '{theme_name}'");
@@ -164,6 +175,54 @@ fn write_bytes_if_missing(path: &Path, contents: &[u8]) -> Result<()> {
         .with_context(|| format!("failed to write {}", path.display()))?;
     file.flush()
         .with_context(|| format!("failed to flush {}", path.display()))?;
+    Ok(())
+}
+
+/// Copy demo content (posts/, pages/, bckt.yaml) into the project root.
+/// The demo's bckt.yaml replaces the default one written by seed_configuration.
+fn apply_demo(demo_path: &Path, project_root: &Path) -> Result<()> {
+    for component in ["posts", "pages"] {
+        let src = demo_path.join(component);
+        if src.exists() {
+            copy_tree(&src, &project_root.join(component))?;
+        }
+    }
+    let demo_config = demo_path.join("bckt.yaml");
+    if demo_config.exists() {
+        fs::copy(&demo_config, project_root.join(CONFIG_FILE)).with_context(|| {
+            format!(
+                "failed to copy demo config from {}",
+                demo_config.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
+/// Copy all files from `source_root` into `destination_root`, creating
+/// directories as needed. Existing files are overwritten.
+fn copy_tree(source_root: &Path, destination_root: &Path) -> Result<()> {
+    for entry in WalkDir::new(source_root).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if entry.file_type().is_dir() {
+            continue;
+        }
+        let relative = path
+            .strip_prefix(source_root)
+            .with_context(|| format!("failed to strip prefix for {}", path.display()))?;
+        let destination = destination_root.join(relative);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+        fs::copy(path, &destination).with_context(|| {
+            format!(
+                "failed to copy {} to {}",
+                path.display(),
+                destination.display()
+            )
+        })?;
+    }
     Ok(())
 }
 

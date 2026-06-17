@@ -74,6 +74,29 @@ pub fn resolve_theme(spec: &str) -> Result<PathBuf> {
     )
 }
 
+/// Resolve a demo name to a local directory. A spec that contains a path
+/// separator is treated as a direct filesystem path; a bare name is looked up
+/// across the theme search paths inside a `demo/` subdirectory.
+pub fn resolve_demo(name: &str) -> Result<PathBuf> {
+    if name.contains('/') || name.contains(std::path::MAIN_SEPARATOR) {
+        let candidate = Path::new(name);
+        if candidate.is_dir() {
+            return Ok(candidate.to_path_buf());
+        }
+        bail!("demo '{}' not found", name);
+    }
+
+    for dir in theme_search_paths() {
+        let demo_dir = dir.join("demo").join(name);
+        if demo_dir.is_dir() {
+            return Ok(demo_dir);
+        }
+    }
+    bail!(
+        "demo '{name}' not found in theme search path (set {THEME_PATH_ENV}, or pass a path to a demo directory)"
+    )
+}
+
 /// Install a theme into `destination`, replacing any existing contents. The
 /// source may be a `.zip` archive (whose contents are extracted) or a theme
 /// directory (whose contents are copied). Either way the theme directories

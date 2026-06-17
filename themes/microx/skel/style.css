@@ -779,6 +779,9 @@ figcaption {
     grid-template-columns: minmax(0, 1fr) minmax(8rem, 12rem);
     gap: 1rem;
     margin-bottom: 2rem;
+    padding: 1.25rem;
+    border: 1px solid var(--soft);
+    border-radius: 0.5rem;
 }
 
 .search-field,
@@ -789,29 +792,40 @@ figcaption {
 }
 
 input,
-select,
-button {
+select {
+    appearance: none;
+    -webkit-appearance: none;
     border: 1px solid var(--soft);
-    border-radius: 0;
+    border-radius: 0.25rem;
     padding: 0.65rem 0.75rem;
-    background: var(--surface);
+    background: var(--surface-soft);
     color: var(--ink);
     font: 500 0.95rem var(--sans);
 }
 
-button {
-    cursor: pointer;
-    color: var(--accent-strong);
-    font-weight: 750;
-}
-
-button:hover {
-    border-color: var(--accent);
+input:focus,
+select:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+    border-color: transparent;
 }
 
 .search-options__toggle {
     justify-self: start;
     align-self: end;
+    border: none;
+    background: none;
+    padding: 0.4rem 0;
+    cursor: pointer;
+    color: var(--accent);
+    font: 500 0.9rem var(--sans);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.search-options__toggle:hover {
+    color: var(--accent-strong);
+    text-decoration-color: var(--accent-strong);
 }
 
 .search-filters {
