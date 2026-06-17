@@ -45,7 +45,7 @@ html {
     background: var(--bg);
     color: var(--ink);
     font-family: var(--sans);
-    font-size: 14px;
+    font-size: 0.875rem;
     line-height: 1.65;
     text-rendering: optimizeLegibility;
 }
