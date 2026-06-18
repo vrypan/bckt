@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.3]
+
+### Changed
+
+- **`BCKT_THEME_PATH` renamed to `BCKT_SHARE_PATH`**: it now points to a bckt
+  data root containing `themes/` and `demo/` subdirectories, rather than a
+  themes directory directly. Release archives and the Homebrew formula now
+  preserve this `share/bckt/{themes,demo}/` layout.
+- Theme and demo lookup now derives a single data root from the executable's
+  on-disk layout (Homebrew keg vs. tarball/zip) instead of probing multiple
+  candidate paths, so no non-existent path is ever searched.
+
 ## [0.7.2]
 
 ### Added
@@ -14,6 +26,13 @@
 
 ### Changed
 
+- **`BCKT_THEME_PATH` renamed to `BCKT_SHARE_PATH`**: it now points to a bckt
+  data root containing `themes/` and `demo/` subdirectories, rather than a
+  themes directory directly. Release archives and the Homebrew formula now
+  preserve this `share/bckt/{themes,demo}/` layout.
+- Theme and demo lookup now derives a single data root from the executable's
+  on-disk layout (Homebrew keg vs. tarball/zip) instead of probing multiple
+  candidate paths, so no non-existent path is ever searched.
 - Release workflow now runs manually only (removed automatic push-tag and
   pull-request triggers).
 - Themes: replaced hardcoded `px` root font-size with `rem` in `micro`,
