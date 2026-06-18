@@ -190,10 +190,7 @@ fn apply_demo(demo_path: &Path, project_root: &Path) -> Result<()> {
     let demo_config = demo_path.join("bckt.yaml");
     if demo_config.exists() {
         fs::copy(&demo_config, project_root.join(CONFIG_FILE)).with_context(|| {
-            format!(
-                "failed to copy demo config from {}",
-                demo_config.display()
-            )
+            format!("failed to copy demo config from {}", demo_config.display())
         })?;
     }
     Ok(())

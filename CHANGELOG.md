@@ -1,6 +1,29 @@
 # Changelog
 
-## [0.7.1] - 2026-06-17
+## [0.7.2]
+
+### Added
+
+- **`bckt init --demo <name>`**: populate a new project with sample posts and
+  pages. Two demo sets ship with the release — `microblog` (short notes, good
+  for `micro`/`microx`) and `articles` (long-form posts, good for `modern`,
+  `bckt3`, `plain`, `rntz`). Demo content is resolved from `demo/<name>/`
+  on the theme search path.
+- **`themes/AGENTS.md`**: guidance file for AI coding agents building or
+  modifying bckt themes. Reference it in your prompt with the GitHub URL.
+
+### Changed
+
+- Release workflow now runs manually only (removed automatic push-tag and
+  pull-request triggers).
+- Themes: replaced hardcoded `px` root font-size with `rem` in `micro`,
+  `microx`, `modern`, and `plain` so layouts scale with the user's browser
+  font preference.
+- `microx`: improved search panel styling for dark mode — `appearance: none`
+  on form controls, elevated surface background, focus outline, card-style
+  panel with padding, and a text-link style for the "More options" toggle.
+
+## [0.7.1]
 
 ### Changed
 
