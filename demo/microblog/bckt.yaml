@@ -1,8 +1,8 @@
 title: "My Microblog"
-description: "Short thoughts and observations."
+description: "Some content to demo bckt's microblogging features"
 open_graph_image: "/open-graph.png"
 base_url: "https://example.com"
-homepage_posts: 20
+homepage_posts: 5
 date_format: "[year]-[month]-[day]"
 default_timezone: "+00:00"
 theme: micro
