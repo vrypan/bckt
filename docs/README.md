@@ -40,7 +40,7 @@ conventions.
 ## Themes are installed from local archives
 
 When you run `bckt init`, the CLI installs the default `bckt3` theme by locating
-`bckt3.zip` on the theme search path (`BCKT_THEME_PATH`, then the directory
+`bckt3.zip` on the theme search path (`BCKT_SHARE_PATH`, then the directory
 containing the `bckt` executable) and unpacking it under `themes/bckt3/`.
 
 You can start from a different archive or a named theme instead:

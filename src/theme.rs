@@ -7,42 +7,49 @@ use anyhow::{Context, Result, anyhow, bail};
 use walkdir::WalkDir;
 use zip::ZipArchive;
 
-/// Environment variable holding additional directories to search for bundled
-/// themes (`<name>.zip` or a `<name>/` directory). Uses the platform path
-/// separator.
-pub const THEME_PATH_ENV: &str = "BCKT_THEME_PATH";
+/// Environment variable pointing to a bckt data root directory — a directory
+/// that contains `themes/` and `demo/` subdirectories. Uses the platform path
+/// separator to allow multiple entries.
+pub const SHARE_PATH_ENV: &str = "BCKT_SHARE_PATH";
 
-/// Directories searched for bundled themes, in priority order:
-/// 1. entries from `BCKT_THEME_PATH`;
-/// 2. the directory containing the executable (so a distribution bundle or an
-///    extracted tarball can ship `bckt` and `bckt3.zip` side by side);
-/// 3. `../share/bckt` relative to the resolved executable, the conventional
-///    `<prefix>/bin` + `<prefix>/share/<pkg>` layout. This covers Homebrew
-///    (where the binary resolves into the Cellar and themes are installed via
-///    `share.install`) and other prefix-style installs, with no need to know
-///    or shell out for the prefix.
-pub fn theme_search_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    if let Some(value) = env::var_os(THEME_PATH_ENV) {
+/// Candidate bckt data roots, in priority order:
+/// 1. entries from `BCKT_SHARE_PATH`;
+/// 2. the directory containing the executable (tarball layout:
+///    `bckt`, `themes/bckt3/`, `demo/microblog/`, …);
+/// 3. `../share/bckt` relative to the resolved executable — the conventional
+///    `<prefix>/bin` + `<prefix>/share/<pkg>` layout used by Homebrew and
+///    other prefix installs.
+fn share_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(value) = env::var_os(SHARE_PATH_ENV) {
         for part in env::split_paths(&value) {
             if !part.as_os_str().is_empty() {
-                paths.push(part);
+                roots.push(part);
             }
         }
     }
     if let Ok(exe) = env::current_exe() {
         if let Some(dir) = exe.parent() {
-            paths.push(dir.to_path_buf());
+            roots.push(dir.to_path_buf());
         }
         // Resolve symlinks (e.g. Homebrew's bin symlink into the Cellar) before
         // deriving the prefix's share/bckt directory.
         if let Ok(real) = exe.canonicalize()
             && let Some(prefix_root) = real.parent().and_then(|bin| bin.parent())
         {
-            paths.push(prefix_root.join("share").join("bckt"));
+            roots.push(prefix_root.join("share").join("bckt"));
         }
     }
-    paths
+    roots
+}
+
+/// Directories searched for bundled themes, derived from share roots by
+/// appending `themes/`.
+pub fn theme_search_paths() -> Vec<PathBuf> {
+    share_roots()
+        .into_iter()
+        .map(|r| r.join("themes"))
+        .collect()
 }
 
 /// Resolve a theme spec to a local source: either a `.zip` archive or a theme
@@ -70,13 +77,19 @@ pub fn resolve_theme(spec: &str) -> Result<PathBuf> {
         }
     }
     bail!(
-        "theme '{spec}' not found in theme search path (set {THEME_PATH_ENV}, or pass a path to a .zip archive or theme directory)"
+        "theme '{spec}' not found in theme search path (set {SHARE_PATH_ENV}, or pass a path to a .zip archive or theme directory)"
     )
+}
+
+/// Directories searched for demo content, derived from share roots by
+/// appending `demo/`.
+fn demo_search_paths() -> Vec<PathBuf> {
+    share_roots().into_iter().map(|r| r.join("demo")).collect()
 }
 
 /// Resolve a demo name to a local directory. A spec that contains a path
 /// separator is treated as a direct filesystem path; a bare name is looked up
-/// across the theme search paths inside a `demo/` subdirectory.
+/// across the demo search paths.
 pub fn resolve_demo(name: &str) -> Result<PathBuf> {
     if name.contains('/') || name.contains(std::path::MAIN_SEPARATOR) {
         let candidate = Path::new(name);
@@ -86,15 +99,13 @@ pub fn resolve_demo(name: &str) -> Result<PathBuf> {
         bail!("demo '{}' not found", name);
     }
 
-    for dir in theme_search_paths() {
-        let demo_dir = dir.join("demo").join(name);
+    for dir in demo_search_paths() {
+        let demo_dir = dir.join(name);
         if demo_dir.is_dir() {
             return Ok(demo_dir);
         }
     }
-    bail!(
-        "demo '{name}' not found in theme search path (set {THEME_PATH_ENV}, or pass a path to a demo directory)"
-    )
+    bail!("demo '{name}' not found (set {SHARE_PATH_ENV}, or pass a path to a demo directory)")
 }
 
 /// Install a theme into `destination`, replacing any existing contents. The
@@ -377,20 +388,23 @@ mod tests {
     #[test]
     fn resolve_named_theme_searches_path() {
         let dir = TempDir::new().unwrap();
+        // BCKT_SHARE_PATH points at a share root; themes live under themes/.
+        let themes_dir = dir.path().join("themes");
+        fs::create_dir_all(&themes_dir).unwrap();
         // A .zip is preferred for one name...
-        let archive = dir.path().join("bckt3.zip");
+        let archive = themes_dir.join("bckt3.zip");
         write_archive(&archive, &[("templates/post.html", "<html></html>")]);
         // ...and a directory is the fallback for another.
-        let other_dir = dir.path().join("plain");
+        let other_dir = themes_dir.join("plain");
         fs::create_dir_all(&other_dir).unwrap();
 
         // SAFETY: env-dependent assertions are consolidated into this single
         // test so the global var is not mutated by concurrent tests.
-        unsafe { env::set_var(THEME_PATH_ENV, dir.path()) };
+        unsafe { env::set_var(SHARE_PATH_ENV, dir.path()) };
         let zip = resolve_theme("bckt3");
         let dir_theme = resolve_theme("plain");
         let missing = resolve_theme("does-not-exist");
-        unsafe { env::remove_var(THEME_PATH_ENV) };
+        unsafe { env::remove_var(SHARE_PATH_ENV) };
 
         assert_eq!(zip.unwrap(), archive);
         assert_eq!(dir_theme.unwrap(), other_dir);

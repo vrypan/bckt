@@ -73,7 +73,7 @@ pub struct InitArgs {
     #[arg(
         long,
         help = "Theme to initialise the project with (a .zip/directory path or a theme name)",
-        long_help = "Theme to install into the new project. Provide a path to a .zip archive or a theme directory, or a bare theme name resolved across the theme search path (BCKT_THEME_PATH and the directory containing the bckt executable), preferring <name>.zip and falling back to a <name>/ directory. Defaults to 'bckt3'."
+        long_help = "Theme to install into the new project. Provide a path to a .zip archive or a theme directory, or a bare theme name resolved from the themes/ subdirectory of each BCKT_SHARE_PATH entry and the directory containing the bckt executable. Defaults to 'bckt3'."
     )]
     pub theme: Option<String>,
     #[arg(
@@ -200,7 +200,7 @@ pub enum ThemesSubcommand {
     },
     #[command(
         about = "Install a theme (a .zip/directory path or a theme name) into themes/",
-        long_about = "Install a theme into themes/<name> by extracting a .zip archive or copying a theme directory. Provide a path to a .zip or directory, or a bare theme name resolved across the theme search path (BCKT_THEME_PATH, the directory containing the bckt executable, and <prefix>/share/bckt). The source should contain the theme directories (templates/, skel/, pages/) at its root."
+        long_about = "Install a theme into themes/<name> by extracting a .zip archive or copying a theme directory. Provide a path to a .zip or directory, or a bare theme name resolved from the themes/ subdirectory of BCKT_SHARE_PATH entries, the executable directory, and <prefix>/share/bckt/themes. The source should contain the theme directories (templates/, skel/, pages/) at its root."
     )]
     Install(ThemeInstallArgs),
 }

@@ -84,7 +84,7 @@ fn use_theme(root: &Path, name: &str, force: bool) -> Result<()> {
 
 fn install_theme(root: &Path, args: ThemeInstallArgs) -> Result<()> {
     // Accept a .zip/directory path or a bare theme name resolved across the
-    // theme search path (BCKT_THEME_PATH, the executable's directory, and
+    // theme search path (BCKT_SHARE_PATH, the executable's directory, and
     // <prefix>/share/bckt).
     let source = resolve_theme(&args.path)?;
 

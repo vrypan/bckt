@@ -34,7 +34,7 @@ path) to `--theme`:
 
 ```bash
 bckt init --theme path/to/your-theme.zip
-# or, resolved as <name>.zip via BCKT_THEME_PATH / the executable's directory
+# or, resolved as <name>.zip via BCKT_SHARE_PATH / the executable's directory
 bckt init --theme your-theme
 ```
 

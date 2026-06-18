@@ -8,11 +8,14 @@ build:
 themes:
 	./scripts/package-themes.sh
 
-# Package themes and drop the default bckt3.zip next to the debug binary so
-# `bckt init` finds it on the search path during local development.
-dev-themes: themes
+# Copy all themes into target/debug/themes/ and demo content into
+# target/debug/demo/ so `bckt init` finds them on the search path during
+# local development.
+dev-themes:
 	cargo build
-	cp target/themes/bckt3.zip target/debug/bckt3.zip
+	mkdir -p target/debug/themes target/debug/demo
+	for d in themes/*/; do cp -r "$$d" target/debug/themes/; done
+	for d in demo/*/; do cp -r "$$d" target/debug/demo/; done
 
 test:
 	cargo test
