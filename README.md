@@ -36,7 +36,7 @@ before writing your own posts.
 
 ```bash
 mkdir myblog && cd myblog
-bckt init --theme microx --demo microblog
+bckt init --theme micro --demo microblog
 bckt dev
 ```
 
@@ -86,25 +86,3 @@ Detailed guides live in [`docs/`](docs/README.md):
 - Attachment metadata (file sizes and MIME types) in templates
 - Custom MiniJinja filters such as `format_date`
 - Client-side search integration and configuration tips
-
-## Contributing
-
-```bash
-cargo fmt
-cargo clippy -- -D warnings
-cargo test
-```
-
-Issues and pull requests are welcome.
-
-## Extras
-
-### bckt-blog-template
-[bckt-blog-template](https://github.com/vrypan/bckt-blog-template) is a ready-to-use GitHub repo template. Create a new repo and start blogging. No need to install anything.
-
-### bckt-mcp
-[bckt-mcp](https://github.com/vrypan/bckt-mcp) is an experimental MCP server you can run locally and helps you create posts from your favorite MCP-enabled AI tool.
-It takes care of frontmatter, filenames, and filepaths.
-
-### bckt-photo
-[bckt-photo](https://github.com/vrypan/bckt-photo): command line tool written that creates bckt blog posts from image files using their EXIF data. It comes with a theme designed for photography blogs.
