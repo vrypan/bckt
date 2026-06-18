@@ -103,7 +103,7 @@ fn run() -> Result<()> {
 
     let tags_input = value_or_prompt(
         "Tags (comma separated)",
-        cli.tags.clone().unwrap_or_else(|| "en".to_string()),
+        cli.tags.clone().unwrap_or_default(),
         false,
         cli.no_prompt,
     )?;
@@ -358,5 +358,51 @@ fn non_empty(value: String) -> Option<String> {
         None
     } else {
         Some(trimmed.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_tags_empty_input_yields_no_tags() {
+        assert!(normalize_tags("").is_empty());
+    }
+
+    #[test]
+    fn normalize_tags_parses_csv() {
+        assert_eq!(normalize_tags("rust, notes"), vec!["rust", "notes"]);
+    }
+
+    #[test]
+    fn front_matter_omits_tags_line_when_empty() {
+        let fm = build_front_matter(
+            "Title",
+            "title",
+            "2024-01-01T00:00:00Z",
+            &[],
+            None,
+            None,
+            None,
+        );
+        assert!(
+            !fm.contains("tags:"),
+            "front matter must not emit a tags line when there are no tags:\n{fm}"
+        );
+    }
+
+    #[test]
+    fn front_matter_includes_supplied_tags() {
+        let fm = build_front_matter(
+            "Title",
+            "title",
+            "2024-01-01T00:00:00Z",
+            &["rust".to_string(), "notes".to_string()],
+            None,
+            None,
+            None,
+        );
+        assert!(fm.contains("tags: rust, notes"), "{fm}");
     }
 }
