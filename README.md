@@ -12,7 +12,7 @@ you can publish from Markdown or hand-written HTML without ceremony.
 
 > [!WARNING]
 > `bckt` is expected to run in a trusted envioronment, where templates
-> and content can be trusted (like your laptop or personal server).
+> and content can be trusted (like your own machine).
 > Using it to render third-party content (for example a public bckt-SaaS) 
 > is not recommended yet.
 
@@ -29,15 +29,46 @@ compile locally with `cargo install --path .`.
 
 ## Demo
 
-There's no demo, but you can check [blog.vrypan.net](https://blog.vrypan.net/)
-built with bckt and a slightly modified default theme.
+bckt ships with two demo content sets you can use to try out a theme
+before writing your own posts.
 
-Also [steve.photo](https://steve.photo) is built using bckt and bckt-photo (see [Extras](#extras)).
+**`microblog`** — short titleless notes, good for `micro` and `microx`:
+
+```bash
+mkdir myblog && cd myblog
+bckt init --theme microx --demo microblog
+bckt dev
+```
+
+**`articles`** — longer posts with titles, good for `modern`, `bckt3`, `plain`, `rntz`:
+
+```bash
+mkdir myblog && cd myblog
+bckt init --theme modern --demo articles
+bckt dev
+```
+
+You can combine any theme with any demo. To try a different theme on
+the same demo content:
+
+```bash
+bckt themes install micro
+bckt themes use micro
+bckt render
+```
+
+The six bundled themes are: `bckt3`, `micro`, `microx`, `modern`,
+`plain`, `rntz`.
+
+You can also check [blog.vrypan.net](https://blog.vrypan.net/) — a
+live site built with bckt and a slightly modified default theme — and
+[steve.photo](https://steve.photo), built using bckt and bckt-photo
+(see [Extras](#extras)).
 
 ## Get Started
 
 ```bash
-bckt init                     # scaffold posts/, templates/, skel/, bckt.yaml
+bckt init  --theme bckt3       # scaffold posts/, templates/, skel/, bckt.yaml
 # edit bckt.yaml
 bckt-new --title "Hello"      # scaffold a new post (prompts for missing fields)
 bckt render                   # generate html/
@@ -77,4 +108,3 @@ It takes care of frontmatter, filenames, and filepaths.
 
 ### bckt-photo
 [bckt-photo](https://github.com/vrypan/bckt-photo): command line tool written that creates bckt blog posts from image files using their EXIF data. It comes with a theme designed for photography blogs.
-
