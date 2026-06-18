@@ -730,6 +730,50 @@ fn rerenders_tag_index_when_post_changes() {
 }
 
 #[test]
+fn homepage_rerenders_when_post_body_changes() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+
+    write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "A");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let index_path = root.join("html/index.html");
+    let first_mtime = file_mtime(&index_path);
+
+    wait_for_filesystem_tick();
+
+    write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "Updated body");
+
+    wait_for_filesystem_tick();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Changed,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let second_mtime = file_mtime(&index_path);
+    assert!(second_mtime > first_mtime);
+}
+
+#[test]
 fn removes_tag_index_when_tag_disappears() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();

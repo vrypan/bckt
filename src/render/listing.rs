@@ -75,7 +75,14 @@ pub(super) fn render_homepage(
     let regular_page_count = layout.regular_page_count;
     let total_pages = regular_page_count + 1;
 
+    // Build lookup for rendering
+    let mut lookup: HashMap<String, &Post> = HashMap::new();
+    for post in posts {
+        lookup.insert(post_key(post), post);
+    }
+
     let mut new_records = Vec::new();
+    let mut page_summaries: HashMap<usize, Vec<PostSummary>> = HashMap::new();
 
     // Regular pages (page 1, 2, 3, ...) - store in display order (reversed)
     for page_num in 1..=regular_page_count {
@@ -83,18 +90,34 @@ pub(super) fn render_homepage(
         let end = start + per_page;
         // Reverse the slice to display newest first within the page
         let page_posts: Vec<String> = posts[start..end].iter().rev().map(post_key).collect();
+        let summaries = page_posts
+            .iter()
+            .filter_map(|id| lookup.get(id))
+            .map(|post| build_post_summary(config, post))
+            .collect::<Result<Vec<_>>>()?;
+        let content_digest = compute_cache_digest(&summaries)?;
+        page_summaries.insert(page_num, summaries);
         new_records.push(StoredPage {
             page_number: page_num,
             posts: page_posts,
+            content_digest,
         });
     }
 
     // Homepage gets the last posts (newest) - store in display order (reversed)
     let home_start = regular_page_count * per_page;
     let home_posts: Vec<String> = posts[home_start..].iter().rev().map(post_key).collect();
+    let home_summaries = home_posts
+        .iter()
+        .filter_map(|id| lookup.get(id))
+        .map(|post| build_post_summary(config, post))
+        .collect::<Result<Vec<_>>>()?;
+    let home_content_digest = compute_cache_digest(&home_summaries)?;
+    page_summaries.insert(0, home_summaries);
     new_records.push(StoredPage {
         page_number: 0,
         posts: home_posts,
+        content_digest: home_content_digest,
     });
 
     // Load cached pages to detect changes
@@ -102,12 +125,6 @@ pub(super) fn render_homepage(
     let mut stored_map: HashMap<usize, &StoredPage> = HashMap::new();
     for page in &stored_pages {
         stored_map.insert(page.page_number, page);
-    }
-
-    // Build lookup for rendering
-    let mut lookup: HashMap<String, &Post> = HashMap::new();
-    for post in posts {
-        lookup.insert(post_key(post), post);
     }
 
     let mut plans: Vec<PagePlan> = Vec::new();
@@ -120,8 +137,8 @@ pub(super) fn render_homepage(
         if !needs_render {
             needs_render = match stored_map.get(&page_num) {
                 Some(cached) => {
-                    // Page exists in cache - check if content changed
-                    cached.posts != record.posts
+                    // Page exists in cache - check if post list or content changed
+                    cached.posts != record.posts || cached.content_digest != record.content_digest
                 }
                 None => {
                     // New page
@@ -134,13 +151,10 @@ pub(super) fn render_homepage(
             continue;
         }
 
-        // Build post summaries
-        let summaries = record
-            .posts
-            .iter()
-            .filter_map(|id| lookup.get(id))
-            .map(|post| build_post_summary(config, post))
-            .collect::<Result<Vec<_>>>()?;
+        // Reuse the summaries built above (avoid rebuilding them)
+        let summaries = page_summaries
+            .remove(&page_num)
+            .expect("summaries computed for every page_number in new_records");
 
         // Build pagination links
         let (prev, next) = if page_num == 0 {
@@ -632,6 +646,8 @@ fn cleanup_homepage_pages(html_root: &Path, keep: &[StoredPage]) -> Result<()> {
 struct StoredPage {
     page_number: usize, // 0 = homepage, 1+ = numbered pages
     posts: Vec<String>,
+    #[serde(default)]
+    content_digest: String,
 }
 
 struct TagBucket {
