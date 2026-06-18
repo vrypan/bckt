@@ -13,12 +13,20 @@ use zip::ZipArchive;
 pub const SHARE_PATH_ENV: &str = "BCKT_SHARE_PATH";
 
 /// Candidate bckt data roots, in priority order:
-/// 1. entries from `BCKT_SHARE_PATH`;
-/// 2. the directory containing the executable (tarball layout:
-///    `bckt`, `themes/bckt3/`, `demo/microblog/`, …);
-/// 3. `../share/bckt` relative to the resolved executable — the conventional
-///    `<prefix>/bin` + `<prefix>/share/<pkg>` layout used by Homebrew and
-///    other prefix installs.
+/// 1. entries from `BCKT_SHARE_PATH` (an explicit override always wins);
+/// 2. exactly one root derived from the executable's *layout on disk*, so we
+///    never probe a path that the install type can't have:
+///    - Homebrew/Linuxbrew (a `Cellar` component in the canonical path):
+///      `<prefix>/share/bckt`, where `<prefix>` is the keg root the binary
+///      lives in. `pkgshare.install` writes the data into the keg, so this
+///      hits the physical copy directly.
+///    - otherwise (tarball, zip, `cargo install`): the directory containing
+///      the binary, where the bundled `themes/` and `demo/` sit beside it.
+///
+/// We classify on the `Cellar` component of the *canonical* path rather than
+/// on whether the binary was reached via a symlink: `current_exe()` already
+/// resolves symlinks on Linux but not on macOS, so the symlink signal is
+/// platform-inconsistent while the `Cellar` check is not.
 fn share_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Some(value) = env::var_os(SHARE_PATH_ENV) {
@@ -29,15 +37,15 @@ fn share_roots() -> Vec<PathBuf> {
         }
     }
     if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
+        let real = exe.canonicalize().unwrap_or(exe);
+        let is_brew = real.components().any(|c| c.as_os_str() == "Cellar");
+        if is_brew {
+            // <prefix>/bin/bckt -> <prefix>/share/bckt
+            if let Some(prefix) = real.parent().and_then(|bin| bin.parent()) {
+                roots.push(prefix.join("share").join("bckt"));
+            }
+        } else if let Some(dir) = real.parent() {
             roots.push(dir.to_path_buf());
-        }
-        // Resolve symlinks (e.g. Homebrew's bin symlink into the Cellar) before
-        // deriving the prefix's share/bckt directory.
-        if let Ok(real) = exe.canonicalize()
-            && let Some(prefix_root) = real.parent().and_then(|bin| bin.parent())
-        {
-            roots.push(prefix_root.join("share").join("bckt"));
         }
     }
     roots
