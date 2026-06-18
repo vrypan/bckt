@@ -21,6 +21,22 @@ context variables.
 integration.
 - [Hosting Themes](theme-hosting.md) — package and distribute reusable theme zips.
 
+## Building themes with an AI agent
+
+[`themes/AGENTS.md`](https://github.com/vrypan/bckt/blob/main/themes/AGENTS.md)
+is a guidance file for AI coding agents — Claude Code, Cursor, Copilot, and
+similar tools. When asking an agent to build or modify a theme, start your
+prompt with something like:
+
+> Read https://github.com/vrypan/bckt/blob/main/themes/AGENTS.md and create
+> a theme that resembles https://example.com. Also check `themes/*` to see
+> how the existing themes are structured.
+
+The file covers the apply-and-rebuild loop, MiniJinja templating, context
+variables, pagination conventions, and static asset requirements — everything
+an agent needs to produce a working theme without having to guess at bckt's
+conventions.
+
 ## Themes are installed from local archives
 
 When you run `bckt init`, the CLI installs the default `bckt3` theme by locating
