@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.7.4]
+
+### Added
+
+- **`archive_years` template global**: every template (index, posts, tag/archive
+  pages, and standalone `pages/`) now receives an `archive_years` list sorted
+  newest-first. Each item exposes `year` (int) and `count` (int, number of posts
+  that year), making it straightforward to build a year navigator in shared
+  sidebar chrome without extra context plumbing.
+
+### Fixed
+
+- **Homepage and paginated pages now re-render when a post's body changes**:
+  incremental rebuilds (`bckt render`) previously compared only post identifiers
+  (date + slug) when deciding whether to regenerate index pages. Editing a
+  post's body left the homepage showing stale content until `--force` was used.
+  The cache now hashes the full rendered summaries, consistent with how tag and
+  year/month archive pages already worked.
+- **`bckt-new` no longer tags new posts with `en`**: when `--tags` was omitted
+  and the prompt was accepted without input, new posts were silently written with
+  `tags: en` (a copy-paste leftover from the language-default logic). The default
+  is now empty — posts have no tags unless the user supplies them.
+
 ## [0.7.3]
 
 ### Changed

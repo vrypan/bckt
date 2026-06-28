@@ -25,7 +25,9 @@ use crate::template;
 use assets::{compute_static_digest, copy_static_assets};
 use cache::{open_cache_db, read_cached_string, store_cached_string};
 use feeds::render_feeds;
-use listing::{HomePageCache, build_archive_years, render_archives, render_homepage, render_tag_archives};
+use listing::{
+    HomePageCache, build_archive_years, render_archives, render_homepage, render_tag_archives,
+};
 use pages::render_pages;
 use posts::render_posts;
 use templates::load_templates;

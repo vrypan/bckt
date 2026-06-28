@@ -1125,5 +1125,8 @@ fn archive_years_global_available_in_all_templates() {
     );
     let pos_2024 = index.find("2024").unwrap();
     let pos_2023 = index.find("2023").unwrap();
-    assert!(pos_2024 < pos_2023, "2024 should appear before 2023 (newest-first)");
+    assert!(
+        pos_2024 < pos_2023,
+        "2024 should appear before 2023 (newest-first)"
+    );
 }
