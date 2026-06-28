@@ -12,7 +12,7 @@ use time::OffsetDateTime;
 use time::format_description;
 
 use crate::config::Config;
-use crate::content::{Post, discover_posts};
+use crate::content::Post;
 use crate::utils::absolute_url;
 
 use super::templates::render_template_with_scope;
@@ -20,21 +20,17 @@ use super::utils::{log_status, normalize_path};
 use super::{BuildMode, POST_HASH_PREFIX};
 
 pub(super) fn render_posts(
-    root: &Path,
+    posts: &[Post],
     html_root: &Path,
     config: &Config,
     env: &Environment<'static>,
     cache_db: &sled::Db,
     mode: BuildMode,
     verbose: bool,
-) -> Result<(Vec<Post>, usize, usize)> {
-    let posts_dir = root.join("posts");
-    let mut posts = discover_posts(&posts_dir, config)?;
+) -> Result<(usize, usize)> {
     if posts.is_empty() {
-        return Ok((posts, 0, 0));
+        return Ok((0, 0));
     }
-
-    posts.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.slug.cmp(&b.slug)));
 
     let default_post_template = env
         .get_template("post.html")
@@ -45,7 +41,7 @@ pub(super) fn render_posts(
     let mut rendered_count = 0usize;
     let mut skipped_count = 0usize;
 
-    for post in &posts {
+    for post in posts {
         let cache_key = format!("{POST_HASH_PREFIX}{}", post.permalink);
         cache_keys.insert(cache_key.clone());
 
@@ -137,7 +133,7 @@ pub(super) fn render_posts(
 
     cleanup_post_hashes(cache_db, &cache_keys)?;
 
-    Ok((posts, rendered_count, skipped_count))
+    Ok((rendered_count, skipped_count))
 }
 
 pub(super) fn post_key(post: &Post) -> String {

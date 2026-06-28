@@ -1084,3 +1084,46 @@ fn template_change_triggers_full_rebuild() {
     assert!(alpha_after_template > alpha_after_changed);
     assert!(beta_after_template > beta_after_changed);
 }
+
+#[test]
+fn archive_years_global_available_in_all_templates() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+
+    // Override index.html to emit archive_years so we can assert on it.
+    write_template(
+        root,
+        "index.html",
+        "{% for y in archive_years %}{{ y.year }}:{{ y.count }} {% endfor %}",
+    );
+
+    write_dated_post(root, "post-2024", "2024-06-01T00:00:00Z", "A");
+    write_dated_post(root, "post-2023", "2023-03-15T00:00:00Z", "B");
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Full,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    let index = fs::read_to_string(root.join("html/index.html")).unwrap();
+    // Newest year first, with correct per-year counts.
+    assert!(
+        index.contains("2024:1"),
+        "expected 2024:1 in index, got: {index}"
+    );
+    assert!(
+        index.contains("2023:1"),
+        "expected 2023:1 in index, got: {index}"
+    );
+    let pos_2024 = index.find("2024").unwrap();
+    let pos_2023 = index.find("2023").unwrap();
+    assert!(pos_2024 < pos_2023, "2024 should appear before 2023 (newest-first)");
+}

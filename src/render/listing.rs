@@ -465,6 +465,18 @@ pub(super) fn render_tag_archives(
     Ok(())
 }
 
+pub(super) fn build_archive_years(posts: &[Post]) -> Vec<ArchiveYear> {
+    let mut year_counts: BTreeMap<i32, usize> = BTreeMap::new();
+    for post in posts {
+        *year_counts.entry(post.date.year()).or_insert(0) += 1;
+    }
+    year_counts
+        .iter()
+        .rev()
+        .map(|(&year, &count)| ArchiveYear { year, count })
+        .collect()
+}
+
 pub(super) fn page_url(page_number: usize) -> String {
     format!("/page/{}/", page_number)
 }
@@ -648,6 +660,12 @@ struct StoredPage {
     posts: Vec<String>,
     #[serde(default)]
     content_digest: String,
+}
+
+#[derive(Serialize)]
+pub(super) struct ArchiveYear {
+    pub(super) year: i32,
+    pub(super) count: usize,
 }
 
 struct TagBucket {

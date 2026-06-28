@@ -18,13 +18,14 @@ use anyhow::{Context, Result};
 use blake3::Hasher;
 
 use crate::config::Config;
+use crate::content::discover_posts;
 use crate::search;
 use crate::template;
 
 use assets::{compute_static_digest, copy_static_assets};
 use cache::{open_cache_db, read_cached_string, store_cached_string};
 use feeds::render_feeds;
-use listing::{HomePageCache, render_archives, render_homepage, render_tag_archives};
+use listing::{HomePageCache, build_archive_years, render_archives, render_homepage, render_tag_archives};
 use pages::render_pages;
 use posts::render_posts;
 use templates::load_templates;
@@ -118,10 +119,25 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
 
     let cache = HomePageCache::new(cache_db.clone());
 
+    // Discover and sort all posts upfront so we can build the archive_years global
+    // before any template is rendered (including individual post pages).
+    let posts_dir = root.join("posts");
+    let mut all_posts = if posts_dir.exists() {
+        discover_posts(&posts_dir, &config)?
+    } else {
+        Vec::new()
+    };
+    all_posts.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.slug.cmp(&b.slug)));
+    let archive_years = build_archive_years(&all_posts);
+    env.add_global(
+        "archive_years",
+        minijinja::value::Value::from_serialize(&archive_years),
+    );
+
     let posts = if plan.posts {
         log_status(plan.verbose, "STEP", "Rendering posts");
-        let (posts, rendered_posts, skipped_posts) = render_posts(
-            root,
+        let (rendered_posts, skipped_posts) = render_posts(
+            &all_posts,
             &html_root,
             &config,
             &env,
@@ -132,11 +148,11 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
         log_status(
             plan.verbose,
             "STEP",
-            format!("Processed {} posts", posts.len()),
+            format!("Processed {} posts", all_posts.len()),
         );
         stats.posts_rendered = rendered_posts;
         stats.posts_skipped = skipped_posts;
-        posts
+        all_posts
     } else {
         log_status(plan.verbose, "STEP", "Skipping post rendering");
         Vec::new()

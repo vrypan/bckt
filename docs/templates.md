@@ -39,6 +39,16 @@ Most templates receive:
 - `config` — parsed values from `bckt.yaml` (including `config.extra`).
 - `base_url` — site base URL without trailing slash (e.g., `https://example.com/blog`).
 - `base_path` — path component of `base_url` without trailing slash (e.g., `/blog`), empty string for root deployments.
+- `archive_years` — list of years that have at least one published post, sorted newest-first. Available on every rendered page (index, posts, tag/archive pages, and standalone `pages/`). Each item exposes:
+  - `year` — 4-digit year as an integer
+  - `count` — number of posts in that year
+
+  ```jinja
+  {% for y in archive_years %}
+    <a href="{{ base_path }}/{{ y.year }}/">{{ y.year }} <small>({{ y.count }})</small></a>
+  {% endfor %}
+  ```
+
 - `posts` — list of `PostSummary` objects (varies by view).
 - `pagination` — pagination metadata where applicable.
 - `tag`, `year`, `month` — extra values specific to tag or archive templates.
