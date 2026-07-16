@@ -551,8 +551,10 @@ mod tests {
 
     #[test]
     fn format_date_custom_pattern_caches_and_reuses() {
-        let mut config = Config::default();
-        config.date_format = "[year]-[month]".to_string();
+        let config = Config {
+            date_format: "[year]-[month]".to_string(),
+            ..Default::default()
+        };
         let date = OffsetDateTime::parse(
             "2024-05-06T08:09:10Z",
             &time::format_description::well_known::Rfc3339,
@@ -566,8 +568,10 @@ mod tests {
 
     #[test]
     fn format_date_invalid_pattern_reports_error() {
-        let mut config = Config::default();
-        config.date_format = "[bogus]".to_string();
+        let config = Config {
+            date_format: "[bogus]".to_string(),
+            ..Default::default()
+        };
         let date = OffsetDateTime::UNIX_EPOCH;
 
         let err = format_date(&config, &date).unwrap_err();
