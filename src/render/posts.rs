@@ -276,13 +276,7 @@ pub(super) struct PostSummary {
 
 fn compute_post_digest(post: &Post) -> Result<String> {
     let mut hasher = Hasher::new();
-    let content = fs::read(&post.content_path).with_context(|| {
-        format!(
-            "failed to read content file {}",
-            post.content_path.display()
-        )
-    })?;
-    hasher.update(&content);
+    hasher.update(post.content_hash.as_bytes());
 
     let mut assets: Vec<PathBuf> = post.attached.clone();
     assets.sort();

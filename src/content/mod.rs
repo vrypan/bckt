@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use serde_yaml::Mapping;
 use time::format_description::{self, well_known::Rfc3339};
@@ -15,6 +15,22 @@ use crate::markdown::{MarkdownRender, render_markdown};
 use crate::utils::split_csv;
 
 const MAIN_EXTENSIONS: &[&str] = &["md", "html"];
+
+/// sled key prefix for the parsed-markdown cache. Entries are keyed by each
+/// post directory's path relative to the posts root.
+const PARSED_BODY_PREFIX: &str = "parsed:";
+
+/// Cached result of rendering a markdown body. Stored per post directory and
+/// reused when the body is byte-identical and the binary version is unchanged.
+/// The crate version salts the cache so a release (which may change comrak
+/// options in `src/markdown.rs`) conservatively invalidates every entry.
+#[derive(Serialize, Deserialize)]
+struct CachedBody {
+    version: String,
+    body_hash: String,
+    html: String,
+    excerpt: String,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Post {
@@ -31,6 +47,7 @@ pub struct Post {
     pub search_text: String,
     pub source_dir: PathBuf,
     pub content_path: PathBuf,
+    pub content_hash: String,
     pub permalink: String,
     pub extra: JsonMap<String, JsonValue>,
 }
@@ -54,13 +71,19 @@ struct FrontMatter {
     pub extra: Mapping,
 }
 
-pub fn discover_posts(root: impl AsRef<Path>, config: &Config) -> Result<Vec<Post>> {
+pub fn discover_posts(
+    root: impl AsRef<Path>,
+    config: &Config,
+    cache: Option<&sled::Db>,
+) -> Result<Vec<Post>> {
     let root = root.as_ref();
     if !root.exists() {
         bail!("posts directory {} does not exist", root.display());
     }
 
     let mut posts = Vec::new();
+    // Cache keys of the posts seen this render, used to GC stale entries below.
+    let mut live_keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
 
     for entry in WalkDir::new(root)
         .min_depth(1)
@@ -78,8 +101,12 @@ pub fn discover_posts(root: impl AsRef<Path>, config: &Config) -> Result<Vec<Pos
         if !entry.file_type().is_dir() {
             continue;
         }
-        match load_post(entry.path(), config)? {
-            Some(post) => posts.push(post),
+        let cache_key = parsed_body_key(root, entry.path());
+        match load_post(entry.path(), config, cache, &cache_key)? {
+            Some(post) => {
+                live_keys.insert(cache_key);
+                posts.push(post);
+            }
             None => continue,
         }
     }
@@ -101,10 +128,49 @@ pub fn discover_posts(root: impl AsRef<Path>, config: &Config) -> Result<Vec<Pos
         }
     }
 
+    if let Some(db) = cache {
+        cleanup_parsed_bodies(db, &live_keys)?;
+    }
+
     Ok(posts)
 }
 
-fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
+/// Build the parsed-markdown cache key for a post directory: the directory path
+/// relative to the posts root, joined with `/` for OS-independent determinism.
+fn parsed_body_key(root: &Path, dir: &Path) -> String {
+    let rel = dir.strip_prefix(root).unwrap_or(dir);
+    let joined = rel
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/");
+    format!("{PARSED_BODY_PREFIX}{joined}")
+}
+
+/// Remove parsed-markdown cache entries for post directories that no longer exist.
+fn cleanup_parsed_bodies(db: &sled::Db, keep: &std::collections::BTreeSet<String>) -> Result<()> {
+    let mut stale: Vec<Vec<u8>> = Vec::new();
+    for entry in db.scan_prefix(PARSED_BODY_PREFIX.as_bytes()) {
+        let (key, _) = entry.context("failed to iterate parsed-body cache entries")?;
+        let key_str =
+            String::from_utf8(key.to_vec()).context("parsed-body cache key is not valid utf-8")?;
+        if !keep.contains(&key_str) {
+            stale.push(key_str.into_bytes());
+        }
+    }
+    for key in stale {
+        db.remove(&key)
+            .context("failed to remove stale parsed-body cache entry")?;
+    }
+    Ok(())
+}
+
+fn load_post(
+    dir: &Path,
+    config: &Config,
+    cache: Option<&sled::Db>,
+    cache_key: &str,
+) -> Result<Option<Post>> {
     let mut main_files = Vec::new();
     for entry in
         fs::read_dir(dir).with_context(|| format!("failed to enumerate {}", dir.display()))?
@@ -130,6 +196,7 @@ fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
     let content_path = main_files.remove(0);
     let raw = fs::read_to_string(&content_path)
         .with_context(|| format!("failed to read {}", content_path.display()))?;
+    let content_hash = blake3::hash(raw.as_bytes()).to_hex().to_string();
     let (front, body) = parse_front_matter(&raw).with_context(|| {
         format!(
             "{}: missing or invalid front matter",
@@ -146,7 +213,7 @@ fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
     let slug = determine_slug(dir, front.slug.as_deref())?;
     let permalink = build_permalink(&date, &slug);
 
-    let (body_html, excerpt) = render_body(&content_path, &body)?;
+    let (body_html, excerpt) = render_body_cached(&content_path, &body, cache, cache_key)?;
     let plain_text = to_plain_text(&body_html);
 
     let post_type = normalize_post_type(front.post_type.as_deref(), &content_path)?;
@@ -174,6 +241,7 @@ fn load_post(dir: &Path, config: &Config) -> Result<Option<Post>> {
         search_text: plain_text,
         source_dir: dir.to_path_buf(),
         content_path,
+        content_hash,
         permalink,
         extra: extras,
     };
@@ -438,6 +506,54 @@ fn build_permalink(date: &OffsetDateTime, slug: &str) -> String {
         u8::from(date.month()),
         date.day()
     )
+}
+
+/// Render a post body, reusing a cached markdown render when the body is
+/// byte-identical to a previous render (same binary version). Only markdown is
+/// cached; HTML bodies are cheap (trim + excerpt) and always rendered inline.
+fn render_body_cached(
+    path: &Path,
+    body: &str,
+    cache: Option<&sled::Db>,
+    cache_key: &str,
+) -> Result<(String, String)> {
+    let is_md = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"));
+    if !is_md {
+        return render_body(path, body);
+    }
+
+    let body_hash = blake3::hash(body.as_bytes()).to_hex().to_string();
+    let version = env!("CARGO_PKG_VERSION");
+
+    // Cache hit: a corrupt/undeserializable entry is treated as a miss.
+    if let Some(db) = cache
+        && let Ok(Some(bytes)) = db.get(cache_key.as_bytes())
+        && let Ok(cached) = serde_json::from_slice::<CachedBody>(&bytes)
+        && cached.version == version
+        && cached.body_hash == body_hash
+    {
+        return Ok((cached.html, cached.excerpt));
+    }
+
+    let (html, excerpt) = render_body(path, body)?;
+
+    if let Some(db) = cache {
+        let record = CachedBody {
+            version: version.to_string(),
+            body_hash,
+            html: html.clone(),
+            excerpt: excerpt.clone(),
+        };
+        // Cache-write failures are non-fatal; worst case is a re-render next time.
+        if let Ok(bytes) = serde_json::to_vec(&record) {
+            let _ = db.insert(cache_key.as_bytes(), bytes);
+        }
+    }
+
+    Ok((html, excerpt))
 }
 
 fn render_body(path: &Path, body: &str) -> Result<(String, String)> {

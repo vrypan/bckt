@@ -16,7 +16,7 @@ fn discover_single_markdown_post() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(&root, &config).unwrap();
+    let posts = discover_posts(&root, &config, None).unwrap();
     assert_eq!(posts.len(), 1);
     let post = &posts[0];
     assert_eq!(post.slug, "hello-world");
@@ -56,7 +56,7 @@ fn duplicate_permalinks_are_rejected() {
     .unwrap();
 
     let config = Config::default();
-    let err = discover_posts(&root, &config).unwrap_err();
+    let err = discover_posts(&root, &config, None).unwrap_err();
     let message = err.to_string();
     assert!(message.contains("duplicate permalink /2024/02/01/same/"));
     assert!(message.contains("/a"));
@@ -81,7 +81,7 @@ fn same_slug_different_days_is_allowed() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(&root, &config).unwrap();
+    let posts = discover_posts(&root, &config, None).unwrap();
     assert_eq!(posts.len(), 2);
 }
 
@@ -97,7 +97,7 @@ fn prefer_slug_from_front_matter() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(&root, &config).unwrap();
+    let posts = discover_posts(&root, &config, None).unwrap();
     assert_eq!(posts[0].slug, "custom-slug");
 }
 
@@ -113,7 +113,7 @@ fn parse_full_front_matter_payload() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+    let posts = discover_posts(root.parent().unwrap(), &config, None).unwrap();
     let post = &posts[0];
     assert_eq!(post.title.as_deref(), Some("Sample"));
     assert_eq!(post.tags, vec!["summary".to_string(), "rust".to_string()]);
@@ -150,7 +150,7 @@ fn reject_duplicate_main_files() {
     .unwrap();
 
     let config = Config::default();
-    let error = discover_posts(root.parent().unwrap(), &config).unwrap_err();
+    let error = discover_posts(root.parent().unwrap(), &config, None).unwrap_err();
     assert!(format!("{error}").contains("expected exactly one"));
 }
 
@@ -162,7 +162,7 @@ fn reject_missing_front_matter() {
     fs::write(root.join("post.md"), "no front matter").unwrap();
 
     let config = Config::default();
-    let error = discover_posts(root.parent().unwrap(), &config).unwrap_err();
+    let error = discover_posts(root.parent().unwrap(), &config, None).unwrap_err();
     assert!(format!("{error}").contains("front matter"));
 }
 
@@ -178,7 +178,7 @@ fn allow_front_matter_only() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+    let posts = discover_posts(root.parent().unwrap(), &config, None).unwrap();
     assert_eq!(posts[0].body_html, "");
     assert_eq!(posts[0].excerpt, "");
 }
@@ -195,7 +195,7 @@ fn retains_additional_front_matter() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+    let posts = discover_posts(root.parent().unwrap(), &config, None).unwrap();
     let value = posts[0]
         .extra
         .get("location")
@@ -217,7 +217,7 @@ fn parse_comma_separated_lists() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+    let posts = discover_posts(root.parent().unwrap(), &config, None).unwrap();
     let post = &posts[0];
 
     assert_eq!(post.tags, vec!["one", "two", "three"]);
@@ -243,7 +243,7 @@ fn allows_empty_tags_field() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+    let posts = discover_posts(root.parent().unwrap(), &config, None).unwrap();
     assert!(posts[0].tags.is_empty());
 }
 
@@ -259,7 +259,7 @@ fn allows_empty_attached_field() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+    let posts = discover_posts(root.parent().unwrap(), &config, None).unwrap();
     assert!(posts[0].attached.is_empty());
 }
 
@@ -275,7 +275,7 @@ fn accepts_datetime_with_numeric_offset() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+    let posts = discover_posts(root.parent().unwrap(), &config, None).unwrap();
     let post = &posts[0];
     assert_eq!(post.date.offset(), UtcOffset::from_hms(2, 0, 0).unwrap());
 }
@@ -296,7 +296,7 @@ fn accepts_naive_datetime_with_default_timezone() {
         ..Default::default()
     };
 
-    let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+    let posts = discover_posts(root.parent().unwrap(), &config, None).unwrap();
     let post = &posts[0];
     let offset = config.default_offset().unwrap();
     assert_eq!(post.date.offset(), offset);
@@ -317,7 +317,7 @@ fn language_from_front_matter_is_normalized() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+    let posts = discover_posts(root.parent().unwrap(), &config, None).unwrap();
     assert_eq!(posts[0].language, "el");
 }
 
@@ -334,7 +334,7 @@ fn short_content_falls_back_to_default_language() {
 
     let mut config = Config::default();
     config.search.default_language = "en".to_string();
-    let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+    let posts = discover_posts(root.parent().unwrap(), &config, None).unwrap();
     assert_eq!(posts[0].language, "en");
 }
 
@@ -357,7 +357,7 @@ fn html_posts_are_passthrough() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(root.parent().unwrap(), &config).unwrap();
+    let posts = discover_posts(root.parent().unwrap(), &config, None).unwrap();
     assert_eq!(posts[0].body_html, "<p>Sunny</p>");
     assert_eq!(posts[0].excerpt, "Sunny");
 }
@@ -394,9 +394,105 @@ fn ignores_directories_with_bcktignore() {
     .unwrap();
 
     let config = Config::default();
-    let posts = discover_posts(&root, &config).unwrap();
+    let posts = discover_posts(&root, &config, None).unwrap();
 
     // Only the published post should be discovered
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0].slug, "published");
+}
+
+#[test]
+fn markdown_cache_is_used_on_second_discovery() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("posts");
+    let post_dir = root.join("notes/hello-world");
+    fs::create_dir_all(&post_dir).unwrap();
+    fs::write(
+        post_dir.join("post.md"),
+        "---\ntitle: Hello\ndate: 2024-02-01T12:00:00Z\ntags: [rust]\n---\nBody",
+    )
+    .unwrap();
+
+    let config = Config::default();
+    let db = sled::open(dir.path().join("cache")).unwrap();
+
+    // First discovery renders and populates the cache.
+    let posts = discover_posts(&root, &config, Some(&db)).unwrap();
+    assert_eq!(posts[0].body_html, "<p>Body</p>\n");
+
+    // Corrupt the cached HTML but keep body_hash + version so it stays a hit;
+    // a genuine cache hit must return the sentinel, proving comrak was skipped.
+    let key = parsed_body_key(&root, &post_dir);
+    let bytes = db.get(key.as_bytes()).unwrap().unwrap();
+    let mut cached: CachedBody = serde_json::from_slice(&bytes).unwrap();
+    cached.html = "<p>SENTINEL</p>".to_string();
+    db.insert(key.as_bytes(), serde_json::to_vec(&cached).unwrap())
+        .unwrap();
+
+    let posts = discover_posts(&root, &config, Some(&db)).unwrap();
+    assert_eq!(posts[0].body_html, "<p>SENTINEL</p>");
+}
+
+#[test]
+fn markdown_cache_invalidated_when_body_changes() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("posts");
+    let post_dir = root.join("notes/hello-world");
+    fs::create_dir_all(&post_dir).unwrap();
+    fs::write(
+        post_dir.join("post.md"),
+        "---\ndate: 2024-02-01T12:00:00Z\n---\nOriginal body",
+    )
+    .unwrap();
+
+    let config = Config::default();
+    let db = sled::open(dir.path().join("cache")).unwrap();
+
+    let posts = discover_posts(&root, &config, Some(&db)).unwrap();
+    assert!(posts[0].body_html.contains("Original body"));
+
+    // A changed body must invalidate the cached render.
+    fs::write(
+        post_dir.join("post.md"),
+        "---\ndate: 2024-02-01T12:00:00Z\n---\nChanged body text",
+    )
+    .unwrap();
+    let posts = discover_posts(&root, &config, Some(&db)).unwrap();
+    assert!(posts[0].body_html.contains("Changed body text"));
+    assert!(!posts[0].body_html.contains("Original body"));
+}
+
+#[test]
+fn markdown_cache_entries_gc_when_post_removed() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("posts");
+    let a = root.join("a");
+    let b = root.join("b");
+    fs::create_dir_all(&a).unwrap();
+    fs::create_dir_all(&b).unwrap();
+    fs::write(
+        a.join("post.md"),
+        "---\ndate: 2024-02-01T12:00:00Z\n---\nBody A",
+    )
+    .unwrap();
+    fs::write(
+        b.join("post.md"),
+        "---\ndate: 2024-02-02T12:00:00Z\n---\nBody B",
+    )
+    .unwrap();
+
+    let config = Config::default();
+    let db = sled::open(dir.path().join("cache")).unwrap();
+
+    discover_posts(&root, &config, Some(&db)).unwrap();
+    let key_a = parsed_body_key(&root, &a);
+    let key_b = parsed_body_key(&root, &b);
+    assert!(db.get(key_a.as_bytes()).unwrap().is_some());
+    assert!(db.get(key_b.as_bytes()).unwrap().is_some());
+
+    // Removing post b must GC its cache entry while a's survives.
+    fs::remove_dir_all(&b).unwrap();
+    discover_posts(&root, &config, Some(&db)).unwrap();
+    assert!(db.get(key_a.as_bytes()).unwrap().is_some());
+    assert!(db.get(key_b.as_bytes()).unwrap().is_none());
 }

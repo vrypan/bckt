@@ -273,6 +273,7 @@ mod tests {
             search_text: "Example body for search indexing".to_string(),
             source_dir: PathBuf::from("posts/example"),
             content_path: PathBuf::from("posts/example/post.md"),
+            content_hash: String::new(),
             permalink: format!("/2024/01/01/{slug}/"),
             extra: serde_json::Map::new(),
         }

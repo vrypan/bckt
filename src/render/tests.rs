@@ -346,7 +346,7 @@ fn attachment_serialization_is_deterministically_sorted() {
     fs::write(post_dir.join("b.txt"), "b").unwrap();
 
     let config = crate::config::Config::default();
-    let posts = discover_posts(&root.join("posts"), &config).unwrap();
+    let posts = discover_posts(&root.join("posts"), &config, None).unwrap();
     let summary = super::posts::build_post_summary(&config, &posts[0]).unwrap();
 
     let json = serde_json::to_string(&summary).unwrap();

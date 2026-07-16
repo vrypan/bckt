@@ -125,7 +125,7 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
     // before any template is rendered (including individual post pages).
     let posts_dir = root.join("posts");
     let mut all_posts = if posts_dir.exists() {
-        discover_posts(&posts_dir, &config)?
+        discover_posts(&posts_dir, &config, Some(&cache_db))?
     } else {
         Vec::new()
     };
