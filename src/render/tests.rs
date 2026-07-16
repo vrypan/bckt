@@ -293,6 +293,40 @@ fn search_index_updates_when_post_changes() {
 }
 
 #[test]
+fn search_index_not_rewritten_when_unchanged() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    write_markdown_post(
+        root,
+        "Stable body content with enough characters for indexing.",
+    );
+
+    let full_plan = RenderPlan {
+        posts: true,
+        static_assets: false,
+        mode: BuildMode::Full,
+        verbose: false,
+    };
+    render_site(root, full_plan).unwrap();
+
+    let index_path = root.join("html/assets/search/search-index.json");
+    let original_mtime = file_mtime(&index_path);
+
+    wait_for_filesystem_tick();
+
+    let changed_plan = RenderPlan {
+        posts: true,
+        static_assets: false,
+        mode: BuildMode::Changed,
+        verbose: false,
+    };
+    render_site(root, changed_plan).unwrap();
+
+    assert_eq!(original_mtime, file_mtime(&index_path));
+}
+
+#[test]
 fn exposes_additional_front_matter_in_templates() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();

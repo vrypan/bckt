@@ -31,6 +31,15 @@ struct SearchIndex {
 }
 
 #[derive(Serialize)]
+struct SearchIndexDigestView<'a> {
+    version: u8,
+    default_language: &'a str,
+    languages: &'a [SearchLanguageMeta],
+    documents: &'a [SearchDocument],
+    facets: &'a SearchFacets,
+}
+
+#[derive(Serialize)]
 struct SearchLanguageMeta {
     id: String,
     name: Option<String>,
@@ -203,10 +212,20 @@ pub fn build_index(config: &Config, posts: &[Post]) -> Result<SearchIndexArtifac
         },
     };
 
-    let bytes = serde_json::to_vec(&index).context("failed to serialize search index")?;
+    let digest_view = SearchIndexDigestView {
+        version: index.version,
+        default_language: &index.default_language,
+        languages: &index.languages,
+        documents: &index.documents,
+        facets: &index.facets,
+    };
+    let digest_input =
+        serde_json::to_vec(&digest_view).context("failed to serialize search digest view")?;
     let mut hasher = Hasher::new();
-    hasher.update(&bytes);
+    hasher.update(&digest_input);
     let digest = hasher.finalize().to_hex().to_string();
+
+    let bytes = serde_json::to_vec(&index).context("failed to serialize search index")?;
 
     Ok(SearchIndexArtifact {
         digest,
@@ -257,6 +276,16 @@ mod tests {
             permalink: format!("/2024/01/01/{slug}/"),
             extra: serde_json::Map::new(),
         }
+    }
+
+    #[test]
+    fn digest_is_stable_across_rebuilds_of_same_content() {
+        let config = Config::default();
+        let posts = vec![build_post("alpha", "en", &["rust"])];
+        let first = build_index(&config, &posts).unwrap();
+        let second = build_index(&config, &posts).unwrap();
+        assert_eq!(first.digest, second.digest);
+        // generated_at still varies, so raw bytes may differ — only the digest is stable
     }
 
     #[test]
