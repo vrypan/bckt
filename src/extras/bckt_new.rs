@@ -137,7 +137,7 @@ fn run() -> Result<()> {
     fs::create_dir_all(&year_dir)
         .with_context(|| format!("failed to create directory {}", year_dir.display()))?;
 
-    let dir_name = format!("{}-{}", date_prefix(&parsed_date), &slug);
+    let dir_name = format!("{}-{}", date_prefix(&parsed_date), slug);
     let post_dir = year_dir.join(&dir_name);
     if post_dir.exists() {
         bail!("destination '{}' already exists", post_dir.display());
@@ -145,7 +145,7 @@ fn run() -> Result<()> {
     fs::create_dir_all(&post_dir)
         .with_context(|| format!("failed to create directory {}", post_dir.display()))?;
 
-    let file_name = format!("{}.md", &dir_name);
+    let file_name = format!("{}.md", dir_name);
     let file_path = post_dir.join(&file_name);
 
     let front_matter = build_front_matter(
