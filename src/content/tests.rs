@@ -27,6 +27,18 @@ fn discover_single_markdown_post() {
 }
 
 #[test]
+fn malformed_multibyte_offset_errors_instead_of_panicking() {
+    let err = parse_offset_str("+1½0").unwrap_err();
+    assert!(err.to_string().contains("invalid"));
+}
+
+#[test]
+fn valid_compact_offset_still_parses() {
+    let offset = parse_offset_str("+0300").unwrap();
+    assert_eq!(offset.whole_hours(), 3);
+}
+
+#[test]
 fn duplicate_permalinks_are_rejected() {
     let dir = TempDir::new().unwrap();
     let root = dir.path().join("posts");

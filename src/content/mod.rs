@@ -295,7 +295,9 @@ fn parse_offset_str(value: &str) -> Result<UtcOffset> {
         bail!("offset '{}' is too short", value);
     }
 
-    let normalized = if trimmed.len() == 5 && (trimmed.starts_with('+') || trimmed.starts_with('-'))
+    let normalized = if trimmed.len() == 5
+        && trimmed.is_ascii()
+        && (trimmed.starts_with('+') || trimmed.starts_with('-'))
     {
         format!("{}:{}", &trimmed[..3], &trimmed[3..])
     } else {
