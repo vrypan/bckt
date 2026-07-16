@@ -10,7 +10,7 @@ use crate::config::Config;
 use crate::content::Post;
 
 use super::cache::{read_cached_string, store_cached_string};
-use super::posts::{PostSummary, build_post_summary, post_key};
+use super::posts::{PostSummary, post_key};
 use super::templates::render_template_with_scope;
 use super::utils::{
     compute_cache_digest, compute_pagination_layout, log_status, remove_dir_if_empty,
@@ -55,6 +55,7 @@ impl HomePageCache {
 
 pub(super) fn render_homepage(
     posts: &[Post],
+    summaries: &[PostSummary],
     html_root: &Path,
     config: &Config,
     env: &Environment<'static>,
@@ -75,14 +76,10 @@ pub(super) fn render_homepage(
     let regular_page_count = layout.regular_page_count;
     let total_pages = regular_page_count + 1;
 
-    // Build lookup for rendering
-    let mut lookup: HashMap<String, &Post> = HashMap::new();
-    for post in posts {
-        lookup.insert(post_key(post), post);
-    }
-
     let mut new_records = Vec::new();
-    let mut page_summaries: HashMap<usize, Vec<PostSummary>> = HashMap::new();
+    // summaries[i] corresponds to posts[i]; reference into the shared vec by
+    // index instead of rebuilding a summary per page.
+    let mut page_summaries: HashMap<usize, Vec<&PostSummary>> = HashMap::new();
 
     // Regular pages (page 1, 2, 3, ...) - store in display order (reversed)
     for page_num in 1..=regular_page_count {
@@ -90,13 +87,9 @@ pub(super) fn render_homepage(
         let end = start + per_page;
         // Reverse the slice to display newest first within the page
         let page_posts: Vec<String> = posts[start..end].iter().rev().map(post_key).collect();
-        let summaries = page_posts
-            .iter()
-            .filter_map(|id| lookup.get(id))
-            .map(|post| build_post_summary(config, post))
-            .collect::<Result<Vec<_>>>()?;
-        let content_digest = compute_cache_digest(&summaries)?;
-        page_summaries.insert(page_num, summaries);
+        let page_refs: Vec<&PostSummary> = summaries[start..end].iter().rev().collect();
+        let content_digest = compute_cache_digest(&page_refs)?;
+        page_summaries.insert(page_num, page_refs);
         new_records.push(StoredPage {
             page_number: page_num,
             posts: page_posts,
@@ -107,13 +100,9 @@ pub(super) fn render_homepage(
     // Homepage gets the last posts (newest) - store in display order (reversed)
     let home_start = regular_page_count * per_page;
     let home_posts: Vec<String> = posts[home_start..].iter().rev().map(post_key).collect();
-    let home_summaries = home_posts
-        .iter()
-        .filter_map(|id| lookup.get(id))
-        .map(|post| build_post_summary(config, post))
-        .collect::<Result<Vec<_>>>()?;
-    let home_content_digest = compute_cache_digest(&home_summaries)?;
-    page_summaries.insert(0, home_summaries);
+    let home_refs: Vec<&PostSummary> = summaries[home_start..].iter().rev().collect();
+    let home_content_digest = compute_cache_digest(&home_refs)?;
+    page_summaries.insert(0, home_refs);
     new_records.push(StoredPage {
         page_number: 0,
         posts: home_posts,
@@ -151,8 +140,8 @@ pub(super) fn render_homepage(
             continue;
         }
 
-        // Reuse the summaries built above (avoid rebuilding them)
-        let summaries = page_summaries
+        // Reuse the summary references built above (avoid rebuilding them)
+        let page_refs = page_summaries
             .remove(&page_num)
             .expect("summaries computed for every page_number in new_records");
 
@@ -198,7 +187,7 @@ pub(super) fn render_homepage(
         };
 
         plans.push(PagePlan {
-            summaries,
+            summaries: page_refs,
             pagination,
             outputs: vec![output],
         });
@@ -218,8 +207,8 @@ pub(super) fn render_homepage(
 
 pub(super) fn render_archives(
     posts: &[Post],
+    summaries: &[PostSummary],
     html_root: &Path,
-    config: &Config,
     env: &Environment<'static>,
     cache_db: &sled::Db,
     mode: BuildMode,
@@ -232,24 +221,21 @@ pub(super) fn render_archives(
         .get_template("archive_month.html")
         .context("archive_month.html template missing")?;
 
-    let mut year_groups: BTreeMap<i32, Vec<&Post>> = BTreeMap::new();
-    let mut month_groups: BTreeMap<(i32, u8), Vec<&Post>> = BTreeMap::new();
+    // Group post indices so each summary is referenced (not rebuilt) per group.
+    let mut year_groups: BTreeMap<i32, Vec<usize>> = BTreeMap::new();
+    let mut month_groups: BTreeMap<(i32, u8), Vec<usize>> = BTreeMap::new();
 
-    for post in posts {
-        year_groups.entry(post.date.year()).or_default().push(post);
+    for (idx, post) in posts.iter().enumerate() {
+        year_groups.entry(post.date.year()).or_default().push(idx);
         month_groups
             .entry((post.date.year(), post.date.month() as u8))
             .or_default()
-            .push(post);
+            .push(idx);
     }
 
     let mut year_keys: BTreeSet<String> = BTreeSet::new();
     for (year, group) in year_groups.iter().rev() {
-        let summaries = group
-            .iter()
-            .rev()
-            .map(|post| build_post_summary(config, post))
-            .collect::<Result<Vec<_>>>()?;
+        let summaries: Vec<&PostSummary> = group.iter().rev().map(|&idx| &summaries[idx]).collect();
         let payload = YearArchiveCachePayload {
             year: *year,
             posts: &summaries,
@@ -295,11 +281,7 @@ pub(super) fn render_archives(
 
     let mut month_keys: BTreeSet<String> = BTreeSet::new();
     for ((year, month), group) in month_groups.iter().rev() {
-        let summaries = group
-            .iter()
-            .rev()
-            .map(|post| build_post_summary(config, post))
-            .collect::<Result<Vec<_>>>()?;
+        let summaries: Vec<&PostSummary> = group.iter().rev().map(|&idx| &summaries[idx]).collect();
         let payload = MonthArchiveCachePayload {
             year: *year,
             month: *month,
@@ -361,8 +343,8 @@ pub(super) fn render_archives(
 
 pub(super) fn render_tag_archives(
     posts: &[Post],
+    summaries: &[PostSummary],
     html_root: &Path,
-    config: &Config,
     env: &Environment<'static>,
     cache_db: &sled::Db,
     mode: BuildMode,
@@ -401,12 +383,12 @@ pub(super) fn render_tag_archives(
 
     let mut plans = Vec::new();
     for bucket in buckets.values() {
-        let summaries = bucket
+        let summaries: Vec<&PostSummary> = bucket
             .indices
             .iter()
             .rev()
-            .map(|&idx| build_post_summary(config, &posts[idx]))
-            .collect::<Result<Vec<_>>>()?;
+            .map(|&idx| &summaries[idx])
+            .collect();
         let pagination = PaginationContext {
             current: 1,
             total: 1,
@@ -685,33 +667,33 @@ struct PaginationContext {
 #[derive(Serialize)]
 struct TagCachePayload<'a> {
     tag: &'a str,
-    posts: &'a [PostSummary],
+    posts: &'a [&'a PostSummary],
     pagination: &'a PaginationContext,
 }
 
 #[derive(Serialize)]
 struct YearArchiveCachePayload<'a> {
     year: i32,
-    posts: &'a [PostSummary],
+    posts: &'a [&'a PostSummary],
 }
 
 #[derive(Serialize)]
 struct MonthArchiveCachePayload<'a> {
     year: i32,
     month: u8,
-    posts: &'a [PostSummary],
+    posts: &'a [&'a PostSummary],
 }
 
-struct TagPagePlan {
+struct TagPagePlan<'a> {
     tag: String,
     slug: String,
-    summaries: Vec<PostSummary>,
+    summaries: Vec<&'a PostSummary>,
     pagination: PaginationContext,
     output: PathBuf,
 }
 
-struct PagePlan {
-    summaries: Vec<PostSummary>,
+struct PagePlan<'a> {
+    summaries: Vec<&'a PostSummary>,
     pagination: PaginationContext,
     outputs: Vec<PathBuf>,
 }

@@ -29,7 +29,7 @@ use listing::{
     HomePageCache, build_archive_years, render_archives, render_homepage, render_tag_archives,
 };
 use pages::render_pages;
-use posts::render_posts;
+use posts::{build_post_summary, render_posts};
 use templates::load_templates;
 use utils::log_status;
 
@@ -162,11 +162,29 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
 
     if plan.posts {
         log_status(plan.verbose, "STEP", "Rendering indexes and feeds");
-        render_homepage(&posts, &html_root, &config, &env, &cache, effective_mode)?;
-        render_tag_archives(
+
+        // Build each post's summary exactly once and share it across the
+        // homepage, tag, archive, and feed renderers. Invariant: summaries[i]
+        // corresponds to posts[i]; both stay sorted ascending by (date, slug),
+        // so any future re-sort or filter of `posts` must carry `summaries`.
+        let summaries = posts
+            .iter()
+            .map(|post| build_post_summary(&config, post))
+            .collect::<Result<Vec<_>>>()?;
+
+        render_homepage(
             &posts,
+            &summaries,
             &html_root,
             &config,
+            &env,
+            &cache,
+            effective_mode,
+        )?;
+        render_tag_archives(
+            &posts,
+            &summaries,
+            &html_root,
             &env,
             &cache_db,
             effective_mode,
@@ -174,14 +192,14 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
         )?;
         render_archives(
             &posts,
+            &summaries,
             &html_root,
-            &config,
             &env,
             &cache_db,
             effective_mode,
             plan.verbose,
         )?;
-        render_feeds(&posts, &html_root, &config, &env)?;
+        render_feeds(&posts, &summaries, &html_root, &config, &env)?;
 
         let artifact = search::build_index(&config, &posts)?;
         stats.search_documents = artifact.document_count;

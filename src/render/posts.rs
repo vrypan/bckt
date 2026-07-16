@@ -248,13 +248,13 @@ pub(super) struct PostTemplate {
     pub(super) extra: serde_json::Map<String, JsonValue>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub(super) struct AttachmentMeta {
     pub(super) size: u64,
     pub(super) mime_type: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub(super) struct PostSummary {
     pub(super) title: Option<String>,
     pub(super) slug: String,

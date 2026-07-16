@@ -14,7 +14,7 @@ use crate::content::Post;
 use crate::utils::{absolute_url, split_csv};
 
 use super::listing::{page_url, tag_index_url, tag_slug};
-use super::posts::{PostSummary, att_to_absolute, build_post_summary};
+use super::posts::{PostSummary, att_to_absolute};
 use super::templates::render_template_with_scope;
 use super::utils::{
     compute_pagination_layout, format_rfc2822, format_rfc3339, sanitize_cdata, xml_escape,
@@ -22,17 +22,20 @@ use super::utils::{
 
 pub(super) fn render_feeds(
     posts: &[Post],
+    summaries: &[PostSummary],
     html_root: &Path,
     config: &Config,
     env: &Environment<'static>,
 ) -> Result<()> {
-    render_rss(posts, html_root, config, env)?;
+    render_rss(posts, summaries, html_root, config, env)?;
 
     for tag in config_tag_feeds(config) {
         let slug = tag_slug(&tag);
-        let tag_posts: Vec<&Post> = posts
+        // summaries[i] corresponds to posts[i]; keep them paired through the filter.
+        let tag_posts: Vec<(&Post, &PostSummary)> = posts
             .iter()
-            .filter(|post| post.tags.iter().any(|t| t.eq(&tag)))
+            .zip(summaries)
+            .filter(|(post, _)| post.tags.iter().any(|t| t.eq(&tag)))
             .rev()
             .collect();
         let output_path = html_root.join(format!("rss-{}.xml", slug));
@@ -57,18 +60,19 @@ pub(super) fn render_feeds(
 
 fn render_rss(
     posts: &[Post],
+    summaries: &[PostSummary],
     html_root: &Path,
     config: &Config,
     env: &Environment<'static>,
 ) -> Result<()> {
     let output_path = html_root.join("rss.xml");
     // Posts are sorted ascending, but RSS feeds should show newest first
-    let posts_ref: Vec<&Post> = posts.iter().rev().collect();
+    let posts_ref: Vec<(&Post, &PostSummary)> = posts.iter().zip(summaries).rev().collect();
     render_feed(posts_ref, config, env, "/", "/rss.xml", &output_path, None)
 }
 
 fn render_feed(
-    posts: Vec<&Post>,
+    posts: Vec<(&Post, &PostSummary)>,
     config: &Config,
     env: &Environment<'static>,
     site_path: &str,
@@ -86,14 +90,14 @@ fn render_feed(
         title.unwrap_or_else(|| config.title.clone().unwrap_or_else(|| "bckt".to_string()));
     let build_date = posts
         .first()
-        .map(|post| post.date)
+        .map(|(post, _)| post.date)
         .unwrap_or_else(OffsetDateTime::now_utc);
     let last_build_date = format_rfc2822(&build_date)?;
 
     let items = posts
         .into_iter()
         .take(50)
-        .map(|post| build_feed_item(config, post))
+        .map(|(post, summary)| build_feed_item(config, post, summary))
         .collect::<Result<Vec<_>>>()?;
 
     let context = FeedContext {
@@ -227,8 +231,8 @@ fn collect_tag_sitemap_entries(posts: &[Post], config: &Config) -> Result<Vec<Si
     Ok(entries)
 }
 
-fn build_feed_item(config: &Config, post: &Post) -> Result<PostSummary> {
-    let mut summary = build_post_summary(config, post)?;
+fn build_feed_item(config: &Config, post: &Post, summary: &PostSummary) -> Result<PostSummary> {
+    let mut summary = summary.clone();
 
     // Reprocess body with return_absolute=true for RSS feeds and sanitize CDATA
     let body = att_to_absolute(
