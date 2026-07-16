@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
@@ -145,8 +145,8 @@ pub(super) fn post_key(post: &Post) -> String {
     format!("{}-{}", post.date.unix_timestamp(), post.slug)
 }
 
-fn build_attachments_meta(post: &Post) -> Result<HashMap<String, AttachmentMeta>> {
-    let mut attachments = HashMap::new();
+fn build_attachments_meta(post: &Post) -> Result<BTreeMap<String, AttachmentMeta>> {
+    let mut attachments = BTreeMap::new();
     for relative_path in &post.attached {
         let normalized = normalize_path(relative_path);
         let asset_path = post.source_dir.join(relative_path);
@@ -243,7 +243,7 @@ pub(super) struct PostTemplate {
     pub(super) body: String,
     pub(super) excerpt: String,
     pub(super) permalink: String,
-    pub(super) attachments: HashMap<String, AttachmentMeta>,
+    pub(super) attachments: BTreeMap<String, AttachmentMeta>,
     #[serde(flatten)]
     pub(super) extra: serde_json::Map<String, JsonValue>,
 }
@@ -269,7 +269,7 @@ pub(super) struct PostSummary {
     pub(super) body: String,
     pub(super) excerpt: String,
     pub(super) permalink: String,
-    pub(super) attachments: HashMap<String, AttachmentMeta>,
+    pub(super) attachments: BTreeMap<String, AttachmentMeta>,
     #[serde(flatten)]
     pub(super) extra: serde_json::Map<String, JsonValue>,
 }

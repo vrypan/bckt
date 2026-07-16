@@ -327,6 +327,38 @@ fn search_index_not_rewritten_when_unchanged() {
 }
 
 #[test]
+fn attachment_serialization_is_deterministically_sorted() {
+    use crate::content::discover_posts;
+
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    let post_dir = root.join("posts/attach");
+    fs::create_dir_all(&post_dir).unwrap();
+    // Front-matter lists attachments in reverse-sorted order; the serialized
+    // summary must still emit them sorted so the cache digest is stable across
+    // renders (a HashMap would order by a per-process-random seed).
+    fs::write(
+        post_dir.join("post.md"),
+        "---\ndate: 2024-01-01T00:00:00Z\nattached: [b.txt, a.txt]\n---\nBody",
+    )
+    .unwrap();
+    fs::write(post_dir.join("a.txt"), "a").unwrap();
+    fs::write(post_dir.join("b.txt"), "b").unwrap();
+
+    let config = crate::config::Config::default();
+    let posts = discover_posts(&root.join("posts"), &config).unwrap();
+    let summary = super::posts::build_post_summary(&config, &posts[0]).unwrap();
+
+    let json = serde_json::to_string(&summary).unwrap();
+    let a_pos = json.find("\"a.txt\"").expect("a.txt attachment present");
+    let b_pos = json.find("\"b.txt\"").expect("b.txt attachment present");
+    assert!(
+        a_pos < b_pos,
+        "attachments must serialize in sorted key order, got: {json}"
+    );
+}
+
+#[test]
 fn exposes_additional_front_matter_in_templates() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();
