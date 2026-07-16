@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -13,12 +13,15 @@ use crate::config::Config;
 use crate::content::Post;
 use crate::utils::{absolute_url, split_csv};
 
+use super::cache::{read_cached_string, store_cached_string};
 use super::listing::{page_url, tag_index_url, tag_slug};
 use super::posts::{PostSummary, att_to_absolute};
 use super::templates::render_template_with_scope;
 use super::utils::{
-    compute_pagination_layout, format_rfc2822, format_rfc3339, sanitize_cdata, xml_escape,
+    compute_pagination_layout, format_rfc2822, format_rfc3339, remove_file_if_exists,
+    sanitize_cdata, xml_escape,
 };
+use super::{BuildMode, FEED_CACHE_PREFIX, SITEMAP_CACHE_KEY};
 
 pub(super) fn render_feeds(
     posts: &[Post],
@@ -26,8 +29,14 @@ pub(super) fn render_feeds(
     html_root: &Path,
     config: &Config,
     env: &Environment<'static>,
+    cache_db: &sled::Db,
+    mode: BuildMode,
 ) -> Result<()> {
-    render_rss(posts, summaries, html_root, config, env)?;
+    // Cache keys of the feeds produced this render, used to GC stale tag feeds.
+    let mut live_keys: BTreeSet<String> = BTreeSet::new();
+
+    render_rss(posts, summaries, html_root, config, env, cache_db, mode)?;
+    live_keys.insert(format!("{FEED_CACHE_PREFIX}/rss.xml"));
 
     for tag in config_tag_feeds(config) {
         let slug = tag_slug(&tag);
@@ -43,6 +52,7 @@ pub(super) fn render_feeds(
         let feed_title = format!("{} · {}", tag, title);
         let site_path = format!("/tags/{}/", slug);
         let feed_path = format!("/rss-{}.xml", slug);
+        live_keys.insert(format!("{FEED_CACHE_PREFIX}{feed_path}"));
         render_feed(
             tag_posts,
             config,
@@ -51,10 +61,14 @@ pub(super) fn render_feeds(
             &feed_path,
             &output_path,
             Some(feed_title),
+            cache_db,
+            mode,
         )?;
     }
 
-    render_sitemap(posts, html_root, config)?;
+    cleanup_stale_feeds(cache_db, html_root, &live_keys)?;
+
+    render_sitemap(posts, html_root, config, cache_db, mode)?;
     Ok(())
 }
 
@@ -64,13 +78,54 @@ fn render_rss(
     html_root: &Path,
     config: &Config,
     env: &Environment<'static>,
+    cache_db: &sled::Db,
+    mode: BuildMode,
 ) -> Result<()> {
     let output_path = html_root.join("rss.xml");
     // Posts are sorted ascending, but RSS feeds should show newest first
     let posts_ref: Vec<(&Post, &PostSummary)> = posts.iter().zip(summaries).rev().collect();
-    render_feed(posts_ref, config, env, "/", "/rss.xml", &output_path, None)
+    render_feed(
+        posts_ref,
+        config,
+        env,
+        "/",
+        "/rss.xml",
+        &output_path,
+        None,
+        cache_db,
+        mode,
+    )
 }
 
+/// Remove cache entries and files for tag feeds no longer in the config. Only
+/// keys under `FEED_CACHE_PREFIX` are owned here, so nothing else is touched.
+fn cleanup_stale_feeds(
+    cache_db: &sled::Db,
+    html_root: &Path,
+    keep: &BTreeSet<String>,
+) -> Result<()> {
+    let mut stale: Vec<String> = Vec::new();
+    for entry in cache_db.scan_prefix(FEED_CACHE_PREFIX.as_bytes()) {
+        let (key, _) = entry.context("failed to iterate feed cache entries")?;
+        let key_str =
+            String::from_utf8(key.to_vec()).context("feed cache key is not valid utf-8")?;
+        if !keep.contains(&key_str) {
+            stale.push(key_str);
+        }
+    }
+    for key in stale {
+        cache_db
+            .remove(key.as_bytes())
+            .context("failed to remove stale feed cache entry")?;
+        if let Some(suffix) = key.strip_prefix(FEED_CACHE_PREFIX) {
+            let file = html_root.join(suffix.trim_start_matches('/'));
+            remove_file_if_exists(&file)?;
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 fn render_feed(
     posts: Vec<(&Post, &PostSummary)>,
     config: &Config,
@@ -79,6 +134,8 @@ fn render_feed(
     feed_path: &str,
     output_path: &Path,
     title: Option<String>,
+    cache_db: &sled::Db,
+    mode: BuildMode,
 ) -> Result<()> {
     let template = env
         .get_template("rss.xml")
@@ -113,16 +170,34 @@ fn render_feed(
     let rendered =
         render_template_with_scope(&template, minijinja::context! { feed => context }, &scope)?;
 
-    if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create {}", parent.display()))?;
+    // Gate the write on a digest of the rendered bytes: feeds are cheap to
+    // render (post-007) but rewriting churns mtimes for rsync/feed readers.
+    let digest = blake3::hash(rendered.as_bytes()).to_hex().to_string();
+    let cache_key = format!("{FEED_CACHE_PREFIX}{feed_path}");
+    let cached = read_cached_string(cache_db, &cache_key)?;
+    let needs_write = matches!(mode, BuildMode::Full)
+        || cached.as_deref() != Some(digest.as_str())
+        || !output_path.exists();
+
+    if needs_write {
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+        fs::write(output_path, rendered)
+            .with_context(|| format!("failed to write {}", output_path.display()))?;
     }
-    fs::write(output_path, rendered)
-        .with_context(|| format!("failed to write {}", output_path.display()))?;
+    store_cached_string(cache_db, &cache_key, &digest)?;
     Ok(())
 }
 
-fn render_sitemap(posts: &[Post], html_root: &Path, config: &Config) -> Result<()> {
+fn render_sitemap(
+    posts: &[Post],
+    html_root: &Path,
+    config: &Config,
+    cache_db: &sled::Db,
+    mode: BuildMode,
+) -> Result<()> {
     let layout = compute_pagination_layout(posts.len(), config.homepage_posts);
     let per_page = layout.per_page;
     let regular_page_count = layout.regular_page_count;
@@ -184,8 +259,17 @@ fn render_sitemap(posts: &[Post], html_root: &Path, config: &Config) -> Result<(
     writeln!(buffer, "</urlset>")?;
 
     let output_path = html_root.join("sitemap.xml");
-    fs::write(&output_path, buffer)
-        .with_context(|| format!("failed to write {}", output_path.display()))?;
+    let digest = blake3::hash(buffer.as_bytes()).to_hex().to_string();
+    let cached = read_cached_string(cache_db, SITEMAP_CACHE_KEY)?;
+    let needs_write = matches!(mode, BuildMode::Full)
+        || cached.as_deref() != Some(digest.as_str())
+        || !output_path.exists();
+
+    if needs_write {
+        fs::write(&output_path, buffer)
+            .with_context(|| format!("failed to write {}", output_path.display()))?;
+    }
+    store_cached_string(cache_db, SITEMAP_CACHE_KEY, &digest)?;
     Ok(())
 }
 

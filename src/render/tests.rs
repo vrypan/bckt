@@ -630,6 +630,119 @@ fn generates_tag_rss_feeds_when_configured() {
 }
 
 #[test]
+fn rss_not_rewritten_when_unchanged() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    write_markdown_post(root, "Stable feed body content for the RSS feed.");
+
+    let full_plan = RenderPlan {
+        posts: true,
+        static_assets: false,
+        mode: BuildMode::Full,
+        verbose: false,
+    };
+    render_site(root, full_plan).unwrap();
+
+    let rss_path = root.join("html/rss.xml");
+    let sitemap_path = root.join("html/sitemap.xml");
+    let rss_mtime = file_mtime(&rss_path);
+    let sitemap_mtime = file_mtime(&sitemap_path);
+
+    wait_for_filesystem_tick();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Changed,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(rss_mtime, file_mtime(&rss_path));
+    assert_eq!(sitemap_mtime, file_mtime(&sitemap_path));
+}
+
+#[test]
+fn rss_rewritten_when_post_changes() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    write_markdown_post(root, "Original feed body content.");
+
+    let full_plan = RenderPlan {
+        posts: true,
+        static_assets: false,
+        mode: BuildMode::Full,
+        verbose: false,
+    };
+    render_site(root, full_plan).unwrap();
+
+    let rss_path = root.join("html/rss.xml");
+    let rss_mtime = file_mtime(&rss_path);
+
+    wait_for_filesystem_tick();
+
+    fs::write(
+        root.join("posts/hello-world/post.md"),
+        "---\ntitle: Example\ndate: 2024-01-02T03:04:05Z\ntags: [test]\n---\nChanged feed body content that alters the RSS output.",
+    )
+    .unwrap();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: true,
+            static_assets: false,
+            mode: BuildMode::Changed,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    assert_ne!(rss_mtime, file_mtime(&rss_path));
+}
+
+#[test]
+fn stale_tag_feed_removed_when_config_drops_tag() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    setup_markdown_templates(root);
+    fs::write(
+        root.join("bckt.yaml"),
+        "title: Demo Site\nbase_url: \"https://example.com\"\nrss_tags:\n  - shared\n",
+    )
+    .unwrap();
+    write_tagged_post(root, "alpha", "shared", "2024-01-01T00:00:00Z", "A");
+
+    let plan = RenderPlan {
+        posts: true,
+        static_assets: false,
+        mode: BuildMode::Changed,
+        verbose: false,
+    };
+    render_site(root, plan).unwrap();
+
+    let tag_feed = root.join("html/rss-shared.xml");
+    assert!(tag_feed.exists());
+
+    // Drop the tag from config; the config change forces a full rebuild and the
+    // now-unconfigured tag feed must be cleaned up.
+    fs::write(
+        root.join("bckt.yaml"),
+        "title: Demo Site\nbase_url: \"https://example.com\"\n",
+    )
+    .unwrap();
+    render_site(root, plan).unwrap();
+
+    assert!(!tag_feed.exists());
+}
+
+#[test]
 fn keeps_relative_paths_in_html_and_absolute_in_feeds() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();

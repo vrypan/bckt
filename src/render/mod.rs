@@ -39,6 +39,8 @@ pub(super) const POST_HASH_PREFIX: &str = "post:";
 pub(super) const TAG_CACHE_PREFIX: &str = "tag_index:";
 pub(super) const YEAR_ARCHIVE_PREFIX: &str = "archive_year:";
 pub(super) const MONTH_ARCHIVE_PREFIX: &str = "archive_month:";
+pub(super) const FEED_CACHE_PREFIX: &str = "feed:";
+pub(super) const SITEMAP_CACHE_KEY: &str = "sitemap";
 const SITE_INPUTS_KEY: &str = "site_inputs_hash";
 const STATIC_HASH_KEY: &str = "static_hash";
 const SEARCH_INDEX_KEY: &str = "search_index_hash";
@@ -199,7 +201,15 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
             effective_mode,
             plan.verbose,
         )?;
-        render_feeds(&posts, &summaries, &html_root, &config, &env)?;
+        render_feeds(
+            &posts,
+            &summaries,
+            &html_root,
+            &config,
+            &env,
+            &cache_db,
+            effective_mode,
+        )?;
 
         let artifact = search::build_index(&config, &posts)?;
         stats.search_documents = artifact.document_count;
