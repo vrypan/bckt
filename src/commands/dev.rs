@@ -16,6 +16,11 @@ use crate::config;
 use crate::render::{BuildMode, RenderPlan, render_site};
 use crate::utils::{extract_base_path, resolve_root};
 
+/// Wait this long after the first filesystem event before rebuilding, so an
+/// editor's non-atomic save (write-temp → rename → touch = 2-4 events over a
+/// few ms) collapses into a single rebuild instead of two back-to-back ones.
+const REBUILD_DEBOUNCE: Duration = Duration::from_millis(200);
+
 const LIVE_RELOAD_ID: &str = "__bckt_live_reload__";
 const LIVE_RELOAD_SNIPPET: &str = r#"<script id=\"__bckt_live_reload__\">(function(){if(window.__bcktLiveReload){return;}window.__bcktLiveReload=true;let last=0;async function poll(){try{const res=await fetch('/__bckt__/poll?since='+last+'&_='+(Date.now()),{cache:'no-store'});if(res.ok){const data=await res.json();if(typeof data.timestamp==='number'){last=data.timestamp;}if(data.reload){window.location.reload();return;}}}catch(e){}setTimeout(poll,1000);}poll();})();</script>"#;
 
@@ -70,6 +75,9 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
 
     thread::spawn(move || {
         while let Ok(()) = rx.recv() {
+            // Let the rest of the save's event burst arrive, then drain it all
+            // at once so the whole burst triggers a single rebuild.
+            thread::sleep(REBUILD_DEBOUNCE);
             while rx.try_recv().is_ok() {}
             let plan = RenderPlan {
                 posts: true,
