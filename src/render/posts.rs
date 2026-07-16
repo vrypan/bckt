@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
@@ -10,6 +11,10 @@ use serde::Serialize;
 use serde_json::Value as JsonValue;
 use time::OffsetDateTime;
 use time::format_description;
+use time::format_description::OwnedFormatItem;
+
+static DATE_FORMAT_CACHE: LazyLock<Mutex<HashMap<String, OwnedFormatItem>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 use crate::config::Config;
 use crate::content::Post;
@@ -361,8 +366,20 @@ fn format_date(config: &Config, date: &OffsetDateTime) -> Result<String> {
             .context("failed to format RFC3339 date");
     }
 
-    let description = format_description::parse(&config.date_format)
-        .with_context(|| format!("invalid date_format '{}'", config.date_format))?;
+    let description = {
+        let mut cache = DATE_FORMAT_CACHE
+            .lock()
+            .expect("date format cache poisoned");
+        match cache.get(&config.date_format) {
+            Some(items) => items.clone(),
+            None => {
+                let items = format_description::parse_owned::<2>(&config.date_format)
+                    .with_context(|| format!("invalid date_format '{}'", config.date_format))?;
+                cache.insert(config.date_format.clone(), items.clone());
+                items
+            }
+        }
+    };
     date.format(&description).with_context(|| {
         format!(
             "failed to format date with pattern '{}'",
@@ -532,4 +549,34 @@ fn join_permalink(permalink: &str, relative: &str) -> String {
 
     let normalized = normalize_path(full.as_path());
     format!("/{}", normalized)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_date_custom_pattern_caches_and_reuses() {
+        let mut config = Config::default();
+        config.date_format = "[year]-[month]".to_string();
+        let date = OffsetDateTime::parse(
+            "2024-05-06T08:09:10Z",
+            &time::format_description::well_known::Rfc3339,
+        )
+        .unwrap();
+
+        assert_eq!(format_date(&config, &date).unwrap(), "2024-05");
+        // Second call exercises the cache-hit path.
+        assert_eq!(format_date(&config, &date).unwrap(), "2024-05");
+    }
+
+    #[test]
+    fn format_date_invalid_pattern_reports_error() {
+        let mut config = Config::default();
+        config.date_format = "[bogus]".to_string();
+        let date = OffsetDateTime::UNIX_EPOCH;
+
+        let err = format_date(&config, &date).unwrap_err();
+        assert!(err.to_string().contains("invalid date_format"));
+    }
 }
