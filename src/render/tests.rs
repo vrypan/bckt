@@ -423,9 +423,13 @@ fn static_assets_recopied_when_file_changes() {
     fs::create_dir_all(root.join("skel")).unwrap();
     fs::write(root.join("skel/style.css"), "body { color: black; }").unwrap();
     setup_markdown_templates(root);
+    // A post is required so the site-inputs hash is persisted; without it every
+    // render sees "site changed" and forces a Full rebuild, which always copies
+    // and would bypass the static digest gate this test exercises.
+    write_markdown_post(root, "Body for the static-assets test.");
 
     let full_plan = RenderPlan {
-        posts: false,
+        posts: true,
         static_assets: true,
         mode: BuildMode::Full,
         verbose: false,
@@ -449,7 +453,7 @@ fn static_assets_recopied_when_file_changes() {
     render_site(
         root,
         RenderPlan {
-            posts: false,
+            posts: true,
             static_assets: true,
             mode: BuildMode::Changed,
             verbose: false,
@@ -470,9 +474,12 @@ fn static_assets_skipped_when_unchanged() {
     fs::create_dir_all(root.join("skel")).unwrap();
     fs::write(root.join("skel/style.css"), "body { color: black; }").unwrap();
     setup_markdown_templates(root);
+    // A post is required so the site-inputs hash is persisted; without it the
+    // incremental render is forced to Full and re-copies unconditionally.
+    write_markdown_post(root, "Body for the static-assets test.");
 
     let full_plan = RenderPlan {
-        posts: false,
+        posts: true,
         static_assets: true,
         mode: BuildMode::Full,
         verbose: false,
@@ -487,7 +494,7 @@ fn static_assets_skipped_when_unchanged() {
     render_site(
         root,
         RenderPlan {
-            posts: false,
+            posts: true,
             static_assets: true,
             mode: BuildMode::Changed,
             verbose: false,
