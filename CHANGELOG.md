@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.7.5]
+
+This release is mostly performance work on the render pipeline plus a few
+correctness fixes. Several changes alter cache-key/digest formulas, so the
+first render after upgrading re-renders everything once and then settles into
+fast incremental rebuilds.
+
+### Added
+
+- **Duplicate permalinks are now a hard error**: two posts resolving to the
+  same `/YYYY/MM/DD/slug/` (via a front-matter `slug:` override or a copied
+  post directory) previously let one silently overwrite the other, so a post
+  vanished from the site with no diagnostic. The build now fails, naming the
+  colliding permalink and both source directories, so the collision gets fixed
+  rather than hidden.
+
+### Fixed
+
+- **Errors print their full cause on exit**: a wrapped failure — notably
+  `bckt dev`'s "initial render before dev server failed" — now shows the
+  underlying reason (e.g. which duplicate permalink) instead of only the
+  outermost message.
+- **Panic on malformed timezone offsets**: a front-matter date whose trailing
+  offset held a multibyte character (e.g. `+1½0`) panicked with a char-boundary
+  error and crashed the whole build; it now reports the normal "invalid offset"
+  error naming the file.
+- **Listing pages no longer re-render nondeterministically**: post attachment
+  metadata was serialized from a `HashMap` in per-process-random order, so tag
+  and archive pages re-rendered a shifting random subset on every incremental
+  build (churning mtimes). Attachment ordering is now stable.
+
+### Performance
+
+- **Rendered markdown is cached**: unchanged posts skip comrak entirely on
+  incremental rebuilds, keyed by a content hash, and each content file is read
+  once per render instead of twice. This is the largest win for big blogs and
+  the `bckt dev` loop.
+- **The search index is rewritten only when it changes**: its digest previously
+  included a per-render timestamp, so the (usually largest) output file was
+  reserialized and rewritten on every render, defeating mtime-based deploys.
+- **Feeds and the sitemap are rewritten only when their content changes**, and
+  stale `rss-<tag>.xml` files are removed when a tag leaves `rss_tags`.
+- **Each post's summary is built once per render** and shared across the
+  homepage, tag, archive, and feed renderers instead of 4–6 times — each build
+  previously re-ran `fs::metadata` on every attachment and rescanned each body.
+- **`date_format` parsing is cached** instead of re-parsed for every formatted
+  date.
+- **Static-asset (`skel/`) change detection hashes metadata** (path + length +
+  mtime) instead of reading every file's bytes on every render.
+- **The dev-server watcher is debounced**: a single editor save (which emits
+  several filesystem events) now triggers one rebuild instead of two
+  back-to-back.
+
 ## [0.7.4]
 
 ### Added
