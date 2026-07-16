@@ -27,6 +27,53 @@ fn discover_single_markdown_post() {
 }
 
 #[test]
+fn duplicate_permalinks_are_rejected() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("posts");
+    fs::create_dir_all(root.join("a")).unwrap();
+    fs::create_dir_all(root.join("b")).unwrap();
+    fs::write(
+        root.join("a/post.md"),
+        "---\ntitle: A\ndate: 2024-02-01T12:00:00Z\nslug: same\n---\nBody",
+    )
+    .unwrap();
+    fs::write(
+        root.join("b/post.md"),
+        "---\ntitle: B\ndate: 2024-02-01T15:30:00Z\nslug: same\n---\nBody",
+    )
+    .unwrap();
+
+    let config = Config::default();
+    let err = discover_posts(&root, &config).unwrap_err();
+    let message = err.to_string();
+    assert!(message.contains("duplicate permalink /2024/02/01/same/"));
+    assert!(message.contains("/a"));
+    assert!(message.contains("/b"));
+}
+
+#[test]
+fn same_slug_different_days_is_allowed() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("posts");
+    fs::create_dir_all(root.join("a")).unwrap();
+    fs::create_dir_all(root.join("b")).unwrap();
+    fs::write(
+        root.join("a/post.md"),
+        "---\ntitle: A\ndate: 2024-02-01T12:00:00Z\nslug: same\n---\nBody",
+    )
+    .unwrap();
+    fs::write(
+        root.join("b/post.md"),
+        "---\ntitle: B\ndate: 2024-02-02T12:00:00Z\nslug: same\n---\nBody",
+    )
+    .unwrap();
+
+    let config = Config::default();
+    let posts = discover_posts(&root, &config).unwrap();
+    assert_eq!(posts.len(), 2);
+}
+
+#[test]
 fn prefer_slug_from_front_matter() {
     let dir = TempDir::new().unwrap();
     let root = dir.path().join("posts");

@@ -88,6 +88,19 @@ pub fn discover_posts(root: impl AsRef<Path>, config: &Config) -> Result<Vec<Pos
         std::cmp::Ordering::Equal => left.slug.cmp(&right.slug),
         other => other,
     });
+
+    let mut seen: std::collections::HashMap<&str, &Path> = std::collections::HashMap::new();
+    for post in &posts {
+        if let Some(existing) = seen.insert(post.permalink.as_str(), post.source_dir.as_path()) {
+            bail!(
+                "duplicate permalink {}: defined by both {} and {}",
+                post.permalink,
+                existing.display(),
+                post.source_dir.display()
+            );
+        }
+    }
+
     Ok(posts)
 }
 
