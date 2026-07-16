@@ -417,6 +417,88 @@ fn copies_static_assets() {
 }
 
 #[test]
+fn static_assets_recopied_when_file_changes() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("skel")).unwrap();
+    fs::write(root.join("skel/style.css"), "body { color: black; }").unwrap();
+    setup_markdown_templates(root);
+
+    let full_plan = RenderPlan {
+        posts: false,
+        static_assets: true,
+        mode: BuildMode::Full,
+        verbose: false,
+    };
+    render_site(root, full_plan).unwrap();
+
+    let copied = root.join("html/style.css");
+    assert_eq!(
+        fs::read_to_string(&copied).unwrap(),
+        "body { color: black; }"
+    );
+
+    wait_for_filesystem_tick();
+
+    // Different content and length so the metadata-only digest still changes.
+    fs::write(
+        root.join("skel/style.css"),
+        "body { color: rebeccapurple; font-size: 16px; }",
+    )
+    .unwrap();
+    render_site(
+        root,
+        RenderPlan {
+            posts: false,
+            static_assets: true,
+            mode: BuildMode::Changed,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        fs::read_to_string(&copied).unwrap(),
+        "body { color: rebeccapurple; font-size: 16px; }"
+    );
+}
+
+#[test]
+fn static_assets_skipped_when_unchanged() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("skel")).unwrap();
+    fs::write(root.join("skel/style.css"), "body { color: black; }").unwrap();
+    setup_markdown_templates(root);
+
+    let full_plan = RenderPlan {
+        posts: false,
+        static_assets: true,
+        mode: BuildMode::Full,
+        verbose: false,
+    };
+    render_site(root, full_plan).unwrap();
+
+    let copied = root.join("html/style.css");
+    let copied_mtime = file_mtime(&copied);
+
+    wait_for_filesystem_tick();
+
+    render_site(
+        root,
+        RenderPlan {
+            posts: false,
+            static_assets: true,
+            mode: BuildMode::Changed,
+            verbose: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(copied_mtime, file_mtime(&copied));
+}
+
+#[test]
 fn paginates_homepage_with_page_numbers() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();

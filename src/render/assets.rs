@@ -34,9 +34,10 @@ pub(super) fn compute_static_digest(root: &Path) -> Result<String> {
         })?;
         let normalized = normalize_path(relative);
         hasher.update(normalized.as_bytes());
-        let data = fs::read(&path)
-            .with_context(|| format!("failed to read static asset {}", path.display()))?;
-        hasher.update(&data);
+        // Metadata-only digest (path + len + mtime), matching post-attachment
+        // hashing in compute_post_digest. Avoids reading megabytes of skel/
+        // bytes on every render; a same-length, mtime-preserved edit is the
+        // accepted blind spot (use `render --force`).
         let metadata = fs::metadata(&path)
             .with_context(|| format!("failed to inspect static asset {}", path.display()))?;
         hasher.update(&metadata.len().to_le_bytes());
