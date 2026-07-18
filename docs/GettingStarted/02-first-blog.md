@@ -21,7 +21,7 @@ my-blog/
 ├── templates/         # Theme templates
 ├── skel/              # Static assets (CSS, JS, images)
 ├── pages/             # Standalone pages (About, Contact, etc.)
-└── themes/            # Downloaded themes
+└── themes/            # Installed themes
 ```
 
 The `html/` directory will be created when you first build your site.
@@ -103,11 +103,14 @@ Your blog content lives here, organized in folders. I like using folders named a
 ```
 posts/
 └── 2024/
-    └── 01/
-        └── my-first-post/
-            ├── post.md       # The post content
-            └── images/       # Post-specific images
+    └── 240115-my-first-post/
+        ├── my-first-post.md   # The post content
+        └── images/            # Post-specific images
 ```
+
+`bckt-new` names the folder `<YYMMDD>-<slug>` and the content file `<slug>.md`,
+but the layout is up to you — bckt discovers any post folder regardless of
+directory depth or naming.
 
 ### templates/
 
@@ -123,7 +126,7 @@ Standalone pages like About, Contact, or other custom pages that aren't blog pos
 
 ### themes/
 
-Downloaded themes are stored here. You can have multiple themes installed and switch between them.
+Installed themes are stored here. You can have multiple themes installed and switch between them.
 
 ## Next Steps
 

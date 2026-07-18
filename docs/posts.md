@@ -9,12 +9,16 @@ A typical post directory looks like:
 ```
 posts/
 └── hello-world/
-    ├── post.md              # Main content file
+    ├── hello-world.md       # Main content file (any *.md / *.html name works)
     ├── images/
     │   └── cover.jpg        # Attached images
     └── documents/
         └── paper.pdf        # Attached documents
 ```
+
+`bckt-new` scaffolds posts as `posts/<YYYY>/<YYMMDD>-<slug>/<slug>.md`, but the
+content file can be named anything with a `.md` or `.html` extension, and post
+folders may sit at any directory depth.
 
 ## Frontmatter
 

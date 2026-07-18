@@ -94,12 +94,13 @@ Both `PostSummary` (used in listings and RSS) and `PostTemplate` (used in indivi
 - `date`, `date_iso` — formatted date and ISO 8601 timestamp
 - `tags` — array of tag strings
 - `body`, `excerpt` — HTML content and excerpt
-- `attachments` — HashMap of attached files with metadata (see below)
+- `attachments` — map of attached files with metadata, ordered by file path (see below)
 - All custom frontmatter fields via the flattened `extra` map
 
 #### Attachment Metadata
 
-Each post exposes an `attachments` map where keys are file paths and values contain:
+Each post exposes an `attachments` map where keys are file paths (iterated in
+sorted path order) and values contain:
 - `size` — file size in bytes
 - `mime_type` — MIME type (e.g., `image/png`, `application/pdf`)
 

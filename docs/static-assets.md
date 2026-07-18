@@ -9,7 +9,7 @@ other assets that do not require template expansion.
 
 ## Recommendations
 - Keep global styles in `skel/style.css`; the default `base.html` already
-  references `/style.css`.
+  references it as `{{ base_path }}/style.css`.
 - Group assets logically, e.g. `skel/img/` for images or `skel/js/` for client
   helpers.
 - Generated bundles from tools like Tailwind or Vite can be placed directly in
@@ -23,9 +23,10 @@ skel/
     └── avatar.jpg
 ```
 
-Reference these assets from templates using root-relative paths:
+Reference these assets from templates using `base_path` so links stay correct
+when the site is deployed under a subpath:
 
 ```html
-<link rel="stylesheet" href="/style.css">
-<img src="/img/avatar.jpg" alt="Avatar">
+<link rel="stylesheet" href="{{ base_path }}/style.css">
+<img src="{{ base_path }}/img/avatar.jpg" alt="Avatar">
 ```

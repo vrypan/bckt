@@ -48,11 +48,10 @@ Alternatively, you can build from the repository:
 git clone https://github.com/vrypan/bckt.git
 cd bckt
 cargo install --path .
-
-# Install companion tools
-cd bckt-new
-cargo install --path .
 ```
+
+This installs both binaries — `bckt` and its companion `bckt-new` — from the
+same crate.
 
 ## Verify Installation
 
@@ -62,7 +61,7 @@ Check that bckt is installed correctly:
 bckt --version
 ```
 
-You should see output like: `bckt 0.6.2`
+You should see output like: `bckt 0.7.5`
 
 ## Next Steps
 

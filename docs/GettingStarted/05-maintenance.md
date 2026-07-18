@@ -28,10 +28,10 @@ To update a post:
 
 1. Navigate to the post directory:
 ```bash
-cd posts/2024/01/my-post
+cd posts/2024/240115-my-post
 ```
 
-2. Edit `post.md` or `post.html`
+2. Edit the post's `.md` or `.html` file
 
 3. Rebuild:
 ```bash
@@ -363,7 +363,7 @@ Add analytics by editing your theme's `base.html` template:
 Check:
 - Date is in correct ISO 8601 format: `2024-01-15T12:00:00Z`
 - No `.bcktignore` file in parent directory
-- Post directory follows structure: `posts/YYYY/MM/slug/post.md`
+- Each post lives in its own folder containing a `.md`/`.html` file (any directory depth works)
 
 ### Images Not Loading
 

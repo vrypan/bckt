@@ -145,7 +145,7 @@ fn run() -> Result<()> {
     fs::create_dir_all(&post_dir)
         .with_context(|| format!("failed to create directory {}", post_dir.display()))?;
 
-    let file_name = format!("{}.md", dir_name);
+    let file_name = format!("{}.md", slug);
     let file_path = post_dir.join(&file_name);
 
     let front_matter = build_front_matter(

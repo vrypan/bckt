@@ -10,27 +10,29 @@ The easiest way to create a new post is with the `bckt-new` tool:
 bckt-new
 ```
 
-This will prompt you for:
+It prompts for each field in order (press Enter to accept the shown default
+or leave an optional field blank):
 
 - **Title**: The post title
-- **Slug**: URL-friendly identifier (auto-generated from title if left empty)
+- **Slug**: URL-friendly identifier (auto-generated from the title if left empty)
+- **Date**: Publication timestamp (`YYYY-MM-DD HH:MM:SS` or RFC3339; defaults to now)
 - **Tags**: Comma-separated tags (optional)
-- **Abstract**: Short summary for listings and social shares (optional)
 - **Type**: Post type like "article", "video", "photo" (optional)
+- **Abstract**: Short summary for listings and social shares (optional)
 - **Language**: Language code like "en" or "es" (optional)
 
 Example session:
 
 ```
-Post title: My First Blog Post
-Post slug (leave empty to auto-generate):
-Tags (comma-separated, leave empty to skip): tutorial, beginner
-Abstract (leave empty to skip): A guide to getting started with blogging
-Post type (leave empty to skip): article
-Post language (leave empty to skip): en
-Date (YYYY-MM-DD or RFC3339, leave empty for now):
+Title: My First Blog Post
+Slug [my-first-blog-post]:
+Date [2024-01-15T12:00:00Z]:
+Tags (comma separated): tutorial, beginner
+Type: article
+Abstract: A guide to getting started with blogging
+Language: en
 
-Created: posts/2024/01/my-first-blog-post/post.md
+Created new post at posts/2024/240115-my-first-blog-post/my-first-blog-post.md
 ```
 
 ### Non-Interactive Mode
@@ -43,7 +45,8 @@ bckt-new --title "My Post" --slug "my-post" --tags "tag1,tag2" --no-prompt
 
 ## Post Structure
 
-bckt-new creates a directory structure like bellow. 
+bckt-new creates a directory structure like below. The directory is named
+`<YYMMDD>-<slug>` and the Markdown file inside it is named `<slug>.md`.
 
 > [!WARNING]
   Every post must be in its own folder.
@@ -51,16 +54,16 @@ bckt-new creates a directory structure like bellow.
 The post folder can contain additional assets (for example image files) referenced by the post.
 ```
 posts/
-└── 2024/01/
-    └── my-first-blog-post/
-        ├── post.md       # Your content goes here
-        └── image.png     
-        └── demo-script-mentioned-in-post.sh     
+└── 2024/
+    └── 240115-my-first-blog-post/
+        ├── my-first-blog-post.md   # Your content goes here
+        ├── image.png
+        └── demo-script-mentioned-in-post.sh
 ```
 
 ## Writing Your Post
 
-Open the `post.md` file in your favorite editor. You'll see frontmatter at the top:
+Open the generated `.md` file in your favorite editor. You'll see frontmatter at the top:
 
 ```yaml
 ---
@@ -207,11 +210,13 @@ Save your changes and refresh your browser. The page will automatically rebuild!
 
 ## Creating Posts Manually
 
-If you prefer not to use bckt-new, create the directory structure manually:
+If you prefer not to use bckt-new, create the directory structure manually.
+Each post lives in its own folder; the Markdown (or HTML) filename inside it
+can be anything with a `.md`/`.html` extension:
 
 ```bash
-mkdir -p posts/2024/01/my-post
-touch posts/2024/01/my-post/post.md
+mkdir -p posts/2024/my-post
+touch posts/2024/my-post/my-post.md
 ```
 
 Then add the frontmatter and content yourself.

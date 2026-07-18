@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- **`bckt-new` names the content file after the slug**: new posts are now
+  scaffolded as `posts/<YYYY>/<YYMMDD-slug>/<slug>.md` (previously the Markdown
+  file repeated the dated directory name, `<YYMMDD-slug>.md`). The post
+  directory is unchanged. Existing posts are unaffected — any `.md`/`.html`
+  filename is still discovered.
+
 ## [0.7.5]
 
 This release is mostly performance work on the render pipeline plus a few
