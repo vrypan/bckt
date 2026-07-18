@@ -133,7 +133,7 @@ Shopping list:
 
 ## Images
 
-![My awesome image](images/photo.jpg)
+![My awesome image](photo.jpg)
 
 > [!NOTE]
 > bckt supports GitHub-style alerts!
@@ -158,7 +158,7 @@ Looking forward to sharing more soon.
 
 - **type**: Custom post type for template customization
 - **language**: Language code for multilingual sites
-- **image**: Featured image path (e.g., `images/cover.jpg`)
+- **image**: Featured image path, relative to the post folder (e.g., `cover.jpg`)
 - **attached**: Array of files to copy with the post
 
 ## Adding Images

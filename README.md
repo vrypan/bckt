@@ -5,13 +5,13 @@
 `bckt` (pronounced "bucket") is one more static site generator.
 
 `bckt` is designed to blend different kinds of content into a single site,
-so you can mix long-form posts, link logs, photos, and other content -your personal content bucket :-)
+so you can mix long-form posts, link logs, photos, and other content — your personal content bucket :-)
 
 It ships with a clean theme, incremental rebuilds, and a minimal toolchain so
 you can publish from Markdown or hand-written HTML without ceremony.
 
 > [!WARNING]
-> `bckt` is expected to run in a trusted envioronment, where templates
+> `bckt` is expected to run in a trusted environment, where templates
 > and content can be trusted (like your own machine).
 > Using it to render third-party content (for example a public bckt-SaaS) 
 > is not recommended yet.
@@ -61,14 +61,12 @@ The six bundled themes are: `bckt3`, `micro`, `microx`, `modern`,
 `plain`, `rntz`.
 
 You can also check [blog.vrypan.net](https://blog.vrypan.net/) — a
-live site built with bckt and a slightly modified default theme — and
-[steve.photo](https://steve.photo), built using bckt and bckt-photo
-(see [Extras](#extras)).
+live site built with bckt.
 
 ## Get Started
 
 ```bash
-bckt init  --theme bckt3       # scaffold posts/, templates/, skel/, bckt.yaml
+bckt init --theme bckt3       # scaffold posts/, templates/, skel/, bckt.yaml
 # edit bckt.yaml
 bckt-new --title "Hello"      # scaffold a new post (prompts for missing fields)
 bckt render                   # generate html/
@@ -78,6 +76,10 @@ bckt dev --verbose            # preview with live reload
 Deploy by publishing the generated `html/` directory with any static host.
 
 ## Documentation
+
+New to bckt? Start with the
+[Getting Started guide](docs/GettingStarted/README.md) — it walks through
+installation, setting up a blog, writing posts, publishing, and maintenance.
 
 Detailed guides live in [`docs/`](docs/README.md):
 

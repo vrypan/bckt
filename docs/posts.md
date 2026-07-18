@@ -10,11 +10,13 @@ A typical post directory looks like:
 posts/
 └── hello-world/
     ├── hello-world.md       # Main content file (any *.md / *.html name works)
-    ├── images/
-    │   └── cover.jpg        # Attached images
-    └── documents/
-        └── paper.pdf        # Attached documents
+    ├── cover.jpg            # Attached image
+    └── paper.pdf            # Attached document
 ```
+
+Attachments usually sit right next to the content file and are referenced
+relative to the post folder (`![](cover.jpg)`). Subfolders inside the post
+directory (e.g. `images/cover.jpg`) work too, if you prefer them.
 
 `bckt-new` scaffolds posts as `posts/<YYYY>/<YYMMDD>-<slug>/<slug>.md`, but the
 content file can be named anything with a `.md` or `.html` extension, and post
@@ -32,10 +34,10 @@ slug: hello-world
 tags:
   - introduction
   - demo
-image: images/cover.jpg
+image: cover.jpg
 attached:
-  - images/cover.jpg
-  - documents/paper.pdf
+  - cover.jpg
+  - paper.pdf
 ---
 
 Your post content here...

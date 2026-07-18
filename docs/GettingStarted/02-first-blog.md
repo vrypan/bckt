@@ -105,7 +105,7 @@ posts/
 └── 2024/
     └── 240115-my-first-post/
         ├── my-first-post.md   # The post content
-        └── images/            # Post-specific images
+        └── photo.jpg          # Post-specific images sit next to it
 ```
 
 `bckt-new` names the folder `<YYMMDD>-<slug>` and the content file `<slug>.md`,

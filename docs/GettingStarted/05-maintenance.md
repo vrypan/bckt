@@ -368,7 +368,7 @@ Check:
 ### Images Not Loading
 
 Check:
-- Image path is correct in Markdown: `images/photo.jpg`
+- Image path in Markdown is relative to the post folder: `![](photo.jpg)`
 - Image is listed in `attached:` frontmatter
 - Image file exists in post directory
 
