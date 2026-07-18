@@ -9,19 +9,21 @@ blog. Read it before touching any theme files.
 A theme is a self-contained directory: `themes/<name>/`. **That is the only
 place you edit.**
 
-The project root also contains `templates/`, `skel/`, `pages/`, and `assets/`,
-but those are **generated copies** — `bckt themes use <name>` overwrites them
-from the active theme. Editing them directly is lost on the next apply.
+The project root also contains `templates/` and `skel/`, but those are
+**generated copies** — `bckt themes use <name>` overwrites them from the active
+theme. Editing them directly is lost on the next apply. (The root `pages/` is
+*not* touched by `bckt themes use`; a theme's starter pages are seeded once by
+`bckt init`, and `pages/` is treated as your content thereafter.)
 
 After **every** change under `themes/<name>/` (templates, CSS, assets — anything),
 re-apply and rebuild from the project root:
 
 ```bash
-bckt themes use <name> --force   # copy theme → root templates/skel/pages/assets, update bckt.yaml
+bckt themes use <name> --force   # copy theme → root templates/ and skel/, update bckt.yaml
 bckt render --force              # rebuild html/   (or run `bckt dev` to live-preview)
 ```
 
-The root `templates/`, `skel/`, `pages/`, and `assets/` are *only* refreshed by
+The root `templates/` and `skel/` are *only* refreshed by
 `bckt themes use`, so skipping it renders stale files. `--force` on `use` skips
 the overwrite prompt; `--force` on `render` rebuilds every post (otherwise
 unchanged posts are skipped, which hides template/CSS edits that affect all
@@ -38,17 +40,20 @@ posts). Run from the project root (where `bckt.yaml` lives), or pass
 ## Theme anatomy (`themes/<name>/`)
 
 ```
-theme.yaml            # required metadata: name, description, version, author, license
 templates/            # MiniJinja templates (page chrome + post layouts)
 skel/                 # static files copied VERBATIM to the site root (/)
 pages/                # standalone pages (.html extends base.html; other files copied as-is)
-assets/               # theme assets copied to /assets/ (e.g. search JS, source art)
 ```
 
-Only `templates/`, `skel/`, `pages/`, and `theme.yaml` are required to ship a
-theme; `rntz` is a small one to read first. A theme may keep any extra build
-sources it wants in its own directory (a CSS preprocessor config, source art,
-etc.) — those are not served; only what lands in `skel/`/`assets/` is.
+Static assets served at `/assets/…` (e.g. the search JS) live under
+`skel/assets/` — `skel/` is mirrored to the site root, so `skel/assets/js/search.js`
+is published at `/assets/js/search.js`. There is no separate top-level theme
+`assets/` directory.
+
+Only `templates/` and `skel/` are required to ship a theme; `rntz` is a small
+one to read first. A theme may keep any extra build sources it wants in its own
+directory (a CSS preprocessor config, source art, etc.) — those are not served;
+only what lands in `skel/` is.
 
 ## Creating a new theme
 
@@ -57,11 +62,11 @@ There is no scaffold command — start by copying the closest existing theme:
 ```bash
 bckt themes list                  # see what's installed
 cp -r themes/rntz themes/<name>   # rntz = compact pure-CSS starting point
-#   edit themes/<name>/theme.yaml → set name, description, version, author, license
 bckt themes use <name> --force && bckt render --force   # make it active and build
 ```
 
-(`bckt themes download <url>` can instead fetch a theme archive into `themes/`.)
+(`bckt themes install <path-to.zip>` can instead unpack a theme archive into
+`themes/`.)
 
 Pick the starting theme by what you need: `rntz` (minimal, classic blog),
 `micro` (microblog — notes, media carousel, sidebar), `bckt3` (cards),
@@ -140,7 +145,7 @@ Templates render with **MiniJinja** (Jinja2-compatible) during `bckt render`.
   output. Editing only templates (not styles) needs no rebuild of the CSS.
 
 - **Shared assets must be included in each theme.** Favicons, search JS
-  (`assets/js/`), and standalone pages (`pages/`) are *not* inherited from
+  (`skel/assets/js/`), and standalone pages (`pages/`) are *not* inherited from
   other themes or the project root — each theme directory must contain its own
   copies. When creating a new theme, copy these from an existing theme:
 
@@ -148,7 +153,7 @@ Templates render with **MiniJinja** (Jinja2-compatible) during `bckt render`.
   cp -r themes/existing/skel/favicon* themes/new/skel/
   cp -r themes/existing/skel/js themes/new/skel/
   cp -r themes/existing/skel/img themes/new/skel/
-  cp -r themes/existing/assets/ themes/new/assets/
+  cp -r themes/existing/skel/assets themes/new/skel/
   cp -r themes/existing/pages/ themes/new/pages/
   ```
 
