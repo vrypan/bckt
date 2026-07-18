@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.7.6]
 
 ### Changed
 
@@ -9,6 +9,16 @@
   file repeated the dated directory name, `<YYMMDD-slug>.md`). The post
   directory is unchanged. Existing posts are unaffected — any `.md`/`.html`
   filename is still discovered.
+
+### Documentation
+
+- Updated the Getting Started guide and reference docs to match the `bckt-new`
+  filename change, and corrected pre-existing inaccuracies (install version,
+  `bckt-new` prompt session, attachment map ordering, `base_path` asset refs).
+- Fixed `themes/AGENTS.md`: removed the stale top-level theme `assets/`
+  directory (assets are served from `skel/assets/`), corrected the
+  `bckt themes use` mechanism, and dropped references to the non-existent
+  `themes download` command and unused `theme.yaml`.
 
 ## [0.7.5]
 
