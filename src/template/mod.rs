@@ -61,9 +61,43 @@ pub fn environment(config: &Config) -> Result<Environment<'static>> {
         },
     );
 
+    env.add_function("atproto_tid", atproto_tid);
+
     filters::register(&mut env)?;
 
     Ok(env)
+}
+
+const TID_ALPHA: &[u8; 32] = b"234567abcdefghijklmnopqrstuvwxyz";
+
+/// Deterministic atproto TID (record key) from a post's publication date and
+/// slug. FROZEN: the mapping from (date, slug) to output is a compatibility
+/// promise — the output is a live PDS record key and an embedded page URL.
+/// Do NOT change the hash or bit layout; doing so re-keys every published post.
+/// Intentionally NOT byte-compatible with `goat` (which hashes with sha256);
+/// bckt uses blake3 and the RSS feed is the only consumer of the value.
+fn atproto_tid(date_rfc3339: &str, slug: &str) -> Result<String, minijinja::Error> {
+    let dt = OffsetDateTime::parse(date_rfc3339, &Rfc3339).map_err(|err| {
+        minijinja::Error::new(
+            ErrorKind::InvalidOperation,
+            format!(
+                "atproto_tid(): first argument must be an RFC3339 date (e.g. post.date_iso); got '{date_rfc3339}': {err}"
+            ),
+        )
+    })?;
+
+    let micros = (dt.unix_timestamp_nanos() / 1_000) as u64 & 0x1F_FFFF_FFFF_FFFF;
+    let digest = blake3::hash(slug.as_bytes());
+    let clock = u16::from_be_bytes([digest.as_bytes()[0], digest.as_bytes()[1]]) as u64 & 0x3FF;
+    let mut v = ((micros << 10) | clock) & 0x7FFF_FFFF_FFFF_FFFF;
+
+    let mut out = [0u8; 13];
+    for slot in out.iter_mut().rev() {
+        *slot = TID_ALPHA[(v & 0x1F) as usize];
+        v >>= 5;
+    }
+    // Safe: every byte came from TID_ALPHA, which is ASCII.
+    Ok(String::from_utf8(out.to_vec()).expect("TID alphabet is ASCII"))
 }
 
 fn normalize_base_url(value: &str) -> String {
@@ -78,6 +112,58 @@ fn normalize_base_url(value: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::Value as JsonValue;
+
+    #[test]
+    fn tid_is_thirteen_sortable_base32_chars() {
+        let out = atproto_tid("2026-07-20T09:30:00Z", "some-post").unwrap();
+        assert_eq!(out.len(), 13);
+        assert!(
+            out.bytes()
+                .all(|b| b"234567abcdefghijklmnopqrstuvwxyz".contains(&b))
+        );
+        // top bit clear => first char is in the low half of the alphabet
+        assert!(b"234567abcdefghijklmno".contains(&out.as_bytes()[0]));
+    }
+
+    #[test]
+    fn tid_is_frozen() {
+        // FROZEN VECTOR — regenerate ONCE from the implementation, then never edit.
+        // If this assertion ever fails, the algorithm changed and every published
+        // post would be re-keyed. That is a breaking change, not a test to update.
+        assert_eq!(
+            atproto_tid("2026-07-20T09:30:00Z", "some-post").unwrap(),
+            "3mr2yahvpk2ih"
+        );
+    }
+
+    #[test]
+    fn tid_is_stable_across_calls() {
+        let a = atproto_tid("2026-07-20T09:30:00Z", "hello-world").unwrap();
+        let b = atproto_tid("2026-07-20T09:30:00Z", "hello-world").unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn tid_varies_with_slug_and_date() {
+        let base = atproto_tid("2026-07-20T09:30:00Z", "a").unwrap();
+        assert_ne!(base, atproto_tid("2026-07-20T09:30:00Z", "b").unwrap());
+        assert_ne!(base, atproto_tid("2026-07-20T09:30:01Z", "a").unwrap());
+    }
+
+    #[test]
+    fn tid_rejects_non_rfc3339_date() {
+        assert!(atproto_tid("20 July 2026", "x").is_err());
+    }
+
+    #[test]
+    fn tid_callable_from_template() {
+        let config = Config::default();
+        let mut env = environment(&config).unwrap();
+        env.add_template("t", "{{ atproto_tid(d, s) }}").unwrap();
+        let ctx = minijinja::context! { d => "2026-07-20T09:30:00Z", s => "some-post" };
+        let rendered = env.get_template("t").unwrap().render(ctx).unwrap();
+        assert_eq!(rendered.len(), 13);
+    }
 
     #[test]
     fn config_available_in_templates() {
