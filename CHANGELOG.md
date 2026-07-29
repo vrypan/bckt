@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.7.7]
+
+### Added
+
+- **`atproto_tid(date, slug)` template function**: derives a deterministic
+  13-character atproto record key (TID) from a post's publication date and
+  slug, so a bckt blog can be mirrored to Bluesky at a predictable record key —
+  bckt computes the key at build time and both the page and the poller agree on
+  it without runtime coordination. The mapping is frozen: the output becomes a
+  live PDS record key and a URL embedded in deployed pages, so it will not
+  change across versions. Not byte-compatible with `goat` (blake3 vs sha256).
+  Documented in `docs/custom_filters.md` alongside `now`.
+
+### Documentation
+
+- README: removed a dead "(see Extras)" link left over from the deleted Extras
+  section, linked the Getting Started guide from the Documentation section, and
+  fixed a typo and some spacing.
+- Post image examples no longer show an `images/` subfolder inside the post
+  directory — attachments are referenced relative to the post folder and the
+  common layout is flat (`![](photo.jpg)`). Subfolders still work and this is
+  now noted explicitly.
+
 ## [0.7.6]
 
 ### Changed
