@@ -1,12 +1,14 @@
 use std::fs;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
+use bckt::post::{
+    FrontMatter, date_prefix, find_project_root, format_rfc3339, non_empty, normalize_tags,
+    parse_datetime, post_dir, post_file, slugify,
+};
 use clap::Parser;
-use time::format_description::well_known::Rfc3339;
-use time::macros::format_description;
-use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
+use time::OffsetDateTime;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -66,10 +68,7 @@ fn run() -> Result<()> {
         .with_context(|| format!("failed to create posts directory {}", posts_root.display()))?;
 
     let now = OffsetDateTime::now_utc();
-    let default_date = cli
-        .date
-        .clone()
-        .unwrap_or_else(|| now.format(&Rfc3339).expect("current time formats"));
+    let default_date = cli.date.clone().unwrap_or_else(|| format_rfc3339(&now));
 
     let title = value_or_prompt(
         "Title",
@@ -107,7 +106,6 @@ fn run() -> Result<()> {
         false,
         cli.no_prompt,
     )?;
-    let tags = normalize_tags(&tags_input);
 
     let post_type_raw = value_or_prompt(
         "Type",
@@ -115,7 +113,6 @@ fn run() -> Result<()> {
         true,
         cli.no_prompt,
     )?;
-    let post_type = non_empty(post_type_raw);
 
     let abstract_raw = value_or_prompt(
         "Abstract",
@@ -123,7 +120,6 @@ fn run() -> Result<()> {
         true,
         cli.no_prompt,
     )?;
-    let abstract_text = non_empty(abstract_raw);
 
     let language_raw = value_or_prompt(
         "Language",
@@ -131,39 +127,31 @@ fn run() -> Result<()> {
         true,
         cli.no_prompt,
     )?;
-    let language = non_empty(language_raw);
 
-    let year_dir = posts_root.join(parsed_date.year().to_string());
-    fs::create_dir_all(&year_dir)
-        .with_context(|| format!("failed to create directory {}", year_dir.display()))?;
-
-    let dir_name = format!("{}-{}", date_prefix(&parsed_date), slug);
-    let post_dir = year_dir.join(&dir_name);
-    if post_dir.exists() {
-        bail!("destination '{}' already exists", post_dir.display());
+    let destination = post_dir(&posts_root, &parsed_date, &slug);
+    if destination.exists() {
+        bail!("destination '{}' already exists", destination.display());
     }
-    fs::create_dir_all(&post_dir)
-        .with_context(|| format!("failed to create directory {}", post_dir.display()))?;
+    fs::create_dir_all(&destination)
+        .with_context(|| format!("failed to create directory {}", destination.display()))?;
 
-    let file_name = format!("{}.md", slug);
-    let file_path = post_dir.join(&file_name);
+    let front_matter = FrontMatter {
+        title: Some(title),
+        slug: slug.clone(),
+        date: date_str,
+        tags: normalize_tags(&tags_input),
+        post_type: non_empty(&post_type_raw),
+        abstract_text: non_empty(&abstract_raw),
+        language: non_empty(&language_raw),
+        attached: Vec::new(),
+    };
 
-    let front_matter = build_front_matter(
-        &title,
-        &slug,
-        &date_str,
-        &tags,
-        post_type.as_deref(),
-        abstract_text.as_deref(),
-        language.as_deref(),
-    );
-
-    let mut file_contents = String::new();
-    file_contents.push_str(&front_matter);
-    file_contents.push_str("\nYour content goes here.\n");
-
-    fs::write(&file_path, file_contents)
-        .with_context(|| format!("failed to write {}", file_path.display()))?;
+    let file_path = post_file(&destination, &slug);
+    fs::write(
+        &file_path,
+        front_matter.into_document("Your content goes here.\n"),
+    )
+    .with_context(|| format!("failed to write {}", file_path.display()))?;
 
     println!("Created new post at {}", file_path.display());
     Ok(())
@@ -204,205 +192,6 @@ fn value_or_prompt(
     }
 }
 
-fn parse_datetime(value: &str) -> Option<OffsetDateTime> {
-    if let Ok(dt) = OffsetDateTime::parse(value, &Rfc3339) {
-        return Some(dt);
-    }
-
-    const NAIVE_FORMAT: &[time::format_description::FormatItem<'static>] =
-        format_description!("[year]-[month]-[day] [hour]:[minute]:[second]");
-
-    if let Ok(naive) = PrimitiveDateTime::parse(value, NAIVE_FORMAT) {
-        return Some(naive.assume_offset(UtcOffset::UTC));
-    }
-
-    if let Some((main, offset_part)) = value.rsplit_once(' ')
-        && let Ok(naive) = PrimitiveDateTime::parse(main, NAIVE_FORMAT)
-        && let Ok(offset) = parse_offset(offset_part)
-    {
-        return Some(naive.assume_offset(offset));
-    }
-
-    None
-}
-
-fn parse_offset(value: &str) -> Result<UtcOffset> {
-    if value.eq_ignore_ascii_case("UTC") || value.eq_ignore_ascii_case("Z") {
-        return Ok(UtcOffset::UTC);
-    }
-
-    let trimmed = value.trim();
-    if trimmed.len() < 3 {
-        bail!("offset '{}' is too short", value);
-    }
-
-    let normalized = if trimmed.len() == 5 && (trimmed.starts_with('+') || trimmed.starts_with('-'))
-    {
-        format!("{}:{}", &trimmed[..3], &trimmed[3..])
-    } else {
-        trimmed.to_string()
-    };
-
-    if let Ok(offset) = UtcOffset::parse(
-        &normalized,
-        &format_description!("[offset_hour sign:mandatory]:[offset_minute]"),
-    ) {
-        return Ok(offset);
-    }
-
-    if let Ok(offset) = UtcOffset::parse(
-        &normalized,
-        &format_description!("[offset_hour sign:mandatory]:[offset_minute]:[offset_second]"),
-    ) {
-        return Ok(offset);
-    }
-
-    bail!("offset '{}' is invalid", value)
-}
-
-fn normalize_tags(input: &str) -> Vec<String> {
-    input
-        .split(',')
-        .map(|raw| raw.trim())
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_string())
-        .collect()
-}
-
 fn generate_fallback_slug(now: OffsetDateTime) -> String {
-    let prefix = date_prefix(&now);
-    format!("{}-post", prefix)
-}
-
-fn date_prefix(dt: &OffsetDateTime) -> String {
-    const PREFIX_FORMAT: &[time::format_description::FormatItem<'static>] =
-        format_description!("[year repr:last_two][month][day]");
-    dt.format(PREFIX_FORMAT).expect("date prefix formats")
-}
-
-fn build_front_matter(
-    title: &str,
-    slug: &str,
-    date: &str,
-    tags: &[String],
-    post_type: Option<&str>,
-    abstract_text: Option<&str>,
-    language: Option<&str>,
-) -> String {
-    let mut fm = String::new();
-    fm.push_str("---\n");
-    fm.push_str(&format!("title: {}\n", yaml_quote(title)));
-    fm.push_str(&format!("slug: {}\n", slug));
-    fm.push_str(&format!("date: {}\n", yaml_quote(date)));
-    if !tags.is_empty() {
-        fm.push_str(&format!("tags: {}\n", tags.join(", ")));
-    }
-    if let Some(pt) = post_type.filter(|pt| !pt.trim().is_empty()) {
-        fm.push_str(&format!("type: {}\n", pt.trim()));
-    }
-    if let Some(summary) = abstract_text.filter(|value| !value.trim().is_empty()) {
-        fm.push_str(&format!("abstract: {}\n", yaml_quote(summary.trim())));
-    }
-    if let Some(lang) = language.filter(|lang| !lang.trim().is_empty()) {
-        fm.push_str(&format!("language: {}\n", lang.trim()));
-    }
-    fm.push_str("attached:\n");
-    fm.push_str("---\n\n");
-    fm
-}
-
-fn yaml_quote(value: &str) -> String {
-    if value.is_empty() {
-        return "\"\"".to_string();
-    }
-    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
-    format!("\"{}\"", escaped)
-}
-
-fn slugify(value: &str) -> String {
-    let mut slug = String::new();
-    let mut previous_dash = false;
-
-    for ch in value.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-            previous_dash = false;
-        } else if !previous_dash && !slug.is_empty() {
-            slug.push('-');
-            previous_dash = true;
-        }
-    }
-
-    slug.trim_matches('-').to_string()
-}
-
-fn find_project_root(start: &Path) -> Result<PathBuf> {
-    let mut current = start.to_path_buf();
-
-    loop {
-        if current.join("bckt.yaml").exists() {
-            return Ok(current);
-        }
-        if !current.pop() {
-            bail!(
-                "could not locate bckt.yaml starting from {}",
-                start.display()
-            );
-        }
-    }
-}
-
-fn non_empty(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn normalize_tags_empty_input_yields_no_tags() {
-        assert!(normalize_tags("").is_empty());
-    }
-
-    #[test]
-    fn normalize_tags_parses_csv() {
-        assert_eq!(normalize_tags("rust, notes"), vec!["rust", "notes"]);
-    }
-
-    #[test]
-    fn front_matter_omits_tags_line_when_empty() {
-        let fm = build_front_matter(
-            "Title",
-            "title",
-            "2024-01-01T00:00:00Z",
-            &[],
-            None,
-            None,
-            None,
-        );
-        assert!(
-            !fm.contains("tags:"),
-            "front matter must not emit a tags line when there are no tags:\n{fm}"
-        );
-    }
-
-    #[test]
-    fn front_matter_includes_supplied_tags() {
-        let fm = build_front_matter(
-            "Title",
-            "title",
-            "2024-01-01T00:00:00Z",
-            &["rust".to_string(), "notes".to_string()],
-            None,
-            None,
-            None,
-        );
-        assert!(fm.contains("tags: rust, notes"), "{fm}");
-    }
+    format!("{}-post", date_prefix(&now))
 }

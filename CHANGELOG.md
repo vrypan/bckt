@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.8.0]
+
+This release makes `bckt` usable as a library so companion tools can write
+posts that bckt will render, without reimplementing the on-disk format. There
+are no changes to rendering, themes, or the CLI.
+
+### Added
+
+- **`post` module, published as a library API**: the on-disk post contract —
+  slug derivation (`slugify`), front matter (`FrontMatter`, `yaml_quote`), date
+  parsing (`parse_datetime`, `parse_offset`, `date_prefix`, `format_rfc3339`),
+  and project layout (`find_project_root`, `post_dir`, `post_file`) — is now a
+  public module rather than binary-private helpers. Companion tools depend on
+  it directly instead of duplicating the format.
+- **`render` feature (on by default)**: gates the render pipeline, templates,
+  themes, dev server, and CLI. A tool that only writes posts depends on bckt
+  with `default-features = false` and pulls in 9 crates instead of 170 —
+  `anyhow` and `time` and their transitives, nothing else. Both binaries
+  declare `required-features = ["render"]`, so default builds and releases are
+  unchanged.
+- CI now builds, lints, and tests `--no-default-features`. Nothing in a normal
+  build exercises that path, so it would otherwise rot silently and only
+  surface when a companion tool failed to build against a published bckt.
+
+### Changed
+
+- `slugify` was duplicated between `utils.rs` and `bckt-new`, and
+  `find_project_root` between `config/project.rs` and `bckt-new`; each collapses
+  to one implementation in `post`. The surviving implementations match the
+  previous behaviour exactly — permalinks and tag URLs are unaffected.
+  `src/config/project.rs` is removed and `config::find_project_root` re-exports
+  `post`'s.
+- `bckt-new` writes one blank line between the front matter and the body
+  instead of two. Cosmetic; rendered output is identical.
+
 ## [0.7.7]
 
 ### Added

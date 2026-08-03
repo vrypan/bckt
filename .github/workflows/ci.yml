@@ -20,3 +20,10 @@ jobs:
         run: cargo clippy -- -D warnings
       - name: test
         run: cargo test
+      # The `post` module is published for companion tools that depend on this
+      # crate with `default-features = false`. Nothing in the normal build
+      # exercises that path, so it would rot silently without these two steps.
+      - name: clippy (post only)
+        run: cargo clippy --no-default-features --all-targets -- -D warnings
+      - name: test (post only)
+        run: cargo test --no-default-features

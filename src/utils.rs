@@ -2,26 +2,7 @@ use anyhow::Result;
 use std::env;
 use std::path::{Path, PathBuf};
 
-pub(crate) fn slugify(value: &str) -> String {
-    let mut slug = String::new();
-    let mut previous_dash = false;
-
-    for ch in value.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-            previous_dash = false;
-        } else if !previous_dash && !slug.is_empty() {
-            slug.push('-');
-            previous_dash = true;
-        }
-    }
-
-    while slug.ends_with('-') {
-        slug.pop();
-    }
-
-    slug
-}
+pub(crate) use crate::post::slugify;
 
 pub fn extract_base_path(base_url: &str) -> String {
     if let Some(idx) = base_url.find("://") {

@@ -1,38 +1,70 @@
 [package]
 name = "bckt"
-version = "0.7.7"
+version = "0.8.0"
 edition = "2024"
 repository = "https://github.com/vrypan/bckt"
 description = "bckt is an opinionated but flexible static site generator for blogs"
 homepage = "https://github.com/vrypan/bckt"
 license = "MIT"
 
+[lib]
+name = "bckt"
+path = "src/lib.rs"
+
 [[bin]]
 name = "bckt"
 path = "src/main.rs"
+required-features = ["render"]
 
 [[bin]]
 name = "bckt-new"
 path = "src/extras/bckt_new.rs"
+required-features = ["render"]
+
+[features]
+default = ["render"]
+# Everything beyond the `post` module: the render pipeline, templates, themes,
+# the dev server, and the CLI binaries. Companion tools that only write posts
+# depend on this crate with `default-features = false` and skip all of it.
+render = [
+    "dep:clap",
+    "dep:serde",
+    "dep:serde_yaml",
+    "dep:minijinja",
+    "dep:comrak",
+    "dep:sled",
+    "dep:walkdir",
+    "dep:serde_json",
+    "dep:url",
+    "dep:blake3",
+    "dep:tiny_http",
+    "dep:notify",
+    "dep:mime_guess",
+    "dep:percent-encoding",
+    "dep:zip",
+]
 
 [dependencies]
 anyhow = "1"
-clap = { version = "4.6", features = ["derive"] }
-serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"
-minijinja = { version = "2.12", features = ["loader"] }
-comrak = "0.52"
-sled = "0.34"
-walkdir = "2.5"
 time = { version = "0.3", features = ["parsing", "formatting", "macros"] }
-serde_json = "1.0"
-url = { version = "2.5", default-features = false }
-blake3 = "1.5"
-tiny_http = "0.12"
-notify = "8.2"
-mime_guess = "2.0"
-percent-encoding = "2.3"
-zip = { version = "8.6", default-features = false, features = ["deflate"] }
+
+clap = { version = "4.6", features = ["derive"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_yaml = { version = "0.9", optional = true }
+minijinja = { version = "2.12", features = ["loader"], optional = true }
+comrak = { version = "0.52", optional = true }
+sled = { version = "0.34", optional = true }
+walkdir = { version = "2.5", optional = true }
+serde_json = { version = "1.0", optional = true }
+url = { version = "2.5", default-features = false, optional = true }
+blake3 = { version = "1.5", optional = true }
+tiny_http = { version = "0.12", optional = true }
+notify = { version = "8.2", optional = true }
+mime_guess = { version = "2.0", optional = true }
+percent-encoding = { version = "2.3", optional = true }
+zip = { version = "8.6", default-features = false, features = [
+    "deflate",
+], optional = true }
 
 [dev-dependencies]
 tempfile = "3.12"

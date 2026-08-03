@@ -1,14 +1,4 @@
-mod cli;
-mod commands;
-pub mod config;
-pub mod content;
-pub mod language;
-pub mod markdown;
-pub mod render;
-pub mod search;
-pub mod template;
-pub mod theme;
-pub mod utils;
+use bckt::{cli, commands};
 
 fn main() {
     let app = cli::Cli::build();
