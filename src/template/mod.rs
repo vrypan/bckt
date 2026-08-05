@@ -96,8 +96,8 @@ fn atproto_tid(date_rfc3339: &str, slug: &str) -> Result<String, minijinja::Erro
         *slot = TID_ALPHA[(v & 0x1F) as usize];
         v >>= 5;
     }
-    // Safe: every byte came from TID_ALPHA, which is ASCII.
-    Ok(String::from_utf8(out.to_vec()).expect("TID alphabet is ASCII"))
+    // Every byte comes from TID_ALPHA (ASCII), so no UTF-8 validation needed.
+    Ok(out.iter().map(|&b| char::from(b)).collect())
 }
 
 fn normalize_base_url(value: &str) -> String {
