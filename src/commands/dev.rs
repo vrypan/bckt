@@ -50,14 +50,22 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
     let (tx, rx) = mpsc::channel();
 
     let watcher_tx = tx.clone();
-    let mut watcher = notify::recommended_watcher(move |event| match event {
-        Ok(_event) => {
-            let _ = watcher_tx.send(());
-        }
-        Err(err) => {
-            eprintln!("[bckt::dev] watcher error: {err}");
-        }
-    })?;
+    let mut watcher =
+        notify::recommended_watcher(move |event: notify::Result<notify::Event>| match event {
+            Ok(event) => {
+                // Ignore Access events: on Linux, inotify reports every file
+                // *open* in the watched dirs, including the renderer's own
+                // read-only opens of posts/templates/skel during a rebuild —
+                // forwarding those retriggers the rebuild in an endless loop.
+                // Real edits are still caught: a save always emits Modify too.
+                if !matches!(event.kind, notify::EventKind::Access(_)) {
+                    let _ = watcher_tx.send(());
+                }
+            }
+            Err(err) => {
+                eprintln!("[bckt::dev] watcher error: {err}");
+            }
+        })?;
 
     register_watch(&mut watcher, root.join("posts"))?;
     register_watch(&mut watcher, root.join("templates"))?;

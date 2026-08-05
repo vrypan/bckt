@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.8.1]
+
+### Fixed
+
+- **`bckt dev` no longer rebuilds in an endless loop on Linux.** The inotify
+  backend reports every file *open* in the watched directories, so the
+  renderer's own read-only opens of `posts/`, `templates/`, and `skel/` during
+  a rebuild retriggered the watcher, which triggered another rebuild, forever.
+  The watcher now ignores access events; real edits still trigger rebuilds
+  (a save always emits a modify event too). macOS was never affected —
+  FSEvents does not report opens.
+
+### Changed
+
+- `atproto_tid` builds its output string via infallible ASCII conversion
+  instead of UTF-8 validation with a panic path. Output is byte-identical;
+  the frozen test vector is unchanged.
+
 ## [0.8.0]
 
 This release makes `bckt` usable as a library so companion tools can write
