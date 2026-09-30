@@ -120,14 +120,41 @@ pub fn resolve_demo(name: &str) -> Result<PathBuf> {
 /// source may be a `.zip` archive (whose contents are extracted) or a theme
 /// directory (whose contents are copied). Either way the theme directories
 /// (`templates/`, `skel/`, `pages/`) are expected at the source root.
+///
+/// The new theme is fully staged next to `destination` before the old one is
+/// moved aside, so a bad source never touches an installed theme.
 pub fn install_theme_source(source: &Path, destination: &Path) -> Result<()> {
-    if source.is_dir() {
-        return install_theme_dir(source, destination);
+    let source_dir = if source.is_dir() {
+        Some(checked_theme_dir(source, destination)?)
+    } else {
+        None
+    };
+
+    let parent = destination
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    fs::create_dir_all(parent)
+        .with_context(|| format!("failed to create directory {}", parent.display()))?;
+    let staging = tempfile::Builder::new()
+        .prefix(".bckt-theme-staging-")
+        .tempdir_in(parent)
+        .with_context(|| format!("failed to create staging directory in {}", parent.display()))?;
+    let payload = staging.path().join("payload");
+    fs::create_dir(&payload)
+        .with_context(|| format!("failed to create directory {}", payload.display()))?;
+
+    match source_dir {
+        Some(source_dir) => copy_theme_dir(&source_dir, &payload)?,
+        None => extract_theme_archive(source, &payload)?,
     }
-    install_theme_archive(source, destination)
+
+    replace_directory(&payload, destination, |from, to| fs::rename(from, to))
 }
 
-fn install_theme_dir(source: &Path, destination: &Path) -> Result<()> {
+/// Canonical theme directory, rejected when it overlaps `destination`: the
+/// copy would otherwise read from the tree being replaced or staged.
+fn checked_theme_dir(source: &Path, destination: &Path) -> Result<PathBuf> {
     let source = source
         .canonicalize()
         .with_context(|| format!("failed to resolve theme directory {}", source.display()))?;
@@ -139,17 +166,18 @@ fn install_theme_dir(source: &Path, destination: &Path) -> Result<()> {
             destination.display()
         );
     }
+    Ok(source)
+}
 
-    prepare_destination(destination)?;
-
+fn copy_theme_dir(source: &Path, destination: &Path) -> Result<()> {
     let mut copied = false;
-    for entry in WalkDir::new(&source) {
+    for entry in WalkDir::new(source) {
         let entry = entry
             .with_context(|| format!("failed to read theme directory {}", source.display()))?;
         if entry.file_type().is_dir() {
             continue;
         }
-        let relative = entry.path().strip_prefix(&source).with_context(|| {
+        let relative = entry.path().strip_prefix(source).with_context(|| {
             format!(
                 "path {} is not under {}",
                 entry.path().display(),
@@ -177,9 +205,7 @@ fn install_theme_dir(source: &Path, destination: &Path) -> Result<()> {
     Ok(())
 }
 
-fn install_theme_archive(archive_path: &Path, destination: &Path) -> Result<()> {
-    prepare_destination(destination)?;
-
+fn extract_theme_archive(archive_path: &Path, destination: &Path) -> Result<()> {
     let file = File::open(archive_path)
         .with_context(|| format!("failed to open theme archive {}", archive_path.display()))?;
     let mut archive = ZipArchive::new(file)
@@ -231,19 +257,86 @@ fn extract_archive<R: Read + Seek>(archive: &mut ZipArchive<R>, destination: &Pa
     Ok(())
 }
 
-/// Remove `destination` if it exists and recreate it as an empty directory.
-fn prepare_destination(destination: &Path) -> Result<()> {
-    if destination.exists() {
-        fs::remove_dir_all(destination).with_context(|| {
+/// Move the staged `payload` into `destination`. An existing destination is
+/// moved into a backup directory first and restored if the swap fails. The
+/// backup is a plain directory, never a drop guard, so a failed restore can
+/// not delete the only copy of the previous theme.
+fn replace_directory(
+    payload: &Path,
+    destination: &Path,
+    mut rename: impl FnMut(&Path, &Path) -> io::Result<()>,
+) -> Result<()> {
+    if fs::symlink_metadata(destination).is_err() {
+        return rename(payload, destination)
+            .with_context(|| format!("failed to move theme into {}", destination.display()));
+    }
+
+    let parent = payload
+        .parent()
+        .and_then(Path::parent)
+        .context("staging payload has no parent directory")?;
+    let backup_root = unique_backup_dir(parent)?;
+    let backup = backup_root.join("previous");
+    if let Err(err) = rename(destination, &backup) {
+        let _ = fs::remove_dir(&backup_root);
+        return Err(err).with_context(|| {
             format!(
-                "failed to remove existing directory {}",
+                "failed to move existing theme {} aside",
                 destination.display()
             )
-        })?;
+        });
     }
-    fs::create_dir_all(destination)
-        .with_context(|| format!("failed to create directory {}", destination.display()))?;
-    Ok(())
+
+    if let Err(install_err) = rename(payload, destination) {
+        if let Err(restore_err) = rename(&backup, destination) {
+            bail!(
+                "failed to install theme into {}: {install_err}; restoring the previous theme also failed: {restore_err}. The previous theme is preserved at {}",
+                destination.display(),
+                backup.display()
+            );
+        }
+        let _ = fs::remove_dir(&backup_root);
+        return Err(install_err).with_context(|| {
+            format!(
+                "failed to install theme into {}; the previous theme was restored",
+                destination.display()
+            )
+        });
+    }
+
+    fs::remove_dir_all(&backup_root).with_context(|| {
+        format!(
+            "theme installed into {}, but the previous theme could not be removed from {}",
+            destination.display(),
+            backup_root.display()
+        )
+    })
+}
+
+fn unique_backup_dir(parent: &Path) -> Result<PathBuf> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    for attempt in 0..100u32 {
+        let candidate = parent.join(format!(
+            ".bckt-theme-backup-{}-{stamp}-{attempt}",
+            std::process::id()
+        ));
+        match fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(err) => {
+                return Err(err).with_context(|| {
+                    format!("failed to create backup directory {}", candidate.display())
+                });
+            }
+        }
+    }
+    bail!(
+        "failed to create a unique backup directory in {}",
+        parent.display()
+    )
 }
 
 /// Canonical path a destination *will* have, even when it (and some of its
@@ -306,6 +399,167 @@ mod tests {
             zip.write_all(contents.as_bytes()).unwrap();
         }
         zip.finish().unwrap();
+    }
+
+    fn installed_theme(dir: &Path) -> PathBuf {
+        let source = dir.join("old-src");
+        fs::create_dir_all(source.join("templates")).unwrap();
+        fs::write(source.join("templates/post.html"), "old post").unwrap();
+        fs::write(source.join("obsolete.txt"), "old only").unwrap();
+        let destination = dir.join("themes/theme");
+        install_theme_source(&source, &destination).unwrap();
+        destination
+    }
+
+    fn assert_old_theme(destination: &Path) {
+        assert_eq!(
+            fs::read_to_string(destination.join("templates/post.html")).unwrap(),
+            "old post"
+        );
+        assert!(destination.join("obsolete.txt").is_file());
+    }
+
+    fn staging_leftovers(parent: &Path) -> Vec<String> {
+        fs::read_dir(parent)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".bckt-theme-"))
+            .collect()
+    }
+
+    #[test]
+    fn theme_replacement_corrupt_archive_preserves_old() {
+        let dir = TempDir::new().unwrap();
+        let destination = installed_theme(dir.path());
+        let archive = dir.path().join("broken.zip");
+        fs::write(&archive, "not a zip file").unwrap();
+
+        assert!(install_theme_source(&archive, &destination).is_err());
+
+        assert_old_theme(&destination);
+        assert!(staging_leftovers(&dir.path().join("themes")).is_empty());
+    }
+
+    #[test]
+    fn theme_replacement_empty_source_preserves_old() {
+        let dir = TempDir::new().unwrap();
+        let destination = installed_theme(dir.path());
+        let empty_dir = dir.path().join("empty-src");
+        fs::create_dir_all(&empty_dir).unwrap();
+        let empty_archive = dir.path().join("empty.zip");
+        write_archive(&empty_archive, &[]);
+
+        assert!(install_theme_source(&empty_dir, &destination).is_err());
+        assert!(install_theme_source(&empty_archive, &destination).is_err());
+
+        assert_old_theme(&destination);
+        assert!(staging_leftovers(&dir.path().join("themes")).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn theme_replacement_copy_error_preserves_old() {
+        let dir = TempDir::new().unwrap();
+        let destination = installed_theme(dir.path());
+        let source = dir.path().join("dangling-src");
+        fs::create_dir_all(source.join("templates")).unwrap();
+        fs::write(source.join("templates/post.html"), "new post").unwrap();
+        std::os::unix::fs::symlink(
+            dir.path().join("nowhere"),
+            source.join("templates/gone.html"),
+        )
+        .unwrap();
+
+        assert!(install_theme_source(&source, &destination).is_err());
+
+        assert_old_theme(&destination);
+        assert!(staging_leftovers(&dir.path().join("themes")).is_empty());
+    }
+
+    fn staged_payload(dir: &Path) -> (TempDir, PathBuf) {
+        let staging = tempfile::Builder::new()
+            .prefix(".bckt-theme-staging-")
+            .tempdir_in(dir.join("themes"))
+            .unwrap();
+        let payload = staging.path().join("payload");
+        fs::create_dir_all(payload.join("templates")).unwrap();
+        fs::write(payload.join("templates/post.html"), "new post").unwrap();
+        (staging, payload)
+    }
+
+    #[test]
+    fn theme_replacement_commit_failure_rolls_back() {
+        let dir = TempDir::new().unwrap();
+        let destination = installed_theme(dir.path());
+        let (staging, payload) = staged_payload(dir.path());
+        let mut calls = 0;
+
+        let err = replace_directory(&payload, &destination, |from, to| {
+            calls += 1;
+            if calls == 2 {
+                return Err(io::Error::other("injected install failure"));
+            }
+            fs::rename(from, to)
+        })
+        .unwrap_err();
+        drop(staging);
+
+        assert!(
+            format!("{err:#}").contains("previous theme was restored"),
+            "{err:#}"
+        );
+        assert_old_theme(&destination);
+        assert!(staging_leftovers(&dir.path().join("themes")).is_empty());
+    }
+
+    #[test]
+    fn theme_replacement_rollback_failure_keeps_backup() {
+        let dir = TempDir::new().unwrap();
+        let destination = installed_theme(dir.path());
+        let (staging, payload) = staged_payload(dir.path());
+        let mut calls = 0;
+
+        let err = replace_directory(&payload, &destination, |from, to| {
+            calls += 1;
+            if calls >= 2 {
+                return Err(io::Error::other("injected failure"));
+            }
+            fs::rename(from, to)
+        })
+        .unwrap_err();
+        drop(staging);
+
+        let leftovers = staging_leftovers(&dir.path().join("themes"));
+        assert_eq!(leftovers.len(), 1, "{leftovers:?}");
+        let backup = dir
+            .path()
+            .join("themes")
+            .join(&leftovers[0])
+            .join("previous");
+        assert!(
+            err.to_string().contains(&backup.display().to_string()),
+            "{err}"
+        );
+        assert_old_theme(&backup);
+        assert!(!destination.exists());
+    }
+
+    #[test]
+    fn theme_replacement_success_discards_old_files() {
+        let dir = TempDir::new().unwrap();
+        let destination = installed_theme(dir.path());
+        let archive = destination.join("replacement.zip");
+        write_archive(&archive, &[("templates/post.html", "new post")]);
+
+        install_theme_source(&archive, &destination).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(destination.join("templates/post.html")).unwrap(),
+            "new post"
+        );
+        assert!(!destination.join("obsolete.txt").exists());
+        assert!(!destination.join("replacement.zip").exists());
+        assert!(staging_leftovers(&dir.path().join("themes")).is_empty());
     }
 
     #[test]
