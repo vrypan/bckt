@@ -89,10 +89,51 @@ pub(super) fn format_rfc2822(date: &OffsetDateTime) -> Result<String> {
         .context("failed to format RFC2822 date")
 }
 
+/// Make `value` safe inside a CDATA section by splitting every `]]>` across two
+/// sections: `]]` stays in the first, `>` opens the next.
 pub(super) fn sanitize_cdata(value: &str) -> String {
     if value.contains("]]>") {
-        value.replace("]]>", "]]]><![CDATA[>")
+        value.replace("]]>", "]]]]><![CDATA[>")
     } else {
         value.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn decoded_cdata(value: &str) -> String {
+        let xml = format!("<root><![CDATA[{}]]></root>", sanitize_cdata(value));
+        let doc = roxmltree::Document::parse(&xml)
+            .unwrap_or_else(|err| panic!("invalid XML for {value:?}: {err}\n{xml}"));
+        doc.root_element()
+            .children()
+            .filter_map(|node| node.text())
+            .collect()
+    }
+
+    #[test]
+    fn cdata_round_trip() {
+        let cases = [
+            "",
+            "plain café — 日本 🚀",
+            "a]]>b",
+            "]]>start",
+            "end]]>",
+            "]]>]]>",
+            "]]>>",
+            "]]]]]>",
+            "x]]]]>]]>y",
+        ];
+        for value in cases {
+            assert_eq!(decoded_cdata(value), value, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn cdata_without_delimiter_is_unchanged() {
+        let value = "<p>a ] b ]] c > d</p>";
+        assert_eq!(sanitize_cdata(value), value);
     }
 }

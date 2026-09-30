@@ -2123,3 +2123,34 @@ fn archive_global_site_inputs_hash_tracks_years_and_counts() {
     assert_ne!(base, recount);
     assert_ne!(base, new_year);
 }
+
+#[test]
+fn rss_cdata_body_round_trip() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    let rss = fs::read_to_string(bundled_theme_dir("bckt3").join("templates/rss.xml")).unwrap();
+    write_template(root, "rss.xml", &rss);
+    let body = "<p>Arrays: a[b[0]]&gt;1 and raw a[b[0]]>1 ]]>]]> done</p>";
+    write_file(
+        root,
+        "posts/cdata/post.html",
+        &format!("---\ntitle: CDATA & Co\nslug: cdata\ndate: 2024-05-01T00:00:00Z\n---\n{body}\n"),
+    );
+
+    render_with(root, true, false, BuildMode::Full).unwrap();
+
+    let xml = fs::read_to_string(root.join("html/rss.xml")).unwrap();
+    let doc = roxmltree::Document::parse(&xml).unwrap_or_else(|err| panic!("{err}\n{xml}"));
+    let encoded = doc
+        .descendants()
+        .find(|node| node.tag_name().name() == "encoded")
+        .unwrap();
+    let text: String = encoded.children().filter_map(|node| node.text()).collect();
+    assert!(text.contains(body), "{text}");
+    let item = doc
+        .descendants()
+        .find(|node| node.has_tag_name("item"))
+        .unwrap();
+    assert_eq!(child_text(item, "title"), "CDATA & Co");
+}
