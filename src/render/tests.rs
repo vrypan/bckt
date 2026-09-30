@@ -1920,3 +1920,86 @@ fn homepage_pagination_incremental_matches_forced_render() {
         .collect();
     assert_eq!(mtimes, after);
 }
+
+const SUMMARY_ATTACHMENT_URLS: &[&str] = &[
+    "src=\"{base}/2024/01/01/media/images/pic.png\"",
+    "href=\"{base}/2024/01/01/media/notes.txt?dl=1#top\"",
+    "href=\"https://other.example/x.png\"",
+    "href=\"/about/\"",
+    "href=\"#frag\"",
+    "href=\"other.txt\"",
+];
+
+fn setup_summary_attachment_site(root: &Path, base_url: &str) {
+    setup_markdown_templates(root);
+    let listing = "{% for post in posts %}{{ post.body | safe }}{% endfor %}";
+    for name in [
+        "index.html",
+        "tag.html",
+        "archive_year.html",
+        "archive_month.html",
+    ] {
+        write_template(root, name, listing);
+    }
+    fs::write(
+        root.join("bckt.yaml"),
+        format!("homepage_posts: 1\nbase_url: \"{base_url}\"\n"),
+    )
+    .unwrap();
+    write_file(root, "posts/media/images/pic.png", "image-bytes");
+    write_file(root, "posts/media/notes.txt", "notes");
+    write_file(
+        root,
+        "posts/media/post.md",
+        "---\nslug: media\ndate: 2024-01-01T00:00:00Z\ntags: [media]\nattached:\n  - images/pic.png\n  - notes.txt\n---\n![Alt](images/pic.png)\n\n[Download](notes.txt?dl=1#top)\n\n[Ext](https://other.example/x.png) [Root](/about/) [Anchor](#frag) [Plain](other.txt)\n",
+    );
+}
+
+fn assert_summary_attachment_urls(root: &Path, pages: &[&str], base_url: &str) {
+    for page in pages {
+        let html = fs::read_to_string(root.join("html").join(page)).unwrap();
+        for expected in SUMMARY_ATTACHMENT_URLS {
+            let expected = expected.replace("{base}", base_url);
+            assert!(html.contains(&expected), "{page} lacks {expected}: {html}");
+        }
+        assert!(!html.contains("blog/blog"), "{page}: {html}");
+    }
+}
+
+fn check_summary_attachment_site(base_url: &str) {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_summary_attachment_site(root, base_url);
+    render_with(root, true, false, BuildMode::Full).unwrap();
+    let listings = [
+        "index.html",
+        "tags/media/index.html",
+        "2024/index.html",
+        "2024/01/index.html",
+    ];
+    assert_summary_attachment_urls(root, &listings, base_url);
+
+    write_dated_post(root, "later", "2024-01-02T00:00:00Z", "Later");
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+    assert_summary_attachment_urls(root, &["page/1/index.html"], base_url);
+
+    let post_page = fs::read_to_string(root.join("html/2024/01/01/media/index.html")).unwrap();
+    assert!(post_page.contains("src=\"images/pic.png\""), "{post_page}");
+    assert!(
+        post_page.contains("href=\"notes.txt?dl=1#top\""),
+        "{post_page}"
+    );
+    let feed = fs::read_to_string(root.join("html/rss.xml")).unwrap();
+    assert!(feed.contains(&format!("{base_url}/2024/01/01/media/images/pic.png")));
+    assert!(!root.join("html/blog").exists());
+}
+
+#[test]
+fn summary_attachment_root_listing_urls() {
+    check_summary_attachment_site("https://example.com");
+}
+
+#[test]
+fn summary_attachment_subpath_listing_urls() {
+    check_summary_attachment_site("https://example.com/blog");
+}

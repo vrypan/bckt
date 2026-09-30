@@ -220,12 +220,14 @@ pub(super) fn build_post_summary(config: &Config, post: &Post) -> Result<PostSum
         .format(&time::format_description::well_known::Rfc3339)
         .context("failed to format RFC3339 date")?;
 
+    // Summaries render on listing pages outside the post's directory, so
+    // attachment references must be absolute rather than post-relative.
     let body = att_to_absolute(
         &post.body_html,
         &post.permalink,
         &config.base_url,
         &post.attached,
-        false,
+        true,
     );
 
     Ok(PostSummary {
