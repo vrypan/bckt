@@ -496,3 +496,39 @@ fn markdown_cache_entries_gc_when_post_removed() {
     assert!(db.get(key_a.as_bytes()).unwrap().is_some());
     assert!(db.get(key_b.as_bytes()).unwrap().is_none());
 }
+
+#[test]
+fn generated_frontmatter_loads_with_special_metadata() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("posts");
+    fs::create_dir_all(root.join("generated")).unwrap();
+    let mut front_matter = crate::post::FrontMatter::new("generated-post", "2024-03-04T05:06:07Z");
+    front_matter.title = Some("Line one\nLine \"two\": #3".to_string());
+    front_matter.tags = vec![
+        " spaced ".to_string(),
+        "key: value".to_string(),
+        "a,b".to_string(),
+    ];
+    front_matter.post_type = Some("note_short".to_string());
+    front_matter.abstract_text = Some("Sum: with 'quotes' & \\ slash".to_string());
+    front_matter.language = Some("en".to_string());
+    fs::write(
+        root.join("generated/post.md"),
+        front_matter.into_document("Body text.\n"),
+    )
+    .unwrap();
+
+    let posts = discover_posts(&root, &Config::default(), None).unwrap();
+
+    assert_eq!(posts.len(), 1);
+    let post = &posts[0];
+    assert_eq!(post.slug, "generated-post");
+    assert_eq!(post.title.as_deref(), Some("Line one\nLine \"two\": #3"));
+    assert_eq!(post.post_type.as_deref(), Some("note_short"));
+    assert_eq!(
+        post.abstract_text.as_deref(),
+        Some("Sum: with 'quotes' & \\ slash")
+    );
+    assert_eq!(post.language, "en");
+    assert_eq!(post.tags, vec!["spaced", "key: value", "a,b"]);
+}
