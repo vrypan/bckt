@@ -67,6 +67,7 @@ zip = { version = "8.6", default-features = false, features = [
 ], optional = true }
 
 [dev-dependencies]
+roxmltree = "0.21.1"
 tempfile = "3.12"
 
 # The profile that 'dist' will build with

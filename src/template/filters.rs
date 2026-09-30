@@ -10,6 +10,8 @@ use time::format_description::modifier::{
 use time::format_description::well_known::Rfc3339;
 use time::format_description::{Component, OwnedFormatItem};
 
+use crate::utils::xml_escape;
+
 static FORMAT_CACHE: LazyLock<Mutex<HashMap<String, Vec<OwnedFormatItem>>>> = LazyLock::new(|| {
     let mut cache = HashMap::new();
     if let Ok(items) = translate_strftime_uncached("%Y-%m-%d") {
@@ -26,7 +28,20 @@ static FORMAT_CACHE: LazyLock<Mutex<HashMap<String, Vec<OwnedFormatItem>>>> = La
 
 pub fn register(env: &mut Environment<'static>) -> Result<(), Error> {
     env.add_filter("format_date", format_date);
+    env.add_filter("xml_escape", xml_escape_filter);
     Ok(())
+}
+
+/// Escape a value for XML text or attributes. Values marked safe (such as
+/// `base_url`) are escaped too; the result is marked safe so it is not escaped
+/// twice by an autoescaping template.
+fn xml_escape_filter(value: Value) -> Value {
+    let escaped = match value.as_str() {
+        Some(text) => xml_escape(text),
+        None if value.is_undefined() || value.is_none() => String::new(),
+        None => xml_escape(&value.to_string()),
+    };
+    Value::from_safe_string(escaped)
 }
 
 fn format_date(value: Value, format: String) -> Result<Value, Error> {
@@ -203,6 +218,36 @@ fn translate_strftime_uncached(format: &str) -> Result<Vec<OwnedFormatItem>, Err
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn xml_escape_filter_escapes_ordinary_and_safe_values() {
+        let raw = Value::from("<a href=\"x\">Tom & 'Jerry'</a> café");
+        assert_eq!(
+            xml_escape_filter(raw).as_str().unwrap(),
+            "&lt;a href=&quot;x&quot;&gt;Tom &amp; &apos;Jerry&apos;&lt;/a&gt; café"
+        );
+        let safe = Value::from_safe_string("https://example.com/?a=1&b=2".to_string());
+        assert_eq!(
+            xml_escape_filter(safe).as_str().unwrap(),
+            "https://example.com/?a=1&amp;b=2"
+        );
+        assert_eq!(xml_escape_filter(Value::from(42)).as_str().unwrap(), "42");
+        assert_eq!(xml_escape_filter(Value::UNDEFINED).as_str().unwrap(), "");
+    }
+
+    #[test]
+    fn xml_escape_filter_output_is_not_escaped_twice() {
+        let mut env = Environment::new();
+        register(&mut env).unwrap();
+        env.add_template("page.html", "{{ value | xml_escape }}")
+            .unwrap();
+        let rendered = env
+            .get_template("page.html")
+            .unwrap()
+            .render(minijinja::context! { value => "A & B" })
+            .unwrap();
+        assert_eq!(rendered, "A &amp; B");
+    }
 
     #[test]
     fn formats_rfc3339_datetime() {

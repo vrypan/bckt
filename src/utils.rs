@@ -25,6 +25,22 @@ pub fn split_csv(input: &str) -> Vec<String> {
         .collect()
 }
 
+/// Escape the five XML-significant characters for text and attribute values.
+pub(crate) fn xml_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&apos;"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
+}
+
 pub fn absolute_url(base: &str, path: &str) -> String {
     let trimmed_base = base.trim_end_matches('/');
     let trimmed_path = path.trim_start_matches('/');

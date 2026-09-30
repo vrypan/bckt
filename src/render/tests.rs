@@ -45,7 +45,7 @@ fn setup_markdown_templates(root: &Path) {
     write_template(
         root,
         "rss.xml",
-        "{% autoescape false %}\n<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<rss version=\"2.0\" xmlns:content=\"http://purl.org/rss/1.0/modules/content/\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n  <channel>\n    <title>{{ feed.title }}</title>\n    <link>{{ feed.site_url }}</link>\n    <description>{{ feed.description }}</description>\n    <lastBuildDate>{{ feed.updated }}</lastBuildDate>\n    <generator>bckt</generator>\n    <atom:link href=\"{{ feed.feed_url }}\" rel=\"self\" type=\"application/rss+xml\"/>\n    {% for item in feed.items %}\n    <item>\n      <title>{{ item.title | default(value=item.slug) }}</title>\n      <link>{{ base_url }}{{ item.permalink }}</link>\n      <guid isPermaLink=\"true\">{{ base_url }}{{ item.permalink }}</guid>\n      <pubDate>{{ item.pub_date }}</pubDate>\n      <description>{{ item.excerpt | default(value=item.title | default(value=item.slug)) }}</description>\n      <content:encoded><![CDATA[{{ item.body }}]]></content:encoded>\n    </item>\n    {% endfor %}\n  </channel>\n</rss>\n{% endautoescape %}\n",
+        "{% autoescape false %}\n<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<rss version=\"2.0\" xmlns:content=\"http://purl.org/rss/1.0/modules/content/\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n  <channel>\n    <title>{{ feed.title }}</title>\n    <link>{{ feed.site_url }}</link>\n    <description>{{ feed.description }}</description>\n    <lastBuildDate>{{ feed.updated }}</lastBuildDate>\n    <generator>bckt</generator>\n    <atom:link href=\"{{ feed.feed_url }}\" rel=\"self\" type=\"application/rss+xml\"/>\n    {% for item in feed.items %}\n    <item>\n      <title>{{ item.title | default(value=item.slug) | xml_escape }}</title>\n      <link>{{ (base_url ~ item.permalink) | xml_escape }}</link>\n      <guid isPermaLink=\"true\">{{ (base_url ~ item.permalink) | xml_escape }}</guid>\n      <pubDate>{{ item.pub_date }}</pubDate>\n      <description>{{ item.excerpt | default(value=item.title | default(value=item.slug)) | xml_escape }}</description>\n      <content:encoded><![CDATA[{{ item.body }}]]></content:encoded>\n    </item>\n    {% endfor %}\n  </channel>\n</rss>\n{% endautoescape %}\n",
     );
 }
 
@@ -1700,4 +1700,178 @@ fn generated_output_legacy_migration() {
     assert!(html.join("unknown.txt").exists());
     assert!(html.join("2024/04/01/alpha/old.bin").exists());
     assert!(html.join("2024/04/01/alpha/index.html").exists());
+}
+
+const BUNDLED_THEMES: &[&str] = &["bckt3", "micro", "microx", "modern", "plain", "rntz"];
+
+fn bundled_theme_dir(name: &str) -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("themes")
+        .join(name)
+}
+
+fn write_special_character_post(root: &Path) {
+    let dir = root.join("posts/fish");
+    write_file(&dir, "a&b.txt", "attachment");
+    write_file(
+        &dir,
+        "post.md",
+        "---\ntitle: 'Fish &amp; Chips & <\"Q\"> ''s'''\nslug: fish\ndate: 2024-05-01T00:00:00Z\ntags: [news]\nattached: [\"a&b.txt\"]\n---\nHam & eggs, 1 < 2 > 0\n\nSecond *paragraph*.\n",
+    );
+}
+
+struct FeedItem {
+    title: String,
+    link: String,
+    description: String,
+    encoded: String,
+    enclosure_url: String,
+    enclosure_type: String,
+}
+
+fn child_text(node: roxmltree::Node<'_, '_>, name: &str) -> String {
+    node.children()
+        .find(|child| child.tag_name().name() == name)
+        .and_then(|child| child.text())
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn parse_feed(path: &Path) -> (String, Vec<FeedItem>) {
+    let xml = fs::read_to_string(path).unwrap();
+    let doc = roxmltree::Document::parse(&xml)
+        .unwrap_or_else(|err| panic!("{} is not valid XML: {err}\n{xml}", path.display()));
+    let channel = doc
+        .descendants()
+        .find(|node| node.has_tag_name("channel"))
+        .unwrap();
+    let items = channel
+        .children()
+        .filter(|node| node.has_tag_name("item"))
+        .map(|item| {
+            let enclosure = item.children().find(|node| node.has_tag_name("enclosure"));
+            let attr = |name| {
+                enclosure
+                    .and_then(|node| node.attribute(name))
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            FeedItem {
+                title: child_text(item, "title"),
+                link: child_text(item, "link"),
+                description: child_text(item, "description"),
+                encoded: child_text(item, "encoded"),
+                enclosure_url: attr("url"),
+                enclosure_type: attr("type"),
+            }
+        })
+        .collect();
+    (child_text(channel, "title"), items)
+}
+
+fn assert_special_character_item(item: &FeedItem) {
+    assert_eq!(item.title, "Fish &amp; Chips & <\"Q\"> 's'");
+    assert_eq!(item.link, "https://example.com/?a=1&b=2/2024/05/01/fish/");
+    assert_eq!(item.description, "Ham & eggs, 1 < 2 > 0");
+    assert!(
+        item.encoded
+            .contains("<p>Ham &amp; eggs, 1 &lt; 2 &gt; 0</p>"),
+        "{}",
+        item.encoded
+    );
+    assert!(
+        item.encoded.contains("<em>paragraph</em>"),
+        "{}",
+        item.encoded
+    );
+    assert_eq!(
+        item.enclosure_url,
+        "https://example.com/?a=1&b=2/2024/05/01/fish/a&b.txt"
+    );
+    assert_eq!(item.enclosure_type, "text/plain");
+}
+
+#[test]
+fn rss_xml_special_characters_round_trip() {
+    for theme in BUNDLED_THEMES {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        setup_markdown_templates(root);
+        let rss = fs::read_to_string(bundled_theme_dir(theme).join("templates/rss.xml")).unwrap();
+        write_template(root, "rss.xml", &rss);
+        fs::write(
+            root.join("bckt.yaml"),
+            "title: 'Tom & Jerry <\"Q\">'\nbase_url: 'https://example.com/?a=1&b=2'\nrss_tags: [news]\n",
+        )
+        .unwrap();
+        write_special_character_post(root);
+
+        render_with(root, true, false, BuildMode::Full).unwrap();
+
+        let (title, items) = parse_feed(&root.join("html/rss.xml"));
+        assert_eq!(title, "Tom & Jerry <\"Q\">", "{theme}");
+        assert_eq!(items.len(), 1, "{theme}");
+        assert_special_character_item(&items[0]);
+
+        let (tag_title, tag_items) = parse_feed(&root.join("html/rss-news.xml"));
+        assert_eq!(tag_title, "news · Tom & Jerry <\"Q\">", "{theme}");
+        assert_special_character_item(&tag_items[0]);
+    }
+}
+
+#[test]
+fn rss_xml_channel_values_are_not_double_escaped() {
+    for title in ["A & B", "A &amp; B"] {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        setup_markdown_templates(root);
+        let rss = fs::read_to_string(bundled_theme_dir("bckt3").join("templates/rss.xml")).unwrap();
+        write_template(root, "rss.xml", &rss);
+        fs::write(root.join("bckt.yaml"), format!("title: '{title}'\n")).unwrap();
+        write_dated_post(root, "alpha", "2024-04-01T00:00:00Z", "A");
+
+        render_with(root, true, false, BuildMode::Full).unwrap();
+
+        let (channel_title, _) = parse_feed(&root.join("html/rss.xml"));
+        assert_eq!(channel_title, title);
+    }
+}
+
+#[test]
+fn rss_xml_updated_theme_application() {
+    use crate::cli::{Command, ThemeInstallArgs, ThemesArgs, ThemesSubcommand};
+
+    for theme in BUNDLED_THEMES {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let themes = |command| {
+            crate::commands::run(Command::Themes(ThemesArgs {
+                root: Some(root.display().to_string()),
+                command,
+            }))
+        };
+        themes(ThemesSubcommand::Install(ThemeInstallArgs {
+            path: bundled_theme_dir(theme).display().to_string(),
+            name: Some(theme.to_string()),
+            force: true,
+        }))
+        .unwrap();
+        fs::write(
+            root.join("bckt.yaml"),
+            "title: 'Tom & Jerry <\"Q\">'\nbase_url: 'https://example.com/?a=1&b=2'\n",
+        )
+        .unwrap();
+        themes(ThemesSubcommand::Use {
+            name: theme.to_string(),
+            force: true,
+        })
+        .unwrap();
+        write_special_character_post(root);
+
+        render_with(root, true, true, BuildMode::Full).unwrap();
+
+        let (title, items) = parse_feed(&root.join("html/rss.xml"));
+        assert_eq!(title, "Tom & Jerry <\"Q\">", "{theme}");
+        assert_special_character_item(&items[0]);
+    }
 }

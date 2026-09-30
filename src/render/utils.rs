@@ -8,6 +8,8 @@ use serde::Serialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::{Rfc2822, Rfc3339};
 
+pub(super) use crate::utils::xml_escape;
+
 pub(super) fn log_status(enabled: bool, label: &str, message: impl AsRef<str>) {
     if enabled {
         println!("[{}] {}", label, message.as_ref());
@@ -93,19 +95,4 @@ pub(super) fn sanitize_cdata(value: &str) -> String {
     } else {
         value.to_string()
     }
-}
-
-pub(super) fn xml_escape(value: &str) -> String {
-    let mut escaped = String::with_capacity(value.len());
-    for ch in value.chars() {
-        match ch {
-            '&' => escaped.push_str("&amp;"),
-            '<' => escaped.push_str("&lt;"),
-            '>' => escaped.push_str("&gt;"),
-            '"' => escaped.push_str("&quot;"),
-            '\'' => escaped.push_str("&apos;"),
-            other => escaped.push(other),
-        }
-    }
-    escaped
 }

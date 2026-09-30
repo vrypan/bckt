@@ -16,6 +16,30 @@ structures you add.
 - `tag.html`, `archive_year.html`, `archive_month.html` — list views for tags
   and archives.
 - `rss.xml` — MiniJinja-driven XML template used to generate the RSS feed.
+  See [Escaping in rss.xml](#escaping-in-rssxml).
+
+## Escaping in rss.xml
+
+`rss.xml` renders with autoescaping off, so escape XML yourself with the
+`xml_escape` filter. It escapes `& < > " '` even in values marked safe
+(such as `base_url`), which the built-in `|e` does not.
+
+- `feed.title`, `feed.description`, `feed.site_url`, `feed.feed_url`, and
+  `feed.updated` are already escaped. Output them as-is; filtering them again
+  double-escapes.
+- Item fields (`item.title`, `item.excerpt`, `item.permalink`, attachment
+  paths and `mime_type`, `base_url`) are raw. Apply `xml_escape` after any
+  `default(...)` fallback, and to a concatenated URL once:
+  `{{ (base_url ~ item.permalink) | xml_escape }}`.
+- `item.body` is HTML prepared for a CDATA section. Insert it unfiltered
+  inside `<![CDATA[ ... ]]>`.
+
+Themes installed before this contract have `rss.xml` templates that produce
+invalid XML when a title, excerpt, or attachment name contains `&` or `<`.
+Updating the bundled theme does not change copies already installed in a
+project. Reinstall and reapply the theme (`bckt themes install <theme>
+--force`, then `bckt themes use <theme> --force`), or, to keep other template
+customizations, make the same `xml_escape` edits to your own `rss.xml`.
 
 ## Extending the Theme
 Create new views by extending `base.html` and overriding the blocks you need:
@@ -60,8 +84,8 @@ Most templates receive:
 - External references that need the full domain
 
 ```jinja
-<!-- RSS feed -->
-<link>{{ base_url }}{{ item.permalink }}</link>
+<!-- RSS feed (autoescape is off in rss.xml) -->
+<link>{{ (base_url ~ item.permalink) | xml_escape }}</link>
 
 <!-- Canonical URL -->
 <link rel="canonical" href="{{ base_url }}{{ post.permalink }}">
@@ -122,8 +146,8 @@ sorted path order) and values contain:
 **RSS enclosures:**
 ```xml
 {% for path, att in item.attachments | items %}
-  <enclosure url="{{ base_url }}{{ item.permalink }}{{ path }}"
-             type="{{ att.mime_type }}"
+  <enclosure url="{{ (base_url ~ item.permalink ~ path) | xml_escape }}"
+             type="{{ att.mime_type | xml_escape }}"
              length="{{ att.size }}"/>
 {% endfor %}
 ```

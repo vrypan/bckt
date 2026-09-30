@@ -9,20 +9,20 @@
     <atom:link href="{{ feed.feed_url }}" rel="self" type="application/rss+xml"/>
     {% for item in feed.items %}
     <item>
-      {% if item.title %}<title>{{ item.title | default(value=item.slug) }}</title>{% endif %}
-      <link>{{ base_url }}{{ item.permalink }}</link>
-      <guid isPermaLink="true">{{ base_url }}{{ item.permalink }}</guid>
+      {% if item.title %}<title>{{ item.title | default(value=item.slug) | xml_escape }}</title>{% endif %}
+      <link>{{ (base_url ~ item.permalink) | xml_escape }}</link>
+      <guid isPermaLink="true">{{ (base_url ~ item.permalink) | xml_escape }}</guid>
       <pubDate>{{ item.pub_date }}</pubDate>
-      <description>{{ item.excerpt | default(value=item.title | default(value=item.slug)) }}</description>
+      <description>{{ item.excerpt | default(value=item.title | default(value=item.slug)) | xml_escape }}</description>
       <content:encoded><![CDATA[
 	{% if item.image %}
-        <img  src="{{ base_url }}{{ item.permalink | safe }}{{ item.image }}">
+        <img  src="{{ (base_url ~ item.permalink ~ item.image) | xml_escape }}">
         {% endif %}
 	{{ item.body }}
 ]]></content:encoded>
 {% for path, att in item.attachments | items %}
-   <enclosure url="{{ base_url }}{{ item.permalink }}{{ path }}"
-   type="{{ att.mime_type }}"
+   <enclosure url="{{ (base_url ~ item.permalink ~ path) | xml_escape }}"
+   type="{{ att.mime_type | xml_escape }}"
    length="{{ att.size }}"/>
 {% endfor %}
     </item>
