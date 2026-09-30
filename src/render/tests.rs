@@ -1398,3 +1398,306 @@ fn archive_years_global_available_in_all_templates() {
         "2024 should appear before 2023 (newest-first)"
     );
 }
+
+fn render_with(root: &Path, posts: bool, static_assets: bool, mode: BuildMode) -> Result<()> {
+    render_site(
+        root,
+        RenderPlan {
+            posts,
+            static_assets,
+            mode,
+            verbose: false,
+        },
+    )
+}
+
+fn write_file(root: &Path, relative: &str, contents: &str) {
+    let path = root.join(relative);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, contents).unwrap();
+}
+
+fn write_attached_post(root: &Path, slug: &str, attached: &[&str]) {
+    let dir = root.join("posts").join(slug);
+    for name in attached {
+        write_file(&dir, name, name);
+    }
+    write_file(
+        &dir,
+        "post.md",
+        &format!(
+            "---\ntitle: {slug}\nslug: {slug}\ndate: 2024-05-01T00:00:00Z\nattached: [{}]\n---\nBody",
+            attached.join(", ")
+        ),
+    );
+}
+
+#[test]
+fn generated_output_deleted_and_ignored_posts() {
+    for mode in [BuildMode::Changed, BuildMode::Full] {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        setup_markdown_templates(root);
+        write_dated_post(root, "alpha", "2024-04-01T00:00:00Z", "A");
+        write_dated_post(root, "beta", "2024-04-02T00:00:00Z", "B");
+        write_dated_post(root, "gamma", "2024-04-03T00:00:00Z", "C");
+        write_dated_post(root, "delta", "2024-04-04T00:00:00Z", "D");
+        render_with(root, true, false, BuildMode::Full).unwrap();
+
+        fs::remove_dir_all(root.join("posts/alpha")).unwrap();
+        write_file(
+            root,
+            "posts/beta/post.md",
+            "---\ntitle: beta\ndate: 2024-04-02T00:00:00Z\nslug: beta-renamed\ntags: [beta]\n---\nB",
+        );
+        fs::write(root.join("posts/gamma/.bcktignore"), "").unwrap();
+        render_with(root, true, false, mode).unwrap();
+
+        let html = root.join("html/2024/04");
+        assert!(!html.join("01/alpha/index.html").exists(), "{mode:?}");
+        assert!(!html.join("01").exists(), "{mode:?}");
+        assert!(!html.join("02/beta/index.html").exists(), "{mode:?}");
+        assert!(html.join("02/beta-renamed/index.html").exists(), "{mode:?}");
+        assert!(!html.join("03/gamma/index.html").exists(), "{mode:?}");
+        assert!(
+            !root.join("html/tags/alpha/index.html").exists(),
+            "{mode:?}"
+        );
+        assert!(html.join("04/delta/index.html").exists(), "{mode:?}");
+    }
+}
+
+#[test]
+fn generated_output_empty_site() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    fs::write(root.join("bckt.yaml"), "homepage_posts: 1\n").unwrap();
+    write_dated_post(root, "alpha", "2024-01-01T00:00:00Z", "A");
+    write_dated_post(root, "beta", "2024-02-01T00:00:00Z", "B");
+    write_dated_post(root, "gamma", "2024-03-01T00:00:00Z", "C");
+    render_with(root, true, false, BuildMode::Full).unwrap();
+    assert!(root.join("html/page/1/index.html").exists());
+    assert!(root.join("html/page/2/index.html").exists());
+    write_file(root, "html/page/1/notes.txt", "keep me");
+
+    fs::remove_dir_all(root.join("posts")).unwrap();
+    fs::create_dir_all(root.join("posts")).unwrap();
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+
+    assert!(!root.join("html/page/1/index.html").exists());
+    assert!(!root.join("html/page/2").exists());
+    assert!(root.join("html/page/1/notes.txt").exists());
+    let homepage = fs::read_to_string(root.join("html/index.html")).unwrap();
+    assert!(homepage.contains("data-current=\"1\" data-total=\"1\""));
+    assert!(homepage.contains("data-prev=\"\" data-next=\"\""));
+    assert!(!homepage.contains("<article"));
+    assert!(!root.join("html/2024").exists());
+}
+
+#[test]
+fn generated_output_removed_attachments() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    write_attached_post(root, "files", &["keep.txt", "media/drop.txt"]);
+    render_with(root, true, false, BuildMode::Full).unwrap();
+    let target = root.join("html/2024/05/01/files");
+    assert!(target.join("media/drop.txt").exists());
+
+    write_attached_post(root, "files", &["keep.txt"]);
+    assert!(root.join("posts/files/media/drop.txt").exists());
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+
+    assert!(target.join("keep.txt").exists());
+    assert!(target.join("index.html").exists());
+    assert!(!target.join("media/drop.txt").exists());
+    assert!(!target.join("media").exists());
+}
+
+#[test]
+fn generated_output_pages_and_static() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    write_file(root, "pages/about/index.html", "about");
+    write_file(root, "pages/about/logo.svg", "<svg/>");
+    write_file(root, "pages/old/index.html", "old");
+    write_file(root, "skel/css/site.css", "body{}");
+    write_file(root, "skel/robots.txt", "robots");
+    render_with(root, true, true, BuildMode::Full).unwrap();
+    write_file(root, "html/about/user.txt", "unknown");
+    write_file(root, "html/css/user.css", "unknown");
+
+    fs::remove_file(root.join("pages/about/logo.svg")).unwrap();
+    fs::remove_dir_all(root.join("pages/old")).unwrap();
+    fs::remove_file(root.join("skel/css/site.css")).unwrap();
+    render_with(root, true, true, BuildMode::Changed).unwrap();
+
+    let html = root.join("html");
+    assert!(!html.join("about/logo.svg").exists());
+    assert!(!html.join("old").exists());
+    assert!(!html.join("css/site.css").exists());
+    assert!(html.join("about/index.html").exists());
+    assert!(html.join("robots.txt").exists());
+    assert!(html.join("about/user.txt").exists());
+    assert!(html.join("css/user.css").exists());
+}
+
+#[test]
+fn generated_output_partial_render() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    write_dated_post(root, "alpha", "2024-04-01T00:00:00Z", "A");
+    write_dated_post(root, "beta", "2024-04-02T00:00:00Z", "B");
+    write_file(root, "skel/site.css", "css");
+    write_file(root, "pages/one/index.html", "one");
+    write_file(root, "pages/two/index.html", "two");
+    render_with(root, true, true, BuildMode::Full).unwrap();
+    let html = root.join("html");
+    let beta = html.join("2024/04/02/beta/index.html");
+
+    fs::remove_file(root.join("skel/site.css")).unwrap();
+    fs::remove_dir_all(root.join("pages/one")).unwrap();
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+    assert!(html.join("site.css").exists(), "skipped static kept");
+    assert!(!html.join("one").exists(), "pages reconciled");
+
+    fs::remove_dir_all(root.join("posts/beta")).unwrap();
+    fs::remove_dir_all(root.join("pages/two")).unwrap();
+    render_with(root, false, true, BuildMode::Changed).unwrap();
+    assert!(!html.join("site.css").exists(), "static reconciled");
+    assert!(beta.exists(), "skipped posts kept");
+    assert!(!html.join("two").exists(), "pages reconciled");
+
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+    assert!(!beta.exists());
+    assert!(html.join("2024/04/01/alpha/index.html").exists());
+}
+
+#[test]
+fn generated_output_shared_path() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    write_dated_post(root, "alpha", "2024-04-01T00:00:00Z", "A");
+    write_file(root, "pages/index.html", "page overlay");
+    write_file(root, "skel/sitemap.xml", "static overlay");
+    render_with(root, true, true, BuildMode::Full).unwrap();
+    let html = root.join("html");
+    assert_eq!(
+        fs::read_to_string(html.join("index.html")).unwrap(),
+        "page overlay"
+    );
+    assert_eq!(
+        fs::read_to_string(html.join("sitemap.xml")).unwrap(),
+        "static overlay"
+    );
+
+    write_file(
+        root,
+        "posts/alpha/post.md",
+        "---\ntitle: alpha\ndate: 2024-04-01T00:00:00Z\nslug: alpha\ntags: [alpha]\n---\nEdited",
+    );
+    render_with(root, true, true, BuildMode::Changed).unwrap();
+    assert_eq!(
+        fs::read_to_string(html.join("index.html")).unwrap(),
+        "page overlay"
+    );
+    assert_eq!(
+        fs::read_to_string(html.join("sitemap.xml")).unwrap(),
+        "static overlay"
+    );
+
+    fs::remove_file(root.join("pages/index.html")).unwrap();
+    fs::remove_file(root.join("skel/sitemap.xml")).unwrap();
+    render_with(root, true, true, BuildMode::Changed).unwrap();
+
+    let homepage = fs::read_to_string(html.join("index.html")).unwrap();
+    assert!(homepage.contains("data-slug=\"alpha\""), "{homepage}");
+    let sitemap = fs::read_to_string(html.join("sitemap.xml")).unwrap();
+    assert!(sitemap.contains("<urlset"), "{sitemap}");
+}
+
+#[test]
+fn generated_output_failed_render_retry() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    write_dated_post(root, "alpha", "2024-04-01T00:00:00Z", "A");
+    write_dated_post(root, "beta", "2024-04-02T00:00:00Z", "B");
+    render_with(root, true, false, BuildMode::Full).unwrap();
+    let html = root.join("html/2024/04");
+    write_file(root, "html/unrelated.txt", "keep");
+
+    let tag_template = fs::read_to_string(root.join("templates/tag.html")).unwrap();
+    write_template(root, "tag.html", "{% include \"missing.html\" %}");
+    write_file(
+        root,
+        "posts/beta/post.md",
+        "---\ntitle: beta\ndate: 2024-04-02T00:00:00Z\nslug: beta-two\ntags: [beta]\n---\nB",
+    );
+    assert!(render_with(root, true, false, BuildMode::Changed).is_err());
+    assert!(html.join("02/beta-two/index.html").exists());
+
+    write_template(root, "tag.html", &tag_template);
+    write_file(
+        root,
+        "posts/beta/post.md",
+        "---\ntitle: beta\ndate: 2024-04-02T00:00:00Z\nslug: beta-three\ntags: [beta]\n---\nB",
+    );
+    fs::remove_file(html.join("01/alpha/index.html")).unwrap();
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+
+    assert!(!html.join("02/beta").exists());
+    assert!(!html.join("02/beta-two").exists());
+    assert!(html.join("02/beta-three/index.html").exists());
+    assert!(html.join("01/alpha/index.html").exists(), "repaired");
+    assert!(root.join("html/unrelated.txt").exists());
+}
+
+#[test]
+fn generated_output_legacy_migration() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    fs::write(
+        root.join("bckt.yaml"),
+        "homepage_posts: 1\nrss_tags: [beta]\n",
+    )
+    .unwrap();
+    write_dated_post(root, "alpha", "2024-04-01T00:00:00Z", "A");
+    write_dated_post(root, "beta", "2023-06-01T00:00:00Z", "B");
+    render_with(root, true, false, BuildMode::Full).unwrap();
+    {
+        let db = open_cache_db(root).unwrap();
+        db.remove(OUTPUTS_KEY).unwrap();
+        db.flush().unwrap();
+    }
+    let html = root.join("html");
+    write_file(root, "html/unknown.txt", "keep");
+    write_file(
+        root,
+        "html/2024/04/01/alpha/old.bin",
+        "untracked attachment",
+    );
+    write_file(root, "html/2023/extra.txt", "keep");
+    assert!(html.join("page/1/index.html").exists());
+    assert!(html.join("rss-beta.xml").exists());
+
+    fs::remove_dir_all(root.join("posts/beta")).unwrap();
+    fs::write(root.join("bckt.yaml"), "homepage_posts: 1\n").unwrap();
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+
+    assert!(!html.join("2023/06/01/beta/index.html").exists());
+    assert!(!html.join("2023/06/index.html").exists());
+    assert!(!html.join("2023/index.html").exists());
+    assert!(!html.join("tags/beta/index.html").exists());
+    assert!(!html.join("rss-beta.xml").exists());
+    assert!(!html.join("page/1/index.html").exists());
+    assert!(html.join("2023/extra.txt").exists());
+    assert!(html.join("unknown.txt").exists());
+    assert!(html.join("2024/04/01/alpha/old.bin").exists());
+    assert!(html.join("2024/04/01/alpha/index.html").exists());
+}

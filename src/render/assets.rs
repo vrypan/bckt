@@ -1,11 +1,12 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use blake3::Hasher;
 use walkdir::WalkDir;
 
+use super::outputs::{Inventory, relative_output};
 use super::utils::normalize_path;
 
 pub(super) fn compute_static_digest(root: &Path) -> Result<String> {
@@ -57,13 +58,13 @@ pub(super) fn compute_static_digest(root: &Path) -> Result<String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
-pub(super) fn copy_static_assets(root: &Path, html_root: &Path) -> Result<usize> {
+/// Non-directory entries under `skel/`, as (source, path relative to skel/).
+fn static_files(root: &Path) -> Result<Vec<(PathBuf, PathBuf)>> {
     let skel_dir = root.join("skel");
+    let mut files = Vec::new();
     if !skel_dir.exists() {
-        return Ok(0);
+        return Ok(files);
     }
-
-    let mut copied = 0usize;
     for entry in WalkDir::new(&skel_dir) {
         let entry = entry?;
         if entry.file_type().is_dir() {
@@ -76,20 +77,34 @@ pub(super) fn copy_static_assets(root: &Path, html_root: &Path) -> Result<usize>
                 skel_dir.display()
             )
         })?;
+        files.push((entry.path().to_path_buf(), relative.to_path_buf()));
+    }
+    Ok(files)
+}
+
+/// Every file `copy_static_assets` copies.
+pub(super) fn static_outputs(root: &Path, html_root: &Path) -> Result<Inventory> {
+    Ok(static_files(root)?
+        .iter()
+        .filter_map(|(_, relative)| relative_output(html_root, &html_root.join(relative)))
+        .collect())
+}
+
+pub(super) fn copy_static_assets(root: &Path, html_root: &Path) -> Result<usize> {
+    let files = static_files(root)?;
+    for (source, relative) in &files {
         let destination = html_root.join(relative);
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create {}", parent.display()))?;
         }
-        fs::copy(entry.path(), &destination).with_context(|| {
+        fs::copy(source, &destination).with_context(|| {
             format!(
                 "failed to copy static asset from {} to {}",
-                entry.path().display(),
+                source.display(),
                 destination.display()
             )
         })?;
-        copied += 1;
     }
-
-    Ok(copied)
+    Ok(files.len())
 }

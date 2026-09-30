@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Write;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use minijinja::Environment;
@@ -15,11 +15,11 @@ use crate::utils::{absolute_url, split_csv};
 
 use super::cache::{read_cached_string, store_cached_string};
 use super::listing::{page_url, tag_index_url, tag_slug};
+use super::outputs::{Inventory, relative_output};
 use super::posts::{PostSummary, att_to_absolute};
 use super::templates::render_template_with_scope;
 use super::utils::{
-    compute_pagination_layout, format_rfc2822, format_rfc3339, remove_file_if_exists,
-    sanitize_cdata, xml_escape,
+    compute_pagination_layout, format_rfc2822, format_rfc3339, sanitize_cdata, xml_escape,
 };
 use super::{BuildMode, FEED_CACHE_PREFIX, SITEMAP_CACHE_KEY};
 
@@ -47,7 +47,7 @@ pub(super) fn render_feeds(
             .filter(|(post, _)| post.tags.iter().any(|t| t.eq(&tag)))
             .rev()
             .collect();
-        let output_path = html_root.join(format!("rss-{}.xml", slug));
+        let output_path = tag_feed_path(html_root, &slug);
         let title = config.title.clone().unwrap_or_else(|| "bckt".to_string());
         let feed_title = format!("{} · {}", tag, title);
         let site_path = format!("/tags/{}/", slug);
@@ -66,7 +66,7 @@ pub(super) fn render_feeds(
         )?;
     }
 
-    cleanup_stale_feeds(cache_db, html_root, &live_keys)?;
+    cleanup_stale_feeds(cache_db, &live_keys)?;
 
     render_sitemap(posts, html_root, config, cache_db, mode)?;
     Ok(())
@@ -97,13 +97,27 @@ fn render_rss(
     )
 }
 
-/// Remove cache entries and files for tag feeds no longer in the config. Only
-/// keys under `FEED_CACHE_PREFIX` are owned here, so nothing else is touched.
-fn cleanup_stale_feeds(
-    cache_db: &sled::Db,
-    html_root: &Path,
-    keep: &BTreeSet<String>,
-) -> Result<()> {
+fn tag_feed_path(html_root: &Path, slug: &str) -> PathBuf {
+    html_root.join(format!("rss-{slug}.xml"))
+}
+
+/// Every file `render_feeds` generates, cached or not.
+pub(super) fn feed_outputs(config: &Config, html_root: &Path) -> Inventory {
+    let mut files = vec![html_root.join("rss.xml"), html_root.join("sitemap.xml")];
+    files.extend(
+        config_tag_feeds(config)
+            .iter()
+            .map(|tag| tag_feed_path(html_root, &tag_slug(tag))),
+    );
+    files
+        .iter()
+        .filter_map(|file| relative_output(html_root, file))
+        .collect()
+}
+
+/// Remove cache entries for tag feeds no longer in the config. Their files are
+/// removed later through output ownership.
+fn cleanup_stale_feeds(cache_db: &sled::Db, keep: &BTreeSet<String>) -> Result<()> {
     let mut stale: Vec<String> = Vec::new();
     for entry in cache_db.scan_prefix(FEED_CACHE_PREFIX.as_bytes()) {
         let (key, _) = entry.context("failed to iterate feed cache entries")?;
@@ -117,10 +131,6 @@ fn cleanup_stale_feeds(
         cache_db
             .remove(key.as_bytes())
             .context("failed to remove stale feed cache entry")?;
-        if let Some(suffix) = key.strip_prefix(FEED_CACHE_PREFIX) {
-            let file = html_root.join(suffix.trim_start_matches('/'));
-            remove_file_if_exists(&file)?;
-        }
     }
     Ok(())
 }

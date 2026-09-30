@@ -10,12 +10,10 @@ use crate::config::Config;
 use crate::content::Post;
 
 use super::cache::{read_cached_string, store_cached_string};
+use super::outputs::{Inventory, relative_output};
 use super::posts::{PostSummary, post_key};
 use super::templates::render_template_with_scope;
-use super::utils::{
-    compute_cache_digest, compute_pagination_layout, log_status, remove_dir_if_empty,
-    remove_file_if_exists,
-};
+use super::utils::{compute_cache_digest, compute_pagination_layout, log_status};
 use super::{
     BuildMode, HOME_PAGES_KEY, MONTH_ARCHIVE_PREFIX, TAG_CACHE_PREFIX, YEAR_ARCHIVE_PREFIX,
 };
@@ -62,11 +60,6 @@ pub(super) fn render_homepage(
     cache: &HomePageCache,
     mode: BuildMode,
 ) -> Result<()> {
-    if posts.is_empty() {
-        cache.store_pages(&[])?;
-        return Ok(());
-    }
-
     let template = env
         .get_template("index.html")
         .context("index.html template missing")?;
@@ -199,9 +192,6 @@ pub(super) fn render_homepage(
 
     cache.store_pages(&new_records)?;
 
-    // Cleanup stale page directories
-    cleanup_homepage_pages(html_root, &new_records)?;
-
     Ok(())
 }
 
@@ -221,17 +211,7 @@ pub(super) fn render_archives(
         .get_template("archive_month.html")
         .context("archive_month.html template missing")?;
 
-    // Group post indices so each summary is referenced (not rebuilt) per group.
-    let mut year_groups: BTreeMap<i32, Vec<usize>> = BTreeMap::new();
-    let mut month_groups: BTreeMap<(i32, u8), Vec<usize>> = BTreeMap::new();
-
-    for (idx, post) in posts.iter().enumerate() {
-        year_groups.entry(post.date.year()).or_default().push(idx);
-        month_groups
-            .entry((post.date.year(), post.date.month() as u8))
-            .or_default()
-            .push(idx);
-    }
+    let (year_groups, month_groups) = group_archives(posts);
 
     let mut year_keys: BTreeSet<String> = BTreeSet::new();
     for (year, group) in year_groups.iter().rev() {
@@ -335,8 +315,8 @@ pub(super) fn render_archives(
         }
     }
 
-    cleanup_month_archives(cache_db, html_root, &month_keys)?;
-    cleanup_year_archives(cache_db, html_root, &year_keys)?;
+    cleanup_cache_entries(cache_db, MONTH_ARCHIVE_PREFIX, &month_keys)?;
+    cleanup_cache_entries(cache_db, YEAR_ARCHIVE_PREFIX, &year_keys)?;
 
     Ok(())
 }
@@ -354,30 +334,9 @@ pub(super) fn render_tag_archives(
         .get_template("tag.html")
         .context("tag.html template missing")?;
 
-    let mut buckets: BTreeMap<String, TagBucket> = BTreeMap::new();
-    for (idx, post) in posts.iter().enumerate() {
-        let mut seen = HashSet::new();
-        for tag in &post.tags {
-            let tag = tag.trim();
-            if tag.is_empty() {
-                continue;
-            }
-            let slug = tag_slug(tag);
-            if !seen.insert(slug.clone()) {
-                continue;
-            }
-            let bucket = buckets.entry(slug.clone()).or_insert_with(|| TagBucket {
-                name: tag.to_string(),
-                slug: slug.clone(),
-                indices: Vec::new(),
-            });
-            bucket.indices.push(idx);
-        }
-    }
-
+    let buckets = collect_tag_buckets(posts);
     if buckets.is_empty() {
-        let keep_keys = BTreeSet::new();
-        cleanup_tag_cache(cache_db, html_root, &keep_keys)?;
+        cleanup_tag_cache(cache_db, &BTreeSet::new())?;
         return Ok(());
     }
 
@@ -442,9 +401,93 @@ pub(super) fn render_tag_archives(
         }
     }
 
-    cleanup_tag_cache(cache_db, html_root, &keep_keys)?;
+    cleanup_tag_cache(cache_db, &keep_keys)?;
 
     Ok(())
+}
+
+type ArchiveGroups = (BTreeMap<i32, Vec<usize>>, BTreeMap<(i32, u8), Vec<usize>>);
+
+/// Group post indices so each summary is referenced (not rebuilt) per group.
+fn group_archives(posts: &[Post]) -> ArchiveGroups {
+    let mut year_groups: BTreeMap<i32, Vec<usize>> = BTreeMap::new();
+    let mut month_groups: BTreeMap<(i32, u8), Vec<usize>> = BTreeMap::new();
+    for (idx, post) in posts.iter().enumerate() {
+        year_groups.entry(post.date.year()).or_default().push(idx);
+        month_groups
+            .entry((post.date.year(), post.date.month() as u8))
+            .or_default()
+            .push(idx);
+    }
+    (year_groups, month_groups)
+}
+
+fn collect_tag_buckets(posts: &[Post]) -> BTreeMap<String, TagBucket> {
+    let mut buckets: BTreeMap<String, TagBucket> = BTreeMap::new();
+    for (idx, post) in posts.iter().enumerate() {
+        let mut seen = HashSet::new();
+        for tag in &post.tags {
+            let tag = tag.trim();
+            if tag.is_empty() {
+                continue;
+            }
+            let slug = tag_slug(tag);
+            if !seen.insert(slug.clone()) {
+                continue;
+            }
+            let bucket = buckets.entry(slug.clone()).or_insert_with(|| TagBucket {
+                name: tag.to_string(),
+                slug: slug.clone(),
+                indices: Vec::new(),
+            });
+            bucket.indices.push(idx);
+        }
+    }
+    buckets
+}
+
+/// Every file the homepage, tag, and archive renderers generate, cached or not.
+pub(super) fn index_outputs(posts: &[Post], config: &Config, html_root: &Path) -> Inventory {
+    let layout = compute_pagination_layout(posts.len(), config.homepage_posts);
+    let mut files = vec![html_root.join("index.html")];
+    files.extend((1..=layout.regular_page_count).map(|page| page_output_path(html_root, page)));
+    files.extend(
+        collect_tag_buckets(posts)
+            .keys()
+            .map(|slug| tag_index_path(html_root, slug)),
+    );
+    let (year_groups, month_groups) = group_archives(posts);
+    files.extend(
+        year_groups
+            .keys()
+            .map(|year| archive_year_path(html_root, *year)),
+    );
+    files.extend(
+        month_groups
+            .keys()
+            .map(|(year, month)| archive_month_path(html_root, *year, *month)),
+    );
+    files
+        .iter()
+        .filter_map(|file| relative_output(html_root, file))
+        .collect()
+}
+
+/// Output files recorded by the homepage cache before ownership tracking.
+pub(super) fn legacy_homepage_outputs(
+    cache: &HomePageCache,
+    html_root: &Path,
+) -> Result<Inventory> {
+    let files = cache.load_pages()?.into_iter().map(|page| {
+        if page.page_number == 0 {
+            html_root.join("index.html")
+        } else {
+            page_output_path(html_root, page.page_number)
+        }
+    });
+    Ok(files
+        .filter_map(|file| relative_output(html_root, &file))
+        .collect())
 }
 
 pub(super) fn build_archive_years(posts: &[Post]) -> Vec<ArchiveYear> {
@@ -539,12 +582,9 @@ fn render_page(template: &minijinja::Template<'_, '_>, plan: PagePlan) -> Result
     Ok(())
 }
 
-fn cleanup_cache_entries(
-    db: &sled::Db,
-    prefix: &str,
-    keep: &BTreeSet<String>,
-    key_to_path: impl Fn(&str) -> Option<PathBuf>,
-) -> Result<()> {
+/// Prune cache keys under `prefix` that are not in `keep`. Their output files
+/// are removed later through output ownership, not here.
+fn cleanup_cache_entries(db: &sled::Db, prefix: &str, keep: &BTreeSet<String>) -> Result<()> {
     let mut stale: Vec<String> = Vec::new();
     for entry in db.scan_prefix(prefix.as_bytes()) {
         let (key, _) = entry.context("failed to iterate cache entries")?;
@@ -557,83 +597,13 @@ fn cleanup_cache_entries(
     for key in stale {
         db.remove(key.as_bytes())
             .context("failed to remove stale cache entry")?;
-        if let Some(output) = key_to_path(&key) {
-            remove_file_if_exists(&output)?;
-            if let Some(parent) = output.parent() {
-                remove_dir_if_empty(parent)?;
-            }
-        }
     }
 
     Ok(())
 }
 
-fn cleanup_tag_cache(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -> Result<()> {
-    cleanup_cache_entries(db, TAG_CACHE_PREFIX, keep, |key| {
-        let slug = key.strip_prefix(TAG_CACHE_PREFIX)?;
-        if slug.is_empty() {
-            None
-        } else {
-            Some(tag_index_path(html_root, slug))
-        }
-    })
-}
-
-fn cleanup_month_archives(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -> Result<()> {
-    cleanup_cache_entries(db, MONTH_ARCHIVE_PREFIX, keep, |key| {
-        let suffix = key.strip_prefix(MONTH_ARCHIVE_PREFIX)?;
-        let (year_str, month_str) = suffix.split_once('-')?;
-        let year = year_str.parse::<i32>().ok()?;
-        let month = month_str.parse::<u8>().ok()?;
-        Some(archive_month_path(html_root, year, month))
-    })
-}
-
-fn cleanup_year_archives(db: &sled::Db, html_root: &Path, keep: &BTreeSet<String>) -> Result<()> {
-    cleanup_cache_entries(db, YEAR_ARCHIVE_PREFIX, keep, |key| {
-        let year_str = key.strip_prefix(YEAR_ARCHIVE_PREFIX)?;
-        let year = year_str.parse::<i32>().ok()?;
-        Some(archive_year_path(html_root, year))
-    })
-}
-
-fn cleanup_homepage_pages(html_root: &Path, keep: &[StoredPage]) -> Result<()> {
-    let page_dir = html_root.join("page");
-    if !page_dir.exists() {
-        return Ok(());
-    }
-
-    // Build set of page numbers we want to keep (skip homepage which is page_number=0)
-    let keep_pages: HashSet<usize> = keep
-        .iter()
-        .filter(|p| p.page_number > 0)
-        .map(|p| p.page_number)
-        .collect();
-
-    // Read all subdirectories in html/page
-    let entries = fs::read_dir(&page_dir)
-        .with_context(|| format!("failed to read directory {}", page_dir.display()))?;
-
-    for entry in entries {
-        let entry = entry.context("failed to read directory entry")?;
-        let path = entry.path();
-
-        if !path.is_dir() {
-            continue;
-        }
-
-        if let Some(name) = path.file_name().and_then(|n| n.to_str())
-            && let Ok(page_num) = name.parse::<usize>()
-            && !keep_pages.contains(&page_num)
-        {
-            // This is a stale page directory, remove it
-            fs::remove_dir_all(&path).with_context(|| {
-                format!("failed to remove stale page directory {}", path.display())
-            })?;
-        }
-    }
-
-    Ok(())
+fn cleanup_tag_cache(db: &sled::Db, keep: &BTreeSet<String>) -> Result<()> {
+    cleanup_cache_entries(db, TAG_CACHE_PREFIX, keep)
 }
 
 #[derive(Clone, Serialize, Deserialize)]

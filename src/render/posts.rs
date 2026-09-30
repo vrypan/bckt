@@ -20,6 +20,7 @@ use crate::config::Config;
 use crate::content::Post;
 use crate::utils::absolute_url;
 
+use super::outputs::{Inventory, relative_output};
 use super::templates::render_template_with_scope;
 use super::utils::{log_status, normalize_path};
 use super::{BuildMode, POST_HASH_PREFIX};
@@ -34,6 +35,7 @@ pub(super) fn render_posts(
     verbose: bool,
 ) -> Result<(usize, usize)> {
     if posts.is_empty() {
+        cleanup_post_hashes(cache_db, &BTreeSet::new())?;
         return Ok((0, 0));
     }
 
@@ -65,7 +67,7 @@ pub(super) fn render_posts(
 
         if needs_render {
             rendered_count += 1;
-            let render_target = html_root.join(post.permalink.trim_start_matches('/'));
+            let render_target = post_output_dir(html_root, post);
             let output_path = render_target.join("index.html");
             if let Some(parent) = output_path.parent() {
                 fs::create_dir_all(parent)
@@ -139,6 +141,22 @@ pub(super) fn render_posts(
     cleanup_post_hashes(cache_db, &cache_keys)?;
 
     Ok((rendered_count, skipped_count))
+}
+
+fn post_output_dir(html_root: &Path, post: &Post) -> PathBuf {
+    html_root.join(post.permalink.trim_start_matches('/'))
+}
+
+/// Every file `render_posts` generates for these posts, cached or not.
+pub(super) fn post_outputs(posts: &[Post], html_root: &Path) -> Inventory {
+    let mut inventory = Inventory::new();
+    for post in posts {
+        let target = post_output_dir(html_root, post);
+        let files = std::iter::once(target.join("index.html"))
+            .chain(post.attached.iter().map(|relative| target.join(relative)));
+        inventory.extend(files.filter_map(|file| relative_output(html_root, &file)));
+    }
+    inventory
 }
 
 pub(super) fn post_key(post: &Post) -> String {

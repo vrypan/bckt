@@ -1,10 +1,11 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use minijinja::Environment;
 use walkdir::WalkDir;
 
+use super::outputs::{Inventory, relative_output};
 use super::templates::describe_template_error;
 use super::utils::normalize_path;
 
@@ -15,19 +16,7 @@ pub(super) fn render_pages(
     verbose: bool,
 ) -> Result<usize> {
     let pages_dir = root.join("pages");
-    if !pages_dir.exists() {
-        return Ok(0);
-    }
-
-    let mut files = Vec::new();
-    for entry in WalkDir::new(&pages_dir) {
-        let entry = entry?;
-        if entry.file_type().is_file() {
-            files.push(entry.into_path());
-        }
-    }
-
-    files.sort();
+    let files = collect_page_files(&pages_dir)?;
 
     let mut rendered_pages = 0usize;
     for path in files {
@@ -81,6 +70,32 @@ pub(super) fn render_pages(
     }
 
     Ok(rendered_pages)
+}
+
+fn collect_page_files(pages_dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    if !pages_dir.exists() {
+        return Ok(files);
+    }
+    for entry in WalkDir::new(pages_dir) {
+        let entry = entry?;
+        if entry.file_type().is_file() {
+            files.push(entry.into_path());
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+/// Every file `render_pages` generates, rendered or copied.
+pub(super) fn page_outputs(root: &Path, html_root: &Path) -> Result<Inventory> {
+    let pages_dir = root.join("pages");
+    let files = collect_page_files(&pages_dir)?;
+    Ok(files
+        .iter()
+        .filter_map(|path| path.strip_prefix(&pages_dir).ok())
+        .filter_map(|relative| relative_output(html_root, &html_root.join(relative)))
+        .collect())
 }
 
 fn is_html_file(path: &Path) -> bool {

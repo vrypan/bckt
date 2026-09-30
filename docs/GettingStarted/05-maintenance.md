@@ -305,6 +305,35 @@ bckt clean
 bckt render
 ```
 
+### Removing Obsolete Output
+
+bckt records which files in `html/` it generated (in `.bckt/cache`). When a
+post is deleted, renamed, or hidden with `.bcktignore`, or when an
+attachment, page, or `skel/` file is removed, the next `bckt render` deletes
+the files it previously generated for it. It removes directories only when
+they end up empty, and it never touches files it did not generate, so
+anything you placed in `html/` yourself survives.
+
+Partial renders only reconcile what they build: `bckt render --posts`
+leaves static assets alone, and `bckt render --static` leaves post output
+alone. Standalone pages are reconciled on every render.
+
+If a render fails partway, bckt remembers every file that run may have
+written. The next successful render removes whichever of those are obsolete
+and rewrites all outputs, even ones whose cache says they are up to date.
+
+Upgrading from a version without output tracking: the first render claims
+only files it can identify exactly from the old cache (post pages,
+homepage/tag/archive pages, feeds, the sitemap, and the search index).
+Attachments, standalone pages, and static files left over from before the
+upgrade, or any output from a site whose cache was deleted, cannot be
+identified safely. Remove them once with a clean build:
+
+```bash
+bckt clean
+bckt render
+```
+
 ## Organizing Old Posts
 
 ### Creating Archive Sections
