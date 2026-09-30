@@ -41,7 +41,9 @@ pub fn parse_offset(value: &str) -> Result<UtcOffset> {
         bail!("offset '{}' is too short", value);
     }
 
-    let normalized = if trimmed.len() == 5 && (trimmed.starts_with('+') || trimmed.starts_with('-'))
+    let normalized = if trimmed.len() == 5
+        && trimmed.is_ascii()
+        && (trimmed.starts_with('+') || trimmed.starts_with('-'))
     {
         format!("{}:{}", &trimmed[..3], &trimmed[3..])
     } else {
@@ -108,6 +110,40 @@ mod tests {
     #[test]
     fn parse_offset_rejects_short_values() {
         assert!(parse_offset("+3").is_err());
+    }
+
+    const MALFORMED_UNICODE_OFFSETS: &[&str] = &["+€a", "-€a", "+1½0", "-1½0"];
+
+    #[test]
+    fn public_offset_unicode_returns_error() {
+        for offset in MALFORMED_UNICODE_OFFSETS {
+            assert_eq!(offset.len(), 5, "{offset}");
+            assert!(parse_offset(offset).is_err(), "{offset}");
+        }
+    }
+
+    #[test]
+    fn public_offset_datetime_returns_none() {
+        for offset in MALFORMED_UNICODE_OFFSETS {
+            let value = format!("2024-01-15 12:00:00 {offset}");
+            assert_eq!(parse_datetime(&value), None, "{value}");
+        }
+    }
+
+    #[test]
+    fn public_offset_valid_formats_unchanged() {
+        let cases = [
+            ("+0300", 3 * 3600),
+            ("-0530", -(5 * 3600 + 30 * 60)),
+            ("+03:00", 3 * 3600),
+            ("+03:00:15", 3 * 3600 + 15),
+            ("UTC", 0),
+            ("Z", 0),
+        ];
+        for (offset, seconds) in cases {
+            let parsed = parse_offset(offset).unwrap_or_else(|err| panic!("{offset}: {err}"));
+            assert_eq!(parsed.whole_seconds(), seconds, "{offset}");
+        }
     }
 
     #[test]
