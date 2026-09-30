@@ -1875,3 +1875,48 @@ fn rss_xml_updated_theme_application() {
         assert_special_character_item(&items[0]);
     }
 }
+
+#[test]
+fn homepage_pagination_incremental_matches_forced_render() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_markdown_templates(root);
+    fs::write(root.join("bckt.yaml"), "homepage_posts: 2\n").unwrap();
+    for (slug, day) in [("a", "01"), ("b", "02"), ("c", "03"), ("d", "04")] {
+        write_dated_post(root, slug, &format!("2024-01-{day}T00:00:00Z"), slug);
+    }
+    render_with(root, true, false, BuildMode::Full).unwrap();
+
+    write_dated_post(root, "e", "2024-01-05T00:00:00Z", "e");
+    write_dated_post(root, "f", "2024-01-06T00:00:00Z", "f");
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+    let pages = [
+        "html/index.html",
+        "html/page/1/index.html",
+        "html/page/2/index.html",
+    ];
+    let incremental: Vec<String> = pages
+        .iter()
+        .map(|page| fs::read_to_string(root.join(page)).unwrap())
+        .collect();
+    assert!(incremental[1].contains("data-total=\"3\" data-prev=\"\" data-next=\"/page/2/\""));
+
+    render_with(root, true, false, BuildMode::Full).unwrap();
+    let forced: Vec<String> = pages
+        .iter()
+        .map(|page| fs::read_to_string(root.join(page)).unwrap())
+        .collect();
+    assert_eq!(incremental, forced);
+
+    let mtimes: Vec<_> = pages
+        .iter()
+        .map(|page| file_mtime(&root.join(page)))
+        .collect();
+    wait_for_filesystem_tick();
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+    let after: Vec<_> = pages
+        .iter()
+        .map(|page| file_mtime(&root.join(page)))
+        .collect();
+    assert_eq!(mtimes, after);
+}

@@ -67,123 +67,52 @@ pub(super) fn render_homepage(
     let layout = compute_pagination_layout(posts.len(), config.homepage_posts);
     let per_page = layout.per_page;
     let regular_page_count = layout.regular_page_count;
-    let total_pages = regular_page_count + 1;
-
-    let mut new_records = Vec::new();
-    // summaries[i] corresponds to posts[i]; reference into the shared vec by
-    // index instead of rebuilding a summary per page.
-    let mut page_summaries: HashMap<usize, Vec<&PostSummary>> = HashMap::new();
-
-    // Regular pages (page 1, 2, 3, ...) - store in display order (reversed)
-    for page_num in 1..=regular_page_count {
-        let start = (page_num - 1) * per_page;
-        let end = start + per_page;
-        // Reverse the slice to display newest first within the page
-        let page_posts: Vec<String> = posts[start..end].iter().rev().map(post_key).collect();
-        let page_refs: Vec<&PostSummary> = summaries[start..end].iter().rev().collect();
-        let content_digest = compute_cache_digest(&page_refs)?;
-        page_summaries.insert(page_num, page_refs);
-        new_records.push(StoredPage {
-            page_number: page_num,
-            posts: page_posts,
-            content_digest,
-        });
-    }
-
-    // Homepage gets the last posts (newest) - store in display order (reversed)
     let home_start = regular_page_count * per_page;
-    let home_posts: Vec<String> = posts[home_start..].iter().rev().map(post_key).collect();
-    let home_refs: Vec<&PostSummary> = summaries[home_start..].iter().rev().collect();
-    let home_content_digest = compute_cache_digest(&home_refs)?;
-    page_summaries.insert(0, home_refs);
-    new_records.push(StoredPage {
-        page_number: 0,
-        posts: home_posts,
-        content_digest: home_content_digest,
-    });
 
-    // Load cached pages to detect changes
     let stored_pages = cache.load_pages()?;
-    let mut stored_map: HashMap<usize, &StoredPage> = HashMap::new();
-    for page in &stored_pages {
-        stored_map.insert(page.page_number, page);
-    }
+    let stored_map: HashMap<usize, &StoredPage> = stored_pages
+        .iter()
+        .map(|page| (page.page_number, page))
+        .collect();
 
+    // Regular pages 1..=N hold the oldest posts; page 0 (the homepage) holds
+    // the newest. Each page lists its posts newest first.
+    let mut new_records = Vec::new();
     let mut plans: Vec<PagePlan> = Vec::new();
-
-    for record in &new_records {
-        let page_num = record.page_number;
-
-        // Check if this page needs rendering
-        let mut needs_render = matches!(mode, BuildMode::Full);
-        if !needs_render {
-            needs_render = match stored_map.get(&page_num) {
-                Some(cached) => {
-                    // Page exists in cache - check if post list or content changed
-                    cached.posts != record.posts || cached.content_digest != record.content_digest
-                }
-                None => {
-                    // New page
-                    true
-                }
-            };
-        }
-
-        if !needs_render {
-            continue;
-        }
-
-        // Reuse the summary references built above (avoid rebuilding them)
-        let page_refs = page_summaries
-            .remove(&page_num)
-            .expect("summaries computed for every page_number in new_records");
-
-        // Build pagination links
-        let (prev, next) = if page_num == 0 {
-            // Homepage
-            let prev = if regular_page_count > 0 {
-                page_url(regular_page_count)
-            } else {
-                String::new()
-            };
-            (prev, String::new())
-        } else if page_num == 1 {
-            // Page 1
-            let next = if page_num < regular_page_count {
-                page_url(page_num + 1)
-            } else {
-                "/".to_string() // Link to homepage
-            };
-            (String::new(), next)
+    for page_num in (1..=regular_page_count).chain([0]) {
+        let range = if page_num == 0 {
+            home_start..posts.len()
         } else {
-            // Middle pages
-            let prev = page_url(page_num - 1);
-            let next = if page_num < regular_page_count {
-                page_url(page_num + 1)
-            } else {
-                "/".to_string() // Link to homepage
-            };
-            (prev, next)
+            (page_num - 1) * per_page..page_num * per_page
         };
-
-        let pagination = PaginationContext {
-            current: if page_num == 0 { total_pages } else { page_num },
-            total: total_pages,
-            prev,
-            next,
+        let page_refs: Vec<&PostSummary> = summaries[range.clone()].iter().rev().collect();
+        let pagination = homepage_pagination(page_num, regular_page_count);
+        let content_digest = compute_cache_digest(&HomePageCachePayload {
+            posts: &page_refs,
+            pagination: &pagination,
+        })?;
+        let record = StoredPage {
+            page_number: page_num,
+            posts: posts[range].iter().rev().map(post_key).collect(),
+            content_digest,
         };
-
         let output = if page_num == 0 {
             html_root.join("index.html")
         } else {
             page_output_path(html_root, page_num)
         };
 
-        plans.push(PagePlan {
-            summaries: page_refs,
-            pagination,
-            outputs: vec![output],
+        let unchanged = stored_map.get(&page_num).is_some_and(|cached| {
+            cached.posts == record.posts && cached.content_digest == record.content_digest
         });
+        if matches!(mode, BuildMode::Full) || !unchanged || !output.exists() {
+            plans.push(PagePlan {
+                summaries: page_refs,
+                pagination,
+                outputs: vec![output],
+            });
+        }
+        new_records.push(record);
     }
 
     for plan in plans {
@@ -193,6 +122,31 @@ pub(super) fn render_homepage(
     cache.store_pages(&new_records)?;
 
     Ok(())
+}
+
+/// Notebook pagination: page 1 is the oldest page, the homepage (page 0) is the
+/// newest and reports itself as the last page.
+fn homepage_pagination(page_num: usize, regular_page_count: usize) -> PaginationContext {
+    let total = regular_page_count + 1;
+    let newer = |page: usize| {
+        if page < regular_page_count {
+            page_url(page + 1)
+        } else {
+            "/".to_string()
+        }
+    };
+    let (current, prev, next) = match page_num {
+        0 if regular_page_count > 0 => (total, page_url(regular_page_count), String::new()),
+        0 => (total, String::new(), String::new()),
+        1 => (1, String::new(), newer(1)),
+        page => (page, page_url(page - 1), newer(page)),
+    };
+    PaginationContext {
+        current,
+        total,
+        prev,
+        next,
+    }
 }
 
 pub(super) fn render_archives(
@@ -635,6 +589,12 @@ struct PaginationContext {
 }
 
 #[derive(Serialize)]
+struct HomePageCachePayload<'a> {
+    posts: &'a [&'a PostSummary],
+    pagination: &'a PaginationContext,
+}
+
+#[derive(Serialize)]
 struct TagCachePayload<'a> {
     tag: &'a str,
     posts: &'a [&'a PostSummary],
@@ -666,4 +626,154 @@ struct PagePlan<'a> {
     summaries: Vec<&'a PostSummary>,
     pagination: PaginationContext,
     outputs: Vec<PathBuf>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::render::posts::build_post_summary;
+    use tempfile::TempDir;
+    use time::{Duration, OffsetDateTime};
+
+    struct Fixture {
+        _temp: TempDir,
+        html_root: PathBuf,
+        config: Config,
+        env: Environment<'static>,
+        cache: HomePageCache,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            let temp = TempDir::new().unwrap();
+            let html_root = temp.path().join("html");
+            let cache = HomePageCache::new(sled::open(temp.path().join("db")).unwrap());
+            let mut env = Environment::new();
+            env.add_template(
+                "index.html",
+                "{{ pagination.current }}|{{ pagination.total }}|{{ pagination.prev | safe }}|{{ pagination.next | safe }}|{% for post in posts %}{{ post.slug }} {% endfor %}",
+            )
+            .unwrap();
+            let config = Config {
+                homepage_posts: 2,
+                ..Default::default()
+            };
+            Self {
+                _temp: temp,
+                html_root,
+                config,
+                env,
+                cache,
+            }
+        }
+
+        fn render(&self, count: usize) {
+            let posts: Vec<Post> = (0..count).map(sample_post).collect();
+            let summaries = posts
+                .iter()
+                .map(|post| build_post_summary(&self.config, post))
+                .collect::<Result<Vec<_>>>()
+                .unwrap();
+            render_homepage(
+                &posts,
+                &summaries,
+                &self.html_root,
+                &self.config,
+                &self.env,
+                &self.cache,
+                BuildMode::Changed,
+            )
+            .unwrap();
+        }
+
+        fn page(&self, page_num: usize) -> String {
+            let path = if page_num == 0 {
+                self.html_root.join("index.html")
+            } else {
+                page_output_path(&self.html_root, page_num)
+            };
+            fs::read_to_string(path).unwrap()
+        }
+    }
+
+    fn sample_post(index: usize) -> Post {
+        let slug = format!("post-{index}");
+        Post {
+            title: Some(slug.clone()),
+            slug: slug.clone(),
+            date: OffsetDateTime::UNIX_EPOCH + Duration::days(index as i64),
+            tags: Vec::new(),
+            post_type: None,
+            abstract_text: None,
+            attached: Vec::new(),
+            body_html: format!("<p>{slug}</p>"),
+            excerpt: slug.clone(),
+            language: "en".to_string(),
+            search_text: slug.clone(),
+            source_dir: PathBuf::from("posts").join(&slug),
+            content_path: PathBuf::from("posts").join(&slug).join("post.md"),
+            content_hash: slug.clone(),
+            permalink: format!("/{slug}/"),
+            extra: Default::default(),
+        }
+    }
+
+    #[test]
+    fn homepage_pagination_growth_updates_previous_last_page() {
+        let fixture = Fixture::new();
+        fixture.render(4);
+        assert_eq!(fixture.page(1), "1|2||/|post-1 post-0 ");
+
+        fixture.render(6);
+
+        assert_eq!(fixture.page(1), "1|3||/page/2/|post-1 post-0 ");
+        assert_eq!(fixture.page(2), "2|3|/page/1/|/|post-3 post-2 ");
+        assert_eq!(fixture.page(0), "3|3|/page/2/||post-5 post-4 ");
+    }
+
+    #[test]
+    fn homepage_pagination_shrink_updates_links() {
+        let fixture = Fixture::new();
+        fixture.render(6);
+        assert_eq!(fixture.page(1), "1|3||/page/2/|post-1 post-0 ");
+
+        fixture.render(4);
+
+        assert_eq!(fixture.page(1), "1|2||/|post-1 post-0 ");
+        assert_eq!(fixture.page(0), "2|2|/page/1/||post-3 post-2 ");
+    }
+
+    #[test]
+    fn homepage_pagination_missing_output_is_recreated() {
+        let fixture = Fixture::new();
+        fixture.render(6);
+        fs::remove_file(page_output_path(&fixture.html_root, 2)).unwrap();
+
+        fixture.render(6);
+
+        assert_eq!(fixture.page(2), "2|3|/page/1/|/|post-3 post-2 ");
+    }
+
+    #[test]
+    fn homepage_pagination_noop_render_skips_writes() {
+        let fixture = Fixture::new();
+        fixture.render(6);
+        for page in [0, 1, 2] {
+            fs::write(
+                if page == 0 {
+                    fixture.html_root.join("index.html")
+                } else {
+                    page_output_path(&fixture.html_root, page)
+                },
+                "sentinel",
+            )
+            .unwrap();
+        }
+
+        fixture.render(6);
+
+        for page in [0, 1, 2] {
+            assert_eq!(fixture.page(page), "sentinel");
+        }
+    }
 }
