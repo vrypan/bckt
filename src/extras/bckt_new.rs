@@ -64,8 +64,6 @@ fn run() -> Result<()> {
         .posts_dir
         .clone()
         .unwrap_or_else(|| project_root.join("posts"));
-    fs::create_dir_all(&posts_root)
-        .with_context(|| format!("failed to create posts directory {}", posts_root.display()))?;
 
     let now = OffsetDateTime::now_utc();
     let default_date = cli.date.clone().unwrap_or_else(|| format_rfc3339(&now));
@@ -98,7 +96,12 @@ fn run() -> Result<()> {
     };
 
     let date_str = value_or_prompt("Date", default_date, false, cli.no_prompt)?;
-    let parsed_date = parse_datetime(&date_str).unwrap_or(now);
+    let parsed_date = parse_datetime(&date_str).with_context(|| {
+        format!(
+            "invalid date '{date_str}'; expected RFC3339 (2024-01-15T12:00:00Z) or \
+             'YYYY-MM-DD HH:MM:SS' with an optional offset (+03:00, +0300, UTC, Z)"
+        )
+    })?;
 
     let tags_input = value_or_prompt(
         "Tags (comma separated)",
@@ -132,6 +135,8 @@ fn run() -> Result<()> {
     if destination.exists() {
         bail!("destination '{}' already exists", destination.display());
     }
+    fs::create_dir_all(&posts_root)
+        .with_context(|| format!("failed to create posts directory {}", posts_root.display()))?;
     fs::create_dir_all(&destination)
         .with_context(|| format!("failed to create directory {}", destination.display()))?;
 
