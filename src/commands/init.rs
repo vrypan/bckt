@@ -48,21 +48,21 @@ pub fn run_init_command(args: InitArgs) -> Result<()> {
 
     let theme_available = ensure_theme(&theme_dir, theme_spec)?;
 
+    // Precedence: existing files, then demo content, then theme defaults.
+    if let Some(demo_name) = args.demo.as_deref()
+        && let Some(demo_path) = resolve_requested_demo(demo_name)
+    {
+        apply_demo(&demo_path, &root)?;
+        println!("Populated project with demo '{demo_name}'");
+    }
+
     seed_configuration(&root, &theme_name)?;
     if theme_available {
         seed_templates(&root, &theme_dir)?;
         seed_static_assets(&root, &theme_dir)?;
     }
 
-    if let Some(demo_name) = args.demo.as_deref() {
-        match resolve_demo(demo_name) {
-            Ok(demo_path) => {
-                apply_demo(&demo_path, &root)?;
-                println!("Populated project with demo '{demo_name}'");
-            }
-            Err(err) => eprintln!("Warning: {err}"),
-        }
-    } else {
+    if args.demo.is_none() {
         seed_sample_post(&root)?;
     }
 
@@ -84,6 +84,16 @@ fn theme_name_from_spec(spec: &str) -> String {
         .and_then(|stem| stem.to_str())
         .unwrap_or(spec)
         .to_string()
+}
+
+fn resolve_requested_demo(name: &str) -> Option<PathBuf> {
+    match resolve_demo(name) {
+        Ok(path) => Some(path),
+        Err(err) => {
+            eprintln!("Warning: {err}");
+            None
+        }
+    }
 }
 
 fn establish_directories(root: &Path) -> Result<()> {
@@ -178,47 +188,15 @@ fn write_bytes_if_missing(path: &Path, contents: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Copy demo content (posts/, pages/, bckt.yaml) into the project root.
-/// The demo's bckt.yaml replaces the default one written by seed_configuration.
+/// Copy demo content (posts/, pages/, bckt.yaml) into the project root
+/// without overwriting any existing file.
 fn apply_demo(demo_path: &Path, project_root: &Path) -> Result<()> {
     for component in ["posts", "pages"] {
-        let src = demo_path.join(component);
-        if src.exists() {
-            copy_tree(&src, &project_root.join(component))?;
-        }
+        copy_if_missing(&demo_path.join(component), &project_root.join(component))?;
     }
-    let demo_config = demo_path.join("bckt.yaml");
-    if demo_config.exists() {
-        fs::copy(&demo_config, project_root.join(CONFIG_FILE)).with_context(|| {
-            format!("failed to copy demo config from {}", demo_config.display())
-        })?;
-    }
-    Ok(())
-}
-
-/// Copy all files from `source_root` into `destination_root`, creating
-/// directories as needed. Existing files are overwritten.
-fn copy_tree(source_root: &Path, destination_root: &Path) -> Result<()> {
-    for entry in WalkDir::new(source_root).into_iter().filter_map(|e| e.ok()) {
-        let path = entry.path();
-        if entry.file_type().is_dir() {
-            continue;
-        }
-        let relative = path
-            .strip_prefix(source_root)
-            .with_context(|| format!("failed to strip prefix for {}", path.display()))?;
-        let destination = destination_root.join(relative);
-        if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
-        fs::copy(path, &destination).with_context(|| {
-            format!(
-                "failed to copy {} to {}",
-                path.display(),
-                destination.display()
-            )
-        })?;
+    let demo_config = demo_path.join(CONFIG_FILE);
+    if demo_config.is_file() {
+        copy_file_if_missing(&demo_config, &project_root.join(CONFIG_FILE))?;
     }
     Ok(())
 }
@@ -227,29 +205,34 @@ fn copy_if_missing(source_root: &Path, destination_root: &Path) -> Result<()> {
     if !source_root.exists() {
         return Ok(());
     }
-    for entry in WalkDir::new(source_root).into_iter().filter_map(|e| e.ok()) {
-        let path = entry.path();
+    for entry in WalkDir::new(source_root) {
+        let entry = entry.with_context(|| format!("failed to read {}", source_root.display()))?;
         if entry.file_type().is_dir() {
             continue;
         }
+        let path = entry.path();
         let relative = path
             .strip_prefix(source_root)
             .with_context(|| format!("failed to strip prefix for {}", path.display()))?;
-        let destination = destination_root.join(relative);
-        if destination.exists() {
-            continue;
-        }
-        if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
-        fs::copy(path, &destination).with_context(|| {
-            format!(
-                "failed to copy {} to {}",
-                path.display(),
-                destination.display()
-            )
-        })?;
+        copy_file_if_missing(path, &destination_root.join(relative))?;
     }
+    Ok(())
+}
+
+fn copy_file_if_missing(source: &Path, destination: &Path) -> Result<()> {
+    if destination.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    fs::copy(source, destination).with_context(|| {
+        format!(
+            "failed to copy {} to {}",
+            source.display(),
+            destination.display()
+        )
+    })?;
     Ok(())
 }
