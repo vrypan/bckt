@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.8.2]
+
+A correctness release: stale output, invalid feeds, and a few ways to lose
+work are fixed. Two upgrade steps are worth knowing about; see **Upgrading**.
+
+### Fixed
+
+- **Obsolete generated files are removed.** Deleting, renaming, or
+  `.bcktignore`-ing a post, or removing an attachment, page, or `skel/` file,
+  used to leave its old output in `html/`, even after `render --force`. bckt
+  now records which files it generated and removes only those that are no
+  longer produced; files you put in `html/` yourself are never touched.
+  Partial renders (`--posts`, `--static`) only reconcile what they build. A
+  failed render is retried safely: the next successful render cleans up
+  whatever the failed one wrote and rewrites everything.
+- **RSS feeds are valid XML.** All bundled themes inserted item titles,
+  excerpts, links, and enclosure attributes unescaped, so an `&` in a title
+  broke the feed. They now use the new `xml_escape` filter.
+- **CDATA splitting no longer drops a character.** A literal `]]>` in a post
+  body came out of feed readers as `]>`.
+- **Homepage pagination stays current.** Adding or removing posts left older
+  numbered pages with stale page totals and prev/next links until a forced
+  render.
+- **Attachment links work on listing pages.** Images and downloads in post
+  bodies were post-relative, so they broke on the homepage, numbered pages,
+  tags, and archives. Listings now use absolute attachment URLs; individual
+  post pages are unchanged.
+- **`archive_years` changes refresh every page.** A new year or changed
+  per-year count now invalidates cached post and listing pages, not only the
+  archives. Body-only edits stay incremental.
+- **An empty site renders an empty homepage** instead of keeping the last one.
+- **`bckt dev` watches `pages/`**, so editing a standalone page rebuilds and
+  live-reloads.
+- **`bckt init --demo` preserves existing files.** Rerunning it overwrote
+  `bckt.yaml` and matching posts/pages; now existing files win, then demo
+  content, then theme defaults.
+- **Theme installs no longer destroy the current theme on failure.** A
+  corrupt archive, empty source, or copy error used to leave you with no
+  theme; the new theme is now staged completely before the old one is
+  replaced, and restored if the swap fails.
+- **`bckt-new` rejects invalid dates.** An unparseable `--date` was written to
+  front matter as-is (breaking the next render) while the directory used
+  today's date. It now errors and creates nothing.
+- **Generated front matter is valid YAML.** `FrontMatter::render` quotes every
+  scalar field, writes tags as a list (a comma inside a tag no longer splits
+  it), and escapes newlines and control characters.
+- **`parse_offset` no longer panics** on multibyte input such as `+€a`; it
+  returns an error and `parse_datetime` returns `None`.
+
+### Added
+
+- `xml_escape` template filter for XML text and attributes. Unlike `|e`, it
+  also escapes values marked safe, such as `base_url`.
+
+### Upgrading
+
+- **Leftover files from before this release** (old attachments, pages,
+  static files, or output from a site whose cache was deleted) can't be
+  identified safely. Remove them once with `bckt clean && bckt render`.
+- **Installed themes are not updated automatically.** To get the RSS
+  escaping fix, reinstall and reapply your theme
+  (`bckt themes install <theme> --force`, then
+  `bckt themes use <theme> --force`), or apply the same `xml_escape` edits to
+  your own `rss.xml`. See `docs/templates.md`.
+
 ## [0.8.1]
 
 ### Fixed
