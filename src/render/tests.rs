@@ -2003,3 +2003,123 @@ fn summary_attachment_root_listing_urls() {
 fn summary_attachment_subpath_listing_urls() {
     check_summary_attachment_site("https://example.com/blog");
 }
+
+const ARCHIVE_GLOBAL_MARKUP: &str =
+    "YEARS[{% for y in archive_years %}{{ y.year }}:{{ y.count }} {% endfor %}]";
+
+fn setup_archive_global_site(root: &Path) {
+    setup_markdown_templates(root);
+    for name in [
+        "post.html",
+        "index.html",
+        "tag.html",
+        "archive_year.html",
+        "archive_month.html",
+    ] {
+        write_template(root, name, ARCHIVE_GLOBAL_MARKUP);
+    }
+    write_file(root, "pages/nav/index.html", ARCHIVE_GLOBAL_MARKUP);
+    write_dated_post(root, "p2023", "2023-03-01T00:00:00Z", "A");
+    write_dated_post(root, "p2024", "2024-06-01T00:00:00Z", "B");
+}
+
+fn assert_archive_global(root: &Path, outputs: &[&str], expected: &str) {
+    for output in outputs {
+        let html = fs::read_to_string(root.join("html").join(output)).unwrap();
+        assert_eq!(html, format!("YEARS[{expected}]"), "{output}");
+    }
+}
+
+#[test]
+fn archive_global_membership_and_counts_refresh_all_outputs() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_archive_global_site(root);
+    render_with(root, true, false, BuildMode::Full).unwrap();
+    let survivors = [
+        "2024/06/01/p2024/index.html",
+        "index.html",
+        "tags/p2024/index.html",
+        "2024/index.html",
+        "2024/06/index.html",
+        "nav/index.html",
+    ];
+    assert_archive_global(root, &survivors, "2024:1 2023:1 ");
+
+    write_dated_post(root, "p2025", "2025-01-01T00:00:00Z", "C");
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+    assert_archive_global(root, &survivors, "2025:1 2024:1 2023:1 ");
+    assert_archive_global(
+        root,
+        &["2023/03/01/p2023/index.html"],
+        "2025:1 2024:1 2023:1 ",
+    );
+
+    write_dated_post(root, "p2024b", "2024-08-01T00:00:00Z", "D");
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+    assert_archive_global(root, &survivors, "2025:1 2024:2 2023:1 ");
+
+    fs::remove_dir_all(root.join("posts/p2023")).unwrap();
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+    assert_archive_global(root, &survivors, "2025:1 2024:2 ");
+    assert_archive_global(root, &["2025/01/01/p2025/index.html"], "2025:1 2024:2 ");
+}
+
+#[test]
+fn archive_global_static_only_does_not_consume_invalidation() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_archive_global_site(root);
+    render_with(root, true, false, BuildMode::Full).unwrap();
+
+    write_dated_post(root, "p2025", "2025-01-01T00:00:00Z", "C");
+    render_with(root, false, true, BuildMode::Changed).unwrap();
+    assert_archive_global(root, &["nav/index.html"], "2025:1 2024:1 2023:1 ");
+    assert_archive_global(root, &["2024/06/01/p2024/index.html"], "2024:1 2023:1 ");
+
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+    assert_archive_global(
+        root,
+        &["2024/06/01/p2024/index.html", "2023/index.html"],
+        "2025:1 2024:1 2023:1 ",
+    );
+}
+
+#[test]
+fn archive_global_noop_preserves_outputs() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_archive_global_site(root);
+    render_with(root, true, false, BuildMode::Full).unwrap();
+    let p2023 = root.join("html/2023/03/01/p2023/index.html");
+    let p2024 = root.join("html/2024/06/01/p2024/index.html");
+    let first = (file_mtime(&p2023), file_mtime(&p2024));
+
+    wait_for_filesystem_tick();
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+    assert_eq!(first, (file_mtime(&p2023), file_mtime(&p2024)));
+
+    wait_for_filesystem_tick();
+    write_dated_post(root, "p2024", "2024-06-01T00:00:00Z", "B edited");
+    render_with(root, true, false, BuildMode::Changed).unwrap();
+    assert_eq!(first.0, file_mtime(&p2023));
+    assert!(file_mtime(&p2024) > first.1);
+}
+
+#[test]
+fn archive_global_site_inputs_hash_tracks_years_and_counts() {
+    let years = |counts: &[(i32, usize)]| -> Vec<ArchiveYear> {
+        counts
+            .iter()
+            .map(|&(year, count)| ArchiveYear { year, count })
+            .collect()
+    };
+    let base = compute_site_inputs_hash("cfg", "tpl", &years(&[(2024, 1), (2023, 2)])).unwrap();
+    let same = compute_site_inputs_hash("cfg", "tpl", &years(&[(2024, 1), (2023, 2)])).unwrap();
+    let recount = compute_site_inputs_hash("cfg", "tpl", &years(&[(2024, 2), (2023, 2)])).unwrap();
+    let new_year =
+        compute_site_inputs_hash("cfg", "tpl", &years(&[(2025, 1), (2024, 1), (2023, 2)])).unwrap();
+    assert_eq!(base, same);
+    assert_ne!(base, recount);
+    assert_ne!(base, new_year);
+}

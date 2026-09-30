@@ -28,8 +28,8 @@ use assets::{compute_static_digest, copy_static_assets, static_outputs};
 use cache::{open_cache_db, read_cached_string, store_cached_string};
 use feeds::{feed_outputs, render_feeds};
 use listing::{
-    HomePageCache, build_archive_years, index_outputs, render_archives, render_homepage,
-    render_tag_archives,
+    ArchiveYear, HomePageCache, build_archive_years, index_outputs, render_archives,
+    render_homepage, render_tag_archives,
 };
 use outputs::{
     Inventory, OUTPUTS_KEY, OutputManifest, OutputRun, PENDING_OUTPUTS_KEY, Producer,
@@ -92,10 +92,6 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
     let cache_db = open_cache_db(root)?;
     let mut env = template::environment(&config)?;
     let template_hash = load_templates(root, &mut env)?;
-    let site_inputs_hash = compute_site_inputs_hash(&config_raw, &template_hash);
-
-    let stored_site_hash = read_cached_string(&cache_db, SITE_INPUTS_KEY)?;
-    let site_changed = stored_site_hash.as_deref() != Some(site_inputs_hash.as_str());
 
     if plan.verbose {
         if plan.mode == BuildMode::Full {
@@ -128,6 +124,10 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
         "archive_years",
         minijinja::value::Value::from_serialize(&archive_years),
     );
+
+    let site_inputs_hash = compute_site_inputs_hash(&config_raw, &template_hash, &archive_years)?;
+    let stored_site_hash = read_cached_string(&cache_db, SITE_INPUTS_KEY)?;
+    let site_changed = stored_site_hash.as_deref() != Some(site_inputs_hash.as_str());
 
     let current = current_inventories(root, &html_root, &config, &all_posts, &search_path, plan)?;
     let outputs = OutputRun::plan(committed, pending, current);
@@ -243,7 +243,6 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
         }
 
         store_cached_string(&cache_db, SEARCH_INDEX_KEY, &artifact.digest)?;
-        store_cached_string(&cache_db, SITE_INPUTS_KEY, &site_inputs_hash)?;
     }
 
     stats.pages_rendered = render_pages(root, &html_root, &env, plan.verbose)?;
@@ -269,6 +268,11 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
     }
 
     let removed = outputs.finish(&cache_db, &html_root)?;
+    // Only a successful post build may consume a site-input change; partial
+    // runs leave it pending for the next post build.
+    if plan.posts {
+        store_cached_string(&cache_db, SITE_INPUTS_KEY, &site_inputs_hash)?;
+    }
     if removed > 0 {
         log_status(
             plan.verbose,
@@ -297,11 +301,22 @@ pub fn render_site(root: &Path, plan: RenderPlan) -> Result<()> {
     Ok(())
 }
 
-fn compute_site_inputs_hash(config_raw: &str, template_hash: &str) -> String {
+/// Digest of inputs every rendered page can observe: config, templates, and
+/// the `archive_years` global.
+fn compute_site_inputs_hash(
+    config_raw: &str,
+    template_hash: &str,
+    archive_years: &[ArchiveYear],
+) -> Result<String> {
     let mut hasher = Hasher::new();
+    hasher.update(b"bckt-site-inputs-v2\0");
     hasher.update(config_raw.as_bytes());
+    hasher.update(b"\0");
     hasher.update(template_hash.as_bytes());
-    hasher.finalize().to_hex().to_string()
+    hasher.update(b"\0");
+    let years = serde_json::to_vec(archive_years).context("failed to serialize archive_years")?;
+    hasher.update(&years);
+    Ok(hasher.finalize().to_hex().to_string())
 }
 
 fn resolve_mode(plan: RenderPlan, site_changed: bool, refresh_outputs: bool) -> BuildMode {
