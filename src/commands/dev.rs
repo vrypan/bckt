@@ -49,28 +49,8 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
     let latest_change = Arc::new(AtomicU64::new(now_timestamp()));
     let (tx, rx) = mpsc::channel();
 
-    let watcher_tx = tx.clone();
-    let mut watcher =
-        notify::recommended_watcher(move |event: notify::Result<notify::Event>| match event {
-            Ok(event) => {
-                // Ignore Access events: on Linux, inotify reports every file
-                // *open* in the watched dirs, including the renderer's own
-                // read-only opens of posts/templates/skel during a rebuild —
-                // forwarding those retriggers the rebuild in an endless loop.
-                // Real edits are still caught: a save always emits Modify too.
-                if !matches!(event.kind, notify::EventKind::Access(_)) {
-                    let _ = watcher_tx.send(());
-                }
-            }
-            Err(err) => {
-                eprintln!("[bckt::dev] watcher error: {err}");
-            }
-        })?;
-
-    register_watch(&mut watcher, root.join("posts"))?;
-    register_watch(&mut watcher, root.join("templates"))?;
-    register_watch(&mut watcher, root.join("skel"))?;
-    register_watch_file(&mut watcher, root.join("bckt.yaml"))?;
+    let mut watcher = source_watcher(tx.clone())?;
+    register_source_watches(&mut watcher, &root)?;
 
     let rebuild_root = root.clone();
     let rebuild_verbose = args.verbose;
@@ -93,11 +73,9 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
                 mode: rebuild_mode,
                 verbose: rebuild_verbose,
             };
-            if let Err(error) = render_site(&rebuild_root, plan) {
+            if let Err(error) = rebuild(&rebuild_root, plan, &rebuild_latest) {
                 eprintln!("[bckt::dev] render error: {error}");
-                continue;
             }
-            rebuild_latest.store(now_timestamp(), Ordering::SeqCst);
         }
     });
 
@@ -161,6 +139,51 @@ pub fn run_dev_command(args: DevArgs) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn source_watcher(tx: mpsc::Sender<()>) -> Result<RecommendedWatcher> {
+    let watcher =
+        notify::recommended_watcher(move |event: notify::Result<notify::Event>| match event {
+            Ok(event) => {
+                if triggers_rebuild(&event.kind) {
+                    let _ = tx.send(());
+                }
+            }
+            Err(err) => {
+                eprintln!("[bckt::dev] watcher error: {err}");
+            }
+        })?;
+    Ok(watcher)
+}
+
+/// Ignore Access events: on Linux, inotify reports every file *open* in the
+/// watched dirs, including the renderer's own read-only opens of sources during
+/// a rebuild — forwarding those retriggers the rebuild in an endless loop. Real
+/// edits are still caught: a save always emits Modify too.
+fn triggers_rebuild(kind: &notify::EventKind) -> bool {
+    !matches!(kind, notify::EventKind::Access(_))
+}
+
+/// Watch every render input. `pages/` is created when missing so the first
+/// page added while the server runs is picked up.
+fn register_source_watches(watcher: &mut RecommendedWatcher, root: &Path) -> Result<()> {
+    let pages = root.join("pages");
+    if pages.exists() && !pages.is_dir() {
+        bail!("{} exists but is not a directory", pages.display());
+    }
+    fs::create_dir_all(&pages)
+        .with_context(|| format!("failed to create pages directory {}", pages.display()))?;
+
+    for dir in ["posts", "templates", "skel", "pages"] {
+        register_watch(watcher, root.join(dir))?;
+    }
+    register_watch_file(watcher, root.join("bckt.yaml"))
+}
+
+fn rebuild(root: &Path, plan: RenderPlan, latest_change: &AtomicU64) -> Result<()> {
+    render_site(root, plan)?;
+    latest_change.store(now_timestamp(), Ordering::SeqCst);
     Ok(())
 }
 
@@ -456,6 +479,120 @@ fn now_timestamp() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const WATCH_TIMEOUT: Duration = Duration::from_secs(5);
+
+    fn write(path: &Path, contents: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, contents).unwrap();
+    }
+
+    fn minimal_site(root: &Path) {
+        for name in [
+            "index.html",
+            "post.html",
+            "tag.html",
+            "archive_year.html",
+            "archive_month.html",
+            "rss.xml",
+        ] {
+            write(&root.join("templates").join(name), "");
+        }
+    }
+
+    fn watch_site(root: &Path) -> (RecommendedWatcher, mpsc::Receiver<()>) {
+        let (tx, rx) = mpsc::channel();
+        let mut watcher = source_watcher(tx).unwrap();
+        register_source_watches(&mut watcher, root).unwrap();
+        (watcher, rx)
+    }
+
+    fn drain(rx: &mpsc::Receiver<()>) {
+        thread::sleep(Duration::from_millis(300));
+        while rx.try_recv().is_ok() {}
+    }
+
+    fn rebuild_after_event(root: &Path, rx: &mpsc::Receiver<()>) {
+        rx.recv_timeout(WATCH_TIMEOUT)
+            .expect("no watcher event for pages/ edit");
+        let latest = AtomicU64::new(0);
+        let plan = RenderPlan {
+            posts: true,
+            static_assets: true,
+            mode: BuildMode::Changed,
+            verbose: false,
+        };
+        rebuild(root, plan, &latest).unwrap();
+        assert!(latest.load(Ordering::SeqCst) > 0);
+    }
+
+    #[test]
+    fn dev_pages_edit_triggers_render() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        minimal_site(&root);
+        write(&root.join("pages/docs/about/index.html"), "v1");
+        let (watcher, rx) = watch_site(&root);
+        rebuild(
+            &root,
+            RenderPlan {
+                posts: true,
+                static_assets: true,
+                mode: BuildMode::Full,
+                verbose: false,
+            },
+            &AtomicU64::new(0),
+        )
+        .unwrap();
+        drain(&rx);
+
+        write(&root.join("pages/docs/about/index.html"), "v2");
+        rebuild_after_event(&root, &rx);
+
+        let output = fs::read_to_string(root.join("html/docs/about/index.html")).unwrap();
+        assert_eq!(output, "v2");
+        drop(watcher);
+    }
+
+    #[test]
+    fn dev_pages_initially_absent() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        minimal_site(&root);
+        let (watcher, rx) = watch_site(&root);
+        assert!(root.join("pages").is_dir());
+        drain(&rx);
+
+        write(&root.join("pages/new/index.html"), "first page");
+        rebuild_after_event(&root, &rx);
+
+        let output = fs::read_to_string(root.join("html/new/index.html")).unwrap();
+        assert_eq!(output, "first page");
+        drop(watcher);
+    }
+
+    #[test]
+    fn dev_pages_file_in_place_of_directory_is_an_error() {
+        let temp = tempfile::TempDir::new().unwrap();
+        fs::write(temp.path().join("pages"), "not a directory").unwrap();
+        let (tx, _rx) = mpsc::channel();
+        let mut watcher = source_watcher(tx).unwrap();
+
+        let err = register_source_watches(&mut watcher, temp.path()).unwrap_err();
+
+        assert!(err.to_string().contains("not a directory"), "{err}");
+    }
+
+    #[test]
+    fn access_events_do_not_trigger_rebuilds() {
+        use notify::EventKind;
+        use notify::event::{AccessKind, CreateKind, ModifyKind, RemoveKind};
+
+        assert!(!triggers_rebuild(&EventKind::Access(AccessKind::Any)));
+        assert!(triggers_rebuild(&EventKind::Modify(ModifyKind::Any)));
+        assert!(triggers_rebuild(&EventKind::Create(CreateKind::File)));
+        assert!(triggers_rebuild(&EventKind::Remove(RemoveKind::File)));
+    }
 
     #[test]
     fn injects_snippet_before_body() {
